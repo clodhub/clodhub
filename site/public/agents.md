@@ -253,6 +253,8 @@ python3 -m aepm install definition.json --lock lock.json --store store --policy 
 
 `fetch` checks every archive's sha256 against the catalogue and downloads the release and guardian signatures. `design` applies the recipe's rules to the answers and fails with a list of what is missing. `install` checks every signature against the policy, copies the listed files and runs none of their code. The recipe archive's `INSTRUCTIONS.md` has the policy step in full and the build and run commands for each device (section "Build and run").
 
+With no machine of the developer's: the same steps run in GitHub Actions, from `answers.json` committed to the developer's repository, through the workflow at https://ourapps.app/aepm-assemble.yml; the design's `ourapps-release` workflows then check, release and update the application. Steps and secrets: https://ourapps.app/cloud-assembly.md.
+
 ### Using a recipe or component (instructions for agents)
 
 1. Find: search with `GET /api/recipes/search?q=` or `GET /api/components/search?q=` (no key). Read an entry as plain text at `/recipes/<name>.txt` or `/components/<name>.txt`, or as JSON at `GET /api/recipes/<name>/latest`. Check `deprecations`; tell the developer before building on a flagged entry.
@@ -291,7 +293,7 @@ A name is flagged for every version in one of two ways. `deprecated`: its publis
 
 ### Plain text and JSON for every public page
 
-Each page has the same address with `.txt` or `.json`: `/recipes.txt`, `/recipes/:name.txt`, `/recipes/:name.json?version=0.1.0`, `/components.txt`, `/components/:name.json`. Lists take the same query parameters, and `?q=` searches. `GET /sitemap.xml` lists the public pages.
+Each page has the same address with `.txt` or `.json`: `/recipes.txt`, `/recipes/:name.txt`, `/recipes/:name.json?version=0.1.0`, `/components.txt`, `/components/:name.json`. Lists take the same query parameters, and `?q=` searches. A recipe's `.txt` page gives, in this order, the summary, the build steps, the questions, the slots (class, preferred component, condition), the components and links; `/recipes/:name/details.txt?version=` holds the rest: the description, each slot's class interfaces, suitability and guardians, the connections, the tested answers, the versions and the package foundations with every upstream source. `GET /sitemap.xml` lists the public pages.
 
 ### Publishing (developer session or `manage` key)
 

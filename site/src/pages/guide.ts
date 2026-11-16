@@ -58,7 +58,7 @@ function sections(origin: string, slug: string): Section[] {
         <p>A recipe page shows its description and design diagram, the questions it asks (with the condition that asks each one and its default), the components it uses (with the condition that includes each one, their suitability and guardians), the load bands and jobs that choose between components, the devices it targets, the answer sets that were tested, and every version. The <b>Build it</b> box gives the command your agent runs and a link to download the recipe bundle; the link works for one hour.</p>
         <p>To use a recipe, answer its questions, or hand the page to your agent and let it ask you. A recipe never asks for a secret value, only for a reference to one.</p>
         <h3 id="find-recipe-agent">Text, JSON and the agent API</h3>
-        <p>Every public page has the same address ending in <code>.txt</code> (plain text) or <code>.json</code> (JSON, the plain data format agents read): <code>/recipes.txt</code>, <code>/recipes/poker-night.txt</code>, <code>/recipes/poker-night.json?version=0.1.0</code>. Lists take the same query parameters as the API, and <code>?q=</code> searches. <a href="/sitemap.xml">/sitemap.xml</a> lists the public pages.</p>
+        <p>Every public page has the same address ending in <code>.txt</code> (plain text) or <code>.json</code> (JSON, the plain data format agents read): <code>/recipes.txt</code>, <code>/recipes/poker-night.txt</code>, <code>/recipes/poker-night.json?version=0.1.0</code>. Lists take the same query parameters as the API, and <code>?q=</code> searches. A recipe's text page holds what an agent needs first (the build steps, questions, slots and components); <code>/recipes/poker-night/details.txt</code> holds the rest, including each package's upstream sources. <a href="/sitemap.xml">/sitemap.xml</a> lists the public pages.</p>
         <pre><code>GET /api/recipes?category=&amp;target=&amp;tag=&amp;deprecated=&amp;limit=&amp;offset=
 GET /api/recipes/search?q=card+game&amp;deprecated=exclude
 GET /api/recipes/poker-night/latest
@@ -252,6 +252,21 @@ POST   /api/dev/recipes/&lt;name&gt;/undeprecate</code></pre>
         </ul>
         <p class="small muted">Rule of thumb: if it needs a password, a payment, a signing key, or a decision about a person, it is yours. If it is typing, reading a file, or calling this API, it is the agent's.</p>
         <p class="small muted">Wondering whether your kind of app fits (Unity, Flutter, server-rendered sites, games with a server)? The <a href="/reference">technical reference</a> lists the supported types, where every part runs and the exact limits.</p>
+      `,
+    },
+    {
+      id: "cloud",
+      title: "Build on GitHub, with no machine of your own",
+      body: html`
+        <p>GitHub Actions can do the whole build from a recipe: fetch, design from your answers, resolve and install with aepm, then check, release and update the application. You, or an agent with the GitHub CLI, take these steps in your repository. The full steps, with every secret name: <a href="/cloud-assembly.md">cloud-assembly.md</a>.</p>
+        <ol class="steps">
+          <li><b>Create a private repository</b> and allow GitHub Actions to create pull requests (Settings, Actions, General).</li>
+          <li><b>Add three files:</b> <code>answers.json</code> (the answers to the recipe's questions; the design must include the <code>ourapps-release</code> component, for OurPoker <code>publish</code> or <code>releases</code> yes), <code>CHANGELOG.md</code>, and <code>.github/workflows/aepm-assemble.yml</code>, a copy of <a href="/aepm-assemble.yml">/aepm-assemble.yml</a>.</li>
+          <li><b>Add the secrets:</b> <code>AEPM_OWNER_KEY</code> (your owner key, which approves updates), <code>AEPM_PUSH_TOKEN</code> (a fine-grained token for the repository with Contents and Workflows write), and for publishing the Cloudflare, Android signing and ourapps.app credentials your answers name.</li>
+          <li><b>Run aepm-assemble</b> with the recipe and version, for example <code>ourpoker@0.7.0</code>. It commits the application to main.</li>
+        </ol>
+        <p>The application then carries its workflows: <code>ci-server</code>, <code>ci-web</code> (a browser plays a hand against a server on the runner), <code>ci-android</code> (an emulator shows the room list), <code>apple-builds</code> (unsigned iPhone, iPad, Mac and Apple TV builds on a macOS runner, on a version tag or by hand), <code>release</code> (on a version tag) and <code>aepm-update</code> (weekly and by hand, it proposes the newest recipe version as a pull request; merging it approves the update with <code>AEPM_OWNER_KEY</code> and applies it).</p>
+        <p class="small muted">Apple apps build only on macOS runners. These workflows are checked with actionlint.</p>
       `,
     },
     {
