@@ -693,6 +693,20 @@ describe("review fixes", () => {
     expect((await get(`/images/${await hexOf(extra)}.png`)).status).toBe(404);
   });
 
+  it("deletes the download address hashes at the end of their day (UTC)", async () => {
+    await publish(card("0.1.0"));
+    expect((await handle(new Request(`${BASE}/api/components/card-deck/0.1.0/bundle`, { headers: { "CF-Connecting-IP": "198.51.100.9" } }), env, deps)).status).toBe(200);
+    const held = async () => [(await env.DB.prepare("SELECT COUNT(*) AS n FROM downloads_seen").first<{ n: number }>())!.n, (await env.DB.prepare("SELECT COUNT(*) AS n FROM rate_limits").first<{ n: number }>())!.n];
+    expect(await held()).toEqual([1, 1]);
+    const now = deps.now();
+    deps.advance(Date.parse(`${now.toISOString().slice(0, 10)}T23:30:00Z`) - now.getTime());
+    await scheduled("7 * * * *", env, deps);
+    expect((await held())[0]).toBe(1);
+    deps.advance(45 * 60_000);
+    await scheduled("7 * * * *", env, deps);
+    expect(await held()).toEqual([0, 0]);
+  });
+
   it("names curators by GitHub id, not login", async () => {
     env.CATALOGUE_CURATORS = "george";
     expect((await post("/api/dev/categories", exampleCategories())).status).toBe(403);

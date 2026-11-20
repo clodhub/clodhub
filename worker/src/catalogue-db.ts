@@ -1014,6 +1014,15 @@ export class CatalogueDb {
     return true;
   }
 
+  // Removes the hashed download addresses of days before `now`'s (UTC), and rate-limit counts older than an hour, so
+  // no address hash outlives its day by more than the hour until the next run.
+  async forgetVisitors(now: Date): Promise<void> {
+    await this.batch([
+      this.d1.prepare("DELETE FROM downloads_seen WHERE day < ?").bind(now.toISOString().slice(0, 10)),
+      this.d1.prepare("DELETE FROM rate_limits WHERE minute < ?").bind(new Date(now.getTime() - 3_600_000).toISOString().slice(0, 16)),
+    ]);
+  }
+
   // Counts one request for a key in a minute and returns the count so far.
   async hit(key: string, minute: string): Promise<number> {
     const r = await this.first<{ n: number }>(this.d1.prepare("INSERT INTO rate_limits (key, minute, n) VALUES (?, ?, 1) ON CONFLICT (key, minute) DO UPDATE SET n = n + 1 RETURNING n").bind(key, minute));
@@ -1068,7 +1077,7 @@ export class CatalogueDb {
       }
       if (!done) break;
     }
-    if (done) await this.batch([this.d1.prepare(`DELETE FROM downloads_daily WHERE rowid IN (SELECT rowid FROM downloads_daily WHERE day < ? LIMIT 5000)`).bind(day(31)), this.d1.prepare("DELETE FROM downloads_seen WHERE day < ?").bind(day(1)), this.d1.prepare("DELETE FROM rate_limits WHERE minute < ?").bind(new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000).toISOString().slice(0, 16))]);
+    if (done) await this.batch([this.d1.prepare(`DELETE FROM downloads_daily WHERE rowid IN (SELECT rowid FROM downloads_daily WHERE day < ? LIMIT 5000)`).bind(day(31))])
     return { chunks: used, done };
   }
 

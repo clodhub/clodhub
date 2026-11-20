@@ -316,6 +316,18 @@ export async function buildReports(env: Env, name: string, id: string | null): P
   return json({ name: entry.name, currentVersion: entry.latestVersion, reports: views } satisfies BuildReportList);
 }
 
+// A listed recipe version with a report of its digest whose every target built is integration-tested, unless it is
+// rated higher. Runs when a report arrives and when the version is published, whichever comes second.
+async function applyReports(d: CatalogueDb, slug: string, name: string, version: string): Promise<void> {
+  const listed = await d.version("recipe", slug, version, true);
+  if (!listed) return;
+  const q = listed.row.quality;
+  if (q !== null && QUALITY_LEVELS.indexOf(q.level) >= QUALITY_LEVELS.indexOf("integration-tested")) return;
+  const reports = (await d.buildReports(name, 200)).filter((r) => r.version === version && r.digest === listed.row.digest);
+  if (!reports.some((r) => (JSON.parse(r.report) as BuildReport).results.every((x) => x.built))) return;
+  await d.setQuality("recipe", listed.entry, version, { level: "integration-tested", certified: q?.certified ?? false, liveTested: null });
+}
+
 // POST /api/dev/recipes/:name/reports with a build report. Curators only. The report's version must have been published
 // under the name with that digest, now or before; the same report again answers "unchanged".
 export async function publishBuildReport(request: Request, env: Env, deps: Deps, dev: AuthedDeveloper, name: string): Promise<Response> {
@@ -336,12 +348,7 @@ export async function publishBuildReport(request: Request, env: Env, deps: Deps,
   if (digest !== r.recipe.digest) throw new HttpError(422, `${entry.name} ${r.recipe.version} was published with digest ${digest}, not ${r.recipe.digest}`);
   const id = (await sha256Hex(new TextEncoder().encode(canonical(body)))).slice(0, 32);
   const added = await d.addBuildReport({ name: entry.name, version: r.recipe.version, id, digest, date: r.date, report: JSON.stringify(body), by: dev.id, now: now.toISOString() });
-  // A listed version with a report whose every target built is integration-tested, unless it is rated higher.
-  const listed = await d.version("recipe", entry.slug, r.recipe.version, true);
-  const q = listed?.row.quality ?? null;
-  if (added && listed && listed.row.digest === digest && r.results.every((x) => x.built) && (q === null || QUALITY_LEVELS.indexOf(q.level) < QUALITY_LEVELS.indexOf("integration-tested"))) {
-    await d.setQuality("recipe", entry, listed.row.version, { level: "integration-tested", certified: q?.certified ?? false, liveTested: null });
-  }
+  if (added) await applyReports(d, entry.slug, entry.name, r.recipe.version);
   if (added) await audit(request, env, deps, dev.id, "recipe-report-published", `${entry.name} ${r.recipe.version} ${id}`);
   return json({ status: added ? "published" : "unchanged", id, name: entry.name, version: r.recipe.version, url: `${env.PUBLIC_ORIGIN}/api/recipes/${entry.slug}/reports/${id}` }, added ? 201 : 200);
 }
@@ -955,6 +962,7 @@ async function publishEntry(request: Request, env: Env, deps: Deps, dev: AuthedD
     }
   }
   await d.claimImages(e.images.flatMap((i) => [hexOf(i.digest), hexOf(i.thumbnail)]), now);
+  if (kind === "recipe") await applyReports(d, slug, name, version);
   await audit(request, env, deps, dev.id, `${kind}-published`, `${name} ${version}`);
   return published(env, kind, "published", name, slug, version);
 }

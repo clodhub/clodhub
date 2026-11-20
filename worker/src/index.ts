@@ -186,12 +186,13 @@ export default {
 // The cron triggers in wrangler.jsonc.
 export async function scheduled(cron: string, env: Env, deps: Deps): Promise<void> {
   // Hourly: the vulnerability check, the next chunks of the day's download refresh, the images nobody named within a
-  // day, and old listing totals. Each runs whatever the others do; a failure is logged.
+  // day, the download address hashes of past days, and old listing totals. Each runs whatever the others do; a failure is logged.
   if (cron === "7 * * * *") {
     const tasks: [string, () => Promise<unknown>][] = [
       ["vulnerability check", () => checkVulnerabilities(env, deps)],
       ["download refresh", () => new CatalogueDb(env.DB).refreshDownloads(deps.now().toISOString().slice(0, 10))],
       ["image clean-up", () => removeUnclaimedImages(env, deps)],
+      ["download address clean-up", () => new CatalogueDb(env.DB).forgetVisitors(deps.now())],
       ["listing totals clean-up", () => new CatalogueDb(env.DB).pruneListingTotals()],
     ];
     for (const [name, task] of tasks) {

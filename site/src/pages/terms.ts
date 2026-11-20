@@ -32,6 +32,7 @@ export function termsBody(): Raw {
         <tr><td>Private keys of the Apple Distribution and Mac Installer Distribution certificates the service creates for you (encrypted), with the certificates</td><td>So your apps' release workflows can sign Apple apps and Mac installation packages without Apple secrets in the repositories</td><td>Given only to a release workflow that presents one of your apps' build tokens; installer signing material is returned only for Mac builds</td></tr>
         <tr><td>App listings (name, text, image addresses, repository name, bundle ID) and their TestFlight set-up</td><td>To build install pages and read releases</td><td>Shown to whoever holds a share link; details only on your public page when you switch it on</td></tr>
         <tr><td>Recipes, components and classes you publish (name, version, description, questions, suitability and migration declarations, diagram, repository and release names, digests), and the images you upload for them</td><td>To list them in the recipe library and component catalogue, let people search them, and serve their packages from your GitHub release with your token</td><td>Public to anyone, with your display name and page address as publisher; a version stays bound to its digest after it is unlisted; after you delete your account they stay public without your name (section 7)</td></tr>
+        <tr><td>Build reports the catalogue's curators publish about a recipe: the agent, model and harness, the prompt and the answers given, the measured times, tool calls, tokens and cost, what was built, tested and run, problems and a rating</td><td>To show on the recipe's page how agents fared building from it</td><td>Public to anyone, with the recipe; they name no person</td></tr>
         <tr><td>Share links</td><td>To let the people you share with reach an install page and to let you revoke access</td><td>Known to whoever you send them to</td></tr>
         <tr><td>API keys (hashed), sessions (hashed), build tokens (hashed)</td><td>To let you, your agents and your repositories act on your account</td><td>Nowhere; we hold hashes only</td></tr>
         <tr><td>Audit log (event, short detail, country of the request)</td><td>So you can see what happened on your account</td><td>Shown only to you</td></tr>
@@ -40,7 +41,7 @@ export function termsBody(): Raw {
 
       <h2>4. What we hold about the people you share with</h2>
       <p>Nothing. People who install on iPhone or iPad deal with Apple directly through TestFlight, and Android and web installs record nothing about the person. Install pages set no cookies and carry no analytics.</p>
-      <p>When anyone asks for a recipe or component download link, the service keeps a hash of their network address, mixed with the day and a secret, for that day only: it counts one download per address and limits how many links one address can ask for. The address itself is not stored.</p>
+      <p>When anyone asks for a recipe or component download link, the service keeps a hash of their network address, mixed with the day and a secret, until the end of that day (UTC); it is deleted within the following hour. The hash counts one download per address and limits how many links one address can ask for. The address itself is not stored.</p>
 
       <h2>5. Your responsibilities</h2>
       <ul class="bullets">

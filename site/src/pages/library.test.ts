@@ -391,7 +391,7 @@ describe("build steps on the recipe page", () => {
     const v = recipeView({ description: "Intro.\n\n## Building it\n\nDeploy the server with `npm run deploy` first.\n\n## Status\n\nDone." });
     const html = recipeBody(v, "latest").html;
     const at = (s: string) => html.indexOf(s);
-    expect(at(`store/objects/${v.digest.slice(7)}.tar INSTRUCTIONS.md &gt; INSTRUCTIONS.md`)).toBeGreaterThan(at("python3 -m aepm fetch poker-night@0.1.0"));
+    expect(at(`tar -xf store/objects/${v.digest.slice(7)}.tar INSTRUCTIONS.md`)).toBeGreaterThan(at("python3 -m aepm fetch poker-night@0.1.0"));
     expect(at("python3 -m aepm doctor poker-night@0.1.0 --store store --answers answers.json")).toBeGreaterThan(at("python3 -m aepm design"));
     expect(at("python3 -m aepm verify app --policy policy.json --trusted")).toBeGreaterThan(at("python3 -m aepm install"));
     expect(at("<h3 class=\"mt\">From the recipe</h3>")).toBeGreaterThan(at("--trusted"));

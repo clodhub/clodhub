@@ -1404,6 +1404,18 @@ describe("build reports", () => {
     expect((await error((r) => (r.date = "2099-01-01")))[1]).toContain("future");
   });
 
+  it("makes a version integration-tested when it is published after a fully built report of it", async () => {
+    const dev = (await env.DB.prepare("SELECT id FROM developers WHERE github_id = 42").first<{ id: string }>())!.id;
+    const digest = (recipe() as Mutable).digest as string;
+    await env.DB.prepare("INSERT INTO recipes (id, name, scope, slug, developer_id, repo, created_at, updated_at) VALUES ('pn', 'acme/poker-night', 'acme', 'poker-night', ?, 'acme/poker-night-recipe', '2026-11-01', '2026-11-01')").bind(dev).run();
+    await env.DB.prepare("INSERT INTO published_digests (kind, name, version, digest, published_at) VALUES ('recipe', 'acme/poker-night', '0.1.0', ?, '2026-11-01')").bind(digest).run();
+    const report = structuredClone(reports[1]!);
+    report.recipe = { name: "acme/poker-night", version: "0.1.0", digest };
+    expect((await send(report, cookie, "poker-night")).status).toBe(201);
+    await publishRecipe();
+    expect(((await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView).quality).toMatchObject({ level: "integration-tested" });
+  });
+
   it("shows reports on the recipe page and text page, notes an older version, and makes a fully built version integration-tested", async () => {
     await publishRecipe();
     const listed = (await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView;
@@ -1430,7 +1442,7 @@ describe("build steps on the recipe text page", () => {
     const at = (s: string) => page.indexOf(s);
     const steps = [
       "python3 -m aepm fetch poker-night@0.1.0 --with-dependencies --store store",
-      `tarfile.open(sys.argv[1]).extractfile(sys.argv[2]).read().decode())' store/objects/${digest.slice(7)}.tar INSTRUCTIONS.md > INSTRUCTIONS.md`,
+      `tar -xf store/objects/${digest.slice(7)}.tar INSTRUCTIONS.md`,
       "python3 -m aepm questions poker-night@0.1.0 --store store",
       "python3 -m aepm design poker-night@0.1.0 --store store --answers answers.json --out definition.json",
       "python3 -m aepm doctor poker-night@0.1.0 --store store --answers answers.json",

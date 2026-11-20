@@ -101,6 +101,9 @@ describe("public copy", () => {
     expect(text).toContain("The GitHub organisations you are an active member of, read at each sign-in");
     expect(text).not.toContain("public profile only");
     expect(TERMS_VERSION >= "2026-11-20").toBe(true);
+    expect(text).toContain("Build reports the catalogue's curators publish about a recipe");
+    expect(text).toContain("until the end of that day (UTC); it is deleted within the following hour");
+    expect(text).not.toContain("for that day only");
   });
 
   it("the terms version is a date", () => {

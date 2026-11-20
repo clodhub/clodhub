@@ -114,6 +114,11 @@ def cases():
                   ("pkg:npm/a%C3%A9@1.0", True), ("pkg:npm/a%c3%a9@1.0", True), ("pkg:npm/a%C3@1.0", False), ("pkg:npm/a%C0%80@1.0", False), ("pkg:npm/a%ED%A0%80@1.0", False),
                   ("pkg:npm/a%E4%B8%AD@1.0", True), ("pkg:npm/a%FF@1.0", False), ("pkg:npm/a%EF%BF%BE@1.0", True), ("pkg:npm/a%2Fb@1.0", True), ("pkg:npm/a%2Bb@1.0", True), ("pkg:npm/a+b@1.0", True)]:
         add(p, ok)
+    # Malformed percent escapes in every component: refused.
+    for p in ["pkg:npm/bad-1@1.0.0?x=%", "pkg:npm/a@1#%zz", "pkg:npm/a@1.0#%zz", "pkg:npm/a%", "pkg:npm/a%@1.0", "pkg:npm/a%2", "pkg:maven/org%g1x/lib@1.0",
+              "pkg:maven/org%/lib@1.0", "pkg:npm/lib@1.0?k=%C3", "pkg:npm/lib@1.0?k=%C3%28", "pkg:npm/lib@1.0?k=a%", "pkg:npm/lib@1.0%zz", "pkg:npm/lib@%C3",
+              "pkg:npm/lib@1.0#a/%C3", "pkg:npm/lib@1.0#a%2"]:
+        add(p, False)
     # Decoded content: each class, encoded, in each component.
     forbidden = {
         "Cc": ["%00", "%09", "%0A", "%0D", "%1C", "%1D", "%1E", "%1F", "%7F", "%C2%80", "%C2%85", "%C2%9F"],
