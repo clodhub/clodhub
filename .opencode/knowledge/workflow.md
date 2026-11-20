@@ -62,9 +62,14 @@ all migrations to a fresh D1 before each file runs.
 
 ## Exporting D1
 
-`wrangler d1 export` refuses a database with virtual tables, and `component_fts` and `recipe_fts` are FTS5 tables.
-Drop them, export, then create them again (the `CREATE VIRTUAL TABLE` lines in
-`worker/migrations/0022_catalogue_scale.sql`) and refill them from the entry rows:
+`component_fts`, `recipe_fts` and their `fts5vocab` tables (`component_vocab`, `recipe_vocab`) are virtual tables. There are two ways to export:
+
+- **To read or keep a copy:** `npx wrangler d1 export app-game-store --remote --output dump.sql --compatibility sqlite3_cli_only`
+  (since 12 November 2026). The file opens with the `sqlite3` command-line tool, virtual tables included, but it
+  cannot be imported back into D1.
+- **To import into D1 again** (a restore or a copy to another database): drop the four virtual tables, export without
+  that flag, then create them again (the `CREATE VIRTUAL TABLE` lines in `worker/migrations/0022_catalogue_scale.sql`)
+  and refill the full-text tables from the entry rows; the vocab tables need no refill:
 
 ```
 INSERT INTO component_fts (rowid, name, title, summary, class, tags)
@@ -74,4 +79,4 @@ INSERT INTO recipe_fts (rowid, name, title, summary, class, tags)
   SELECT seq, name || ' ' || replace(slug, '-', ' '), title, summary, '', tags FROM recipes WHERE latest_version IS NOT NULL;
 ```
 
-Search finds nothing between the drop and the refill.
+  Search finds nothing between the drop and the refill.

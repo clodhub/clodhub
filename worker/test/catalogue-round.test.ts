@@ -465,6 +465,32 @@ describe("review fixes", () => {
     expect((await upload(webp, "image/webp")).status).toBe(201);
   });
 
+  it("counts an unnamed image's day from its latest upload by anyone", async () => {
+    const sue = await signIn(env, deps, { id: 9, login: "sue", name: "Sue" });
+    const bytes = pngHeader(6, 6);
+    const hex = await hexOf(bytes);
+    expect((await upload(bytes, "image/png", undefined, sue)).status).toBe(201);
+    deps.advance(20 * 3_600_000);
+    expect((await upload(bytes)).status).toBe(200);
+    deps.advance(20 * 3_600_000);
+    expect((await upload(bytes)).status).toBe(200);
+    deps.advance(20 * 3_600_000);
+    await scheduled("7 * * * *", env, deps);
+    expect((await get(`/images/${hex}.png`)).status).toBe(200);
+    deps.advance(5 * 3_600_000);
+    await scheduled("7 * * * *", env, deps);
+    expect((await get(`/images/${hex}.png`)).status).toBe(404);
+  });
+
+  it("says there is no saved token when a class publisher has neither a token nor a sign-in organisation list", async () => {
+    await env.DB.prepare("DELETE FROM developer_secrets").run();
+    await env.DB.prepare("DELETE FROM developer_orgs").run();
+    const [deckClass] = exampleClassEntries() as Mutable[];
+    const res = await post("/api/dev/classes", deckClass);
+    expect(res.status).toBe(403);
+    expect(((await res.json()) as { error: string }).error).toBe("there is no saved GitHub token and no organisation list from sign-in; sign in to ourapps.app again");
+  });
+
   it("refuses images carrying more than 64 KB of metadata or chunks of unknown kinds", async () => {
     const png = pngHeader(8, 8);
     const chunk = (type: string, data: Uint8Array) => {
@@ -578,6 +604,23 @@ describe("review fixes", () => {
     const narrower = (await (await get("/api/components?q=lobbyi&sort=downloads&limit=2")).json()) as ComponentList;
     expect(narrower.components.map((c) => c.name)).toEqual(["acme/lobby-1", "acme/lobby-20499"]);
     expect(((await (await get("/api/components?q=lobb&limit=1")).json()) as ComponentList).components[0]!.name).toBe("acme/lobby-1");
+  });
+
+  it("returns a rare interface's provider on page 1 however low it ranks, for every sort", async () => {
+    await publish(card("0.1.0"));
+    const dev = (await env.DB.prepare("SELECT developer_id FROM components").first<{ developer_id: string }>())!.developer_id;
+    await env.DB.prepare(
+      `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 20500)
+       INSERT INTO components (id, name, scope, slug, developer_id, repo, latest_version, created_at, updated_at, description, class_name, class_version, class_title, category, category_top, platforms, licence, channel, published_at, downloads)
+       SELECT 'busy' || i, 'acme/busy-' || i, 'acme', 'busy-' || i, ?1, 'acme/busy-' || i, '0.1.0', '2026-10-01', '2026-10-01', 'Busy', 'ourapps-ae/card-deck-class', '1.0.0', 'Card deck', 'games/cards', 'games', ' web ', 'MIT', 'features', '2027-01-01T00:00:00.000Z', 100 + i FROM n`,
+    ).bind(dev).run();
+    for (const query of ["provides=ae/card-deck", "provides=ae/card-deck&sort=updated", "provides=card-deck&sort=trending", "provides=ae/card-deck&platform=web", "requires=ae/random-source&sort=name"]) {
+      const res = await get(`/api/components?${query}`);
+      const page = (await res.json()) as ComponentList;
+      expect(page.components.map((c) => c.name), query).toEqual(["acme/card-deck"]);
+      expect(page.total, query).toEqual({ count: 1, approximate: false });
+      expect(Number(res.headers.get("X-D1-Rows-Read")), query).toBeLessThan(500);
+    }
   });
 
   it("matches short search words whole and longer ones as prefixes", async () => {

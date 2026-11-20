@@ -279,6 +279,9 @@ export const osvKey = (v: { kind: Kind; entryId: string; version: string }) => `
 export const DOWNLOAD_CHUNK = 1_000;
 export const DOWNLOAD_CHUNKS_PER_RUN = 150;
 
+// A class, provides or requires filter with at most this many matching entries reads only those entries.
+export const SET_LIMIT = 20_000;
+
 // The most index rows one listing query examines.
 export const SCAN_BUDGET = 20_000;
 // A search with at most this many full-text matches orders all of them.
@@ -612,6 +615,21 @@ export class CatalogueDb {
       if (q.sort === "relevance") return this.rankTop(kind, index, where, binds, residual, residualBinds, q, searchTotal, budget);
     }
 
+    // Class, provides and requires with at most SET_LIMIT matches: the page reads the matching rows (from the class or
+    // interface index) and orders them, so a match is found however low it ranks.
+    let from = `${t.entries} e INDEXED BY ${index}`;
+    let setTotal: { count: number; approximate: boolean } | null = null;
+    if (kind === "component" && !match && (q.class || q.provides || q.requires)) {
+      const driver = await this.facetSet(q);
+      if (driver) {
+        from = `${t.entries} e`;
+        where.push(`e.seq IN (${driver.sql})`);
+        binds.push(...driver.binds);
+        budget = SET_LIMIT + 1;
+        const n = (await this.first<{ n: number }>(this.d1.prepare(`SELECT COUNT(*) AS n FROM ${from} WHERE ${[...where, ...residual].join(" AND ")}`).bind(...binds, ...residualBinds)))?.n ?? 0;
+        setTotal = { count: Math.min(n, COUNT_CAP), approximate: n > COUNT_CAP };
+      }
+    }
     const column = SORT_COLUMN[sort];
     const ascending = sort === "name";
     const cursor = q.cursor ? decodeCursor(q.cursor) : null;
@@ -635,7 +653,7 @@ export class CatalogueDb {
     for (const range of ranges) {
       const want = q.limit + 1 - rows.length;
       if (want <= 0 || resume) break;
-      const scan = `SELECT e.* FROM ${t.entries} e INDEXED BY ${index} WHERE ${[...where, range.extra].join(" AND ")} ORDER BY e.${column} ${dir}, e.seq ${dir}`;
+      const scan = `SELECT e.* FROM ${from} WHERE ${[...where, range.extra].join(" AND ")} ORDER BY e.${column} ${dir}, e.seq ${dir}`;
       const scanBinds = [...binds, ...range.binds];
       if (residual.length === 0) {
         rows.push(...(await this.all(this.d1.prepare(`SELECT ${SUMMARY_COLUMNS} FROM (${scan} LIMIT ?) e LEFT JOIN developers d ON d.id = e.developer_id ORDER BY e.${column} ${dir}, e.seq ${dir}`).bind(...scanBinds, want))).map(summaryRow));
@@ -658,8 +676,30 @@ export class CatalogueDb {
     const ahead = back ? (last ?? null) : resume && rows.length <= q.limit ? resume : (last ?? null);
     const next = ahead && (back ? Boolean(cursor) : more) ? cursorOf(back ? last! : ahead, false) : null;
     const previous = first && (back ? more : Boolean(cursor)) ? cursorOf(first, true) : null;
-    const total = searchTotal ?? (await this.knownCount(kind, q, publisherId)) ?? (await this.keptCount(totalsKey(kind, q, publisherId), () => this.count(kind, index, where, binds, residual, residualBinds, budget)));
+    const total = searchTotal ?? setTotal ?? (await this.knownCount(kind, q, publisherId)) ?? (await this.keptCount(totalsKey(kind, q, publisherId), () => this.count(kind, index, where, binds, residual, residualBinds, budget)));
     return { rows: page, total, next, previous };
+  }
+
+  // The smallest of the class, provides and requires sets, as a query of entry seqs, when it has at most SET_LIMIT
+  // members; null otherwise. Interfaces count only the newest listed version of each entry.
+  private async facetSet(q: ListQuery): Promise<{ sql: string; binds: string[] } | null> {
+    // Sizes come from kept counts: the class's implementations, or an interface's rows of every version (an upper
+    // bound) read at most SET_LIMIT + 1 deep and kept for TOTALS_SECONDS.
+    const capped = async (sql: string, ...binds: string[]) => (await this.first<{ n: number }>(this.d1.prepare(`SELECT COUNT(*) AS n FROM (${sql} LIMIT ${SET_LIMIT + 1})`).bind(...binds)))?.n ?? 0;
+    const sets: { sql: string; binds: string[]; n: number }[] = [];
+    if (q.class) {
+      const n = (await this.first<{ n: number }>(this.d1.prepare("SELECT implementations AS n FROM classes WHERE name = ?").bind(q.class)))?.n ?? 0;
+      sets.push({ sql: "SELECT seq FROM components INDEXED BY components_class_downloads WHERE class_name = ? AND latest_version IS NOT NULL", binds: [q.class], n });
+    }
+    for (const [direction, values] of [["provides", q.provides], ["requires", q.requires]] as const) {
+      for (const value of values ?? []) {
+        const n = (await this.keptCount(`interface:${direction}:${value}`, async () => ({ count: (await capped(`SELECT 1 FROM component_interfaces WHERE type = ? AND direction = '${direction}'`, value)) + (await capped(`SELECT 1 FROM component_interfaces WHERE port_id = ? AND direction = '${direction}'`, value)), approximate: false }))).count;
+        const by = (column: string) => `SELECT c.seq FROM component_interfaces i JOIN components c ON c.id = i.component_id AND c.latest_version = i.version WHERE i.${column} = ? AND i.direction = '${direction}'`;
+        sets.push({ sql: `${by("type")} UNION ${by("port_id")}`, binds: [value, value], n });
+      }
+    }
+    const best = sets.filter((x) => x.n <= SET_LIMIT).sort((a, b) => a.n - b.n)[0];
+    return best ? { sql: best.sql, binds: best.binds } : null;
   }
 
   // Full-text matches, counting at most `limit`.
@@ -910,6 +950,11 @@ export class CatalogueDb {
     return (r.meta.changes ?? 0) > 0;
   }
 
+  // Starts the image's day again: every upload of its bytes, "unchanged" ones too.
+  async touchImage(digest: string, now: string): Promise<void> {
+    await this.batch([this.d1.prepare("UPDATE images SET last_upload_at = ? WHERE digest = ?").bind(now, digest)]);
+  }
+
   async claimImages(digests: string[], now: string): Promise<void> {
     if (digests.length === 0) return;
     await this.batch([this.d1.prepare(`UPDATE images SET claimed_at = ? WHERE claimed_at IS NULL AND digest IN (${digests.map(() => "?").join(", ")})`).bind(now, ...digests)]);
@@ -920,7 +965,7 @@ export class CatalogueDb {
   }
 
   async unclaimedImages(before: string, limit: number): Promise<string[]> {
-    return (await this.all<{ digest: string }>(this.d1.prepare("SELECT digest FROM images WHERE claimed_at IS NULL AND uploaded_at < ? ORDER BY uploaded_at LIMIT ?").bind(before, limit))).map((r) => r.digest);
+    return (await this.all<{ digest: string }>(this.d1.prepare("SELECT digest FROM images WHERE claimed_at IS NULL AND last_upload_at < ? ORDER BY last_upload_at LIMIT ?").bind(before, limit))).map((r) => r.digest);
   }
 
   async removeImages(digests: string[]): Promise<void> {
@@ -929,7 +974,7 @@ export class CatalogueDb {
   }
 
   async addImage(i: { digest: string; type: string; width: number; height: number; bytes: number }, developerId: string, now: string): Promise<void> {
-    await this.batch([this.d1.prepare("INSERT OR IGNORE INTO images (digest, type, width, height, bytes, uploaded_at) VALUES (?, ?, ?, ?, ?, ?)").bind(i.digest, i.type, i.width, i.height, i.bytes, now), this.d1.prepare("INSERT OR IGNORE INTO image_uploaders (digest, developer_id, uploaded_at) VALUES (?, ?, ?)").bind(i.digest, developerId, now)]);
+    await this.batch([this.d1.prepare("INSERT OR IGNORE INTO images (digest, type, width, height, bytes, uploaded_at, last_upload_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(i.digest, i.type, i.width, i.height, i.bytes, now, now), this.d1.prepare("INSERT OR IGNORE INTO image_uploaders (digest, developer_id, uploaded_at) VALUES (?, ?, ?)").bind(i.digest, developerId, now)]);
   }
 
   // ---------------------------------------------------------------- downloads and trending

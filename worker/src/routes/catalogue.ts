@@ -533,6 +533,7 @@ export async function uploadImage(request: Request, env: Env, deps: Deps, dev: A
   const now = deps.now().toISOString();
   const unchanged = () => json({ status: "unchanged", digest: `sha256:${hex}`, type: facts.type, width: facts.width, height: facts.height, bytes: bytes.length, url: `${env.PUBLIC_ORIGIN}/images/${hex}.${facts.type}` });
   const mine = (await d.images([hex], dev.id)).get(hex);
+  if (mine) await d.touchImage(hex, now);
   if (mine?.uploaded) return unchanged();
   const limit = Number(env.IMAGE_UPLOADS_PER_DAY ?? DEFAULT_IMAGE_UPLOADS_PER_DAY);
   if ((await d.imagesUploadedSince(dev.id, new Date(deps.now().getTime() - 86_400_000).toISOString())) >= limit) throw new HttpError(429, `at most ${limit} images can be uploaded a day`);
@@ -546,7 +547,7 @@ export async function uploadImage(request: Request, env: Env, deps: Deps, dev: A
   return json({ status: "stored", digest: `sha256:${hex}`, type: facts.type, width: facts.width, height: facts.height, bytes: bytes.length, url: `${env.PUBLIC_ORIGIN}/images/${hex}.${facts.type}` }, 201);
 }
 
-// Images nobody named within a day are removed (hourly, a bounded number at a time).
+// Images nobody named within a day of their latest upload are removed (hourly, a bounded number at a time).
 export async function removeUnclaimedImages(env: Env, deps: Deps): Promise<number> {
   const d = db(env);
   const gone = await d.unclaimedImages(new Date(deps.now().getTime() - 86_400_000).toISOString(), 200);
@@ -949,6 +950,7 @@ export async function publishClass(request: Request, env: Env, deps: Deps, dev: 
 
 // Whether the developer is an active member of the organisation: by the memberships read at their last sign-in, or
 // else by their saved GitHub token. A token GitHub refuses for lack of the read:org scope gets 403 with what to do.
+export const NO_GITHUB_TOKEN = "there is no saved GitHub token and no organisation list from sign-in; sign in to ourapps.app again";
 export const ORG_SCOPE_MISSING = "the saved GitHub token cannot read organisation membership; sign in to ourapps.app again";
 async function memberOf(env: Env, deps: Deps, dev: AuthedDeveloper, org: string): Promise<boolean> {
   const recorded = await env.DB.prepare("SELECT orgs FROM developer_orgs WHERE developer_id = ?").bind(dev.id).first<{ orgs: string }>();
@@ -956,7 +958,7 @@ async function memberOf(env: Env, deps: Deps, dev: AuthedDeveloper, org: string)
   const token = (await loadSecrets(env, dev.id, ["githubToken"])).githubToken;
   if (!token) {
     if (recorded) return false;
-    throw new HttpError(403, ORG_SCOPE_MISSING);
+    throw new HttpError(403, NO_GITHUB_TOKEN);
   }
   let res: Response;
   try {

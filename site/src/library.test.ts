@@ -92,8 +92,15 @@ describe("public copy", () => {
     const text = termsBody().html;
     expect(text).toContain("public recipe library and component catalogue");
     expect(text).toContain("it does not keep the packages");
-    expect(text).toContain("Recipes and components you publish");
+    expect(text).toContain("Recipes, components and classes you publish");
     expect(text).toContain(`Version ${TERMS_VERSION}`);
+  });
+
+  it("terms list the organisation memberships read at sign-in, in a version after they were first stored", () => {
+    const text = termsBody().html;
+    expect(text).toContain("The GitHub organisations you are an active member of, read at each sign-in");
+    expect(text).not.toContain("public profile only");
+    expect(TERMS_VERSION >= "2026-11-20").toBe(true);
   });
 
   it("the terms version is a date", () => {
