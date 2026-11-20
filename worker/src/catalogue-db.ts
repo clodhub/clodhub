@@ -7,8 +7,8 @@ export type Kind = "recipe" | "component";
 const MAX_TREE_DEPTH = 8;
 
 export const TABLES = {
-  recipe: { entries: "recipes", versions: "recipe_versions", fk: "recipe_id", fts: "recipe_fts", count: "recipes" },
-  component: { entries: "components", versions: "component_versions", fk: "component_id", fts: "component_fts", count: "components" },
+  recipe: { entries: "recipes", versions: "recipe_versions", fk: "recipe_id", fts: "recipe_fts", vocab: "recipe_vocab", count: "recipes" },
+  component: { entries: "components", versions: "component_versions", fk: "component_id", fts: "component_fts", vocab: "component_vocab", count: "components" },
 } as const;
 
 type Raw = Record<string, unknown>;
@@ -254,6 +254,8 @@ export function decodeCursor(s: string): Cursor | null {
 
 // How long a filtered listing total is kept.
 export const TOTALS_SECONDS = 600;
+// The most filtered totals kept.
+export const TOTALS_KEPT = 100_000;
 
 // The filters of a listing, without its sort and page, as the key of its kept total.
 function totalsKey(kind: Kind, q: ListQuery, publisherId: string | null): string {
@@ -261,16 +263,33 @@ function totalsKey(kind: Kind, q: ListQuery, publisherId: string | null): string
   return `${kind}:${JSON.stringify(filters, Object.keys(filters).sort())}:${publisherId ?? ""}`;
 }
 
+export interface OsvVersion {
+  kind: Kind;
+  entryId: string;
+  version: string;
+  alone: boolean;
+  runs: number;
+  due: string;
+}
+
+export const osvKey = (v: { kind: Kind; entryId: string; version: string }) => `${v.kind} ${v.entryId} ${v.version}`;
+
 // Entries one download refresh statement covers, and the chunks one run may do: each chunk is four of the 1,000 D1
 // queries a Worker invocation may make.
 export const DOWNLOAD_CHUNK = 1_000;
 export const DOWNLOAD_CHUNKS_PER_RUN = 150;
 
-// The most index rows one listing query examines, and the best search matches a search orders.
+// The most index rows one listing query examines.
 export const SCAN_BUDGET = 20_000;
-export const SEARCH_DEPTH = 1_000;
-// The most full-text matches one search reads.
+// A search with at most this many full-text matches orders all of them.
+export const SEARCH_ALL = 1_000;
+// The most downloaded matches a relevance search over more matches ranks.
 export const SEARCH_CANDIDATES = 1_000;
+// Above this many matches a search looks each listed row up in the full-text index, over at most SEARCH_SCAN_BUDGET
+// rows, with a prefix written out as at most SEARCH_TERMS terms.
+export const SEARCH_DENSE = 20_000;
+export const SEARCH_SCAN_BUDGET = 5_000;
+export const SEARCH_TERMS = 16;
 
 const SORT_COLUMN = { downloads: "downloads", trending: "trending", updated: "published_at", name: "name" } as const;
 const SORT_INDEX = { downloads: "downloads", trending: "trending", updated: "updated", name: "name" } as const;
@@ -382,14 +401,15 @@ export class CatalogueDb {
       statements.push(this.d1.prepare("INSERT OR IGNORE INTO purls (purl) VALUES (?)").bind(purl));
       statements.push(this.d1.prepare("INSERT OR IGNORE INTO version_purls (kind, entry_id, version, purl) VALUES (?, ?, ?, ?)").bind(kind, target.id, v.version, purl));
     }
-    // A version whose purls were all checked already takes their advisories now.
+    // A version whose purls were all checked already takes their advisories now; the hourly check looks at it next.
     if (v.purls.length > 0) {
+      statements.push(this.d1.prepare(`UPDATE ${t.versions} SET osv_due = ? WHERE ${t.fk} = ? AND version = ?`).bind(now, target.id, v.version));
       const t2 = TABLES[kind];
       statements.push(
         this.d1
           .prepare(
             `UPDATE ${t2.versions} SET
-               vulnerabilities = CASE WHEN EXISTS (SELECT 1 FROM version_purls vp JOIN purls p ON p.purl = vp.purl WHERE vp.kind = ?1 AND vp.entry_id = ?2 AND vp.version = ?3 AND p.unqueryable = 1) THEN NULL ELSE (SELECT COUNT(DISTINCT a.value) FROM version_purls vp JOIN purls p ON p.purl = vp.purl, json_each(p.advisories) a
+               vulnerabilities = CASE WHEN EXISTS (SELECT 1 FROM version_purls vp JOIN purls p ON p.purl = vp.purl WHERE vp.kind = ?1 AND vp.entry_id = ?2 AND vp.version = ?3 AND (p.unqueryable = 1 OR vp.unresolved = 1)) THEN NULL ELSE (SELECT COUNT(DISTINCT a.value) FROM version_purls vp JOIN purls p ON p.purl = vp.purl, json_each(p.advisories) a
                  WHERE vp.kind = ?1 AND vp.entry_id = ?2 AND vp.version = ?3 AND a.value NOT IN (SELECT json_extract(w.value, '$.id') FROM json_each(${t2.versions}.waivers) w)) END,
                vulnerabilities_checked_at = (SELECT MIN(p.checked_at) FROM version_purls vp JOIN purls p ON p.purl = vp.purl WHERE vp.kind = ?1 AND vp.entry_id = ?2 AND vp.version = ?3)
              WHERE ${t2.fk} = ?2 AND version = ?3 AND NOT EXISTS (SELECT 1 FROM version_purls vp JOIN purls p ON p.purl = vp.purl WHERE vp.kind = ?1 AND vp.entry_id = ?2 AND vp.version = ?3 AND p.checked_at IS NULL)`,
@@ -561,7 +581,36 @@ export class CatalogueDb {
     }
     const match = q.q ? ftsQuery(q.q) : null;
     if (q.q && !match) return { rows: [], total: { count: 0, approximate: false }, next: null, previous: null };
-    if (match) return this.search(kind, match, [...where, ...residual], [...binds, ...residualBinds], q, sort);
+    // A search with at most SEARCH_ALL matches orders all of them. With more, matching is one more filter on the listing
+    // of the chosen sort (short pages and continue, as for other filters), and relevance ranks the SEARCH_CANDIDATES
+    // most downloaded matches. Up to SEARCH_DENSE matches the filter is the set of matches, read once; above, each
+    // listed row is looked up in the full-text index with every prefix written out as its terms (a prefix lookup per
+    // row is slow), over at most SEARCH_SCAN_BUDGET rows.
+    let searchTotal: { count: number; approximate: boolean } | null = null;
+    let budget = SCAN_BUDGET;
+    if (match) {
+      // The term index gives an upper bound on the matches (exact for one word that is one term) without reading them.
+      const words = await this.wholeTerms(kind, q.q ?? "");
+      let matches = words?.bound ?? (await this.matchCount(kind, match, SEARCH_DENSE + 1));
+      // Several words may match far fewer entries together than the bound says.
+      if (words && !words.exact && matches > SEARCH_ALL) {
+        const few = await this.matchCount(kind, match, SEARCH_ALL + 1);
+        if (few <= SEARCH_ALL) matches = few;
+      }
+      if (matches <= SEARCH_ALL) return this.searchAll(kind, match, [...where, ...residual], [...binds, ...residualBinds], q, sort);
+      const terms = matches > SEARCH_DENSE ? (words?.query ?? null) : null;
+      const plain = residual.length === 0 && where.length === 1;
+      if (terms) {
+        residual.push(`EXISTS (SELECT 1 FROM ${t.fts} f WHERE f.${t.fts} MATCH ? AND f.rowid = e.seq)`);
+        residualBinds.push(terms);
+        budget = SEARCH_SCAN_BUDGET;
+      } else {
+        residual.push(`e.seq IN (SELECT rowid FROM ${t.fts} WHERE ${t.fts} MATCH ?)`);
+        residualBinds.push(match);
+      }
+      if (plain && (words === null || words.exact)) searchTotal = { count: Math.min(matches, COUNT_CAP), approximate: matches > COUNT_CAP };
+      if (q.sort === "relevance") return this.rankTop(kind, index, where, binds, residual, residualBinds, q, searchTotal, budget);
+    }
 
     const column = SORT_COLUMN[sort];
     const ascending = sort === "name";
@@ -592,11 +641,11 @@ export class CatalogueDb {
         rows.push(...(await this.all(this.d1.prepare(`SELECT ${SUMMARY_COLUMNS} FROM (${scan} LIMIT ?) e LEFT JOIN developers d ON d.id = e.developer_id ORDER BY e.${column} ${dir}, e.seq ${dir}`).bind(...scanBinds, want))).map(summaryRow));
         continue;
       }
-      const found = (await this.all(this.d1.prepare(`SELECT ${SUMMARY_COLUMNS} FROM (${scan} LIMIT ${SCAN_BUDGET}) e LEFT JOIN developers d ON d.id = e.developer_id WHERE ${residual.join(" AND ")} ORDER BY e.${column} ${dir}, e.seq ${dir} LIMIT ?`).bind(...scanBinds, ...residualBinds, want))).map(summaryRow);
+      const found = (await this.all(this.d1.prepare(`SELECT ${SUMMARY_COLUMNS} FROM (${scan} LIMIT ${budget}) e LEFT JOIN developers d ON d.id = e.developer_id WHERE ${residual.join(" AND ")} ORDER BY e.${column} ${dir}, e.seq ${dir} LIMIT ?`).bind(...scanBinds, ...residualBinds, want))).map(summaryRow);
       rows.push(...found);
       // Fewer matches than wanted: when the budget ran out, the next page continues after the last row scanned.
       if (found.length < want) {
-        const last = await this.first(this.d1.prepare(`SELECT e.seq, e.downloads, e.trending, e.published_at, e.name FROM (${scan} LIMIT 1 OFFSET ${SCAN_BUDGET - 1}) e`).bind(...scanBinds));
+        const last = await this.first(this.d1.prepare(`SELECT e.seq, e.downloads, e.trending, e.published_at, e.name FROM (${scan} LIMIT 1 OFFSET ${budget - 1}) e`).bind(...scanBinds));
         if (last) resume = { seq: last.seq as number, downloads: last.downloads as number, trending: last.trending as number, publishedAt: last.published_at as string, name: last.name as string } as SummaryRow;
       }
     }
@@ -609,50 +658,108 @@ export class CatalogueDb {
     const ahead = back ? (last ?? null) : resume && rows.length <= q.limit ? resume : (last ?? null);
     const next = ahead && (back ? Boolean(cursor) : more) ? cursorOf(back ? last! : ahead, false) : null;
     const previous = first && (back ? more : Boolean(cursor)) ? cursorOf(first, true) : null;
-    const total = (await this.knownCount(kind, q, publisherId)) ?? (await this.keptCount(totalsKey(kind, q, publisherId), () => this.count(kind, index, where, binds, residual, residualBinds)));
+    const total = searchTotal ?? (await this.knownCount(kind, q, publisherId)) ?? (await this.keptCount(totalsKey(kind, q, publisherId), () => this.count(kind, index, where, binds, residual, residualBinds, budget)));
     return { rows: page, total, next, previous };
   }
 
-  // A search takes at most SEARCH_CANDIDATES matches from the full-text index (newest entries first), filters them and
-  // orders them in one query: by relevance (a word in the name counts most, then in the title or class, then in the
-  // summary; then downloads), or by the chosen sort. Pages go by offset up to SEARCH_DEPTH. The total counts the
-  // filtered candidates, and is a lower bound when the candidates were capped.
-  private async search(kind: Kind, match: string, where: string[], binds: (string | number)[], q: ListQuery, sort: Exclude<ListQuery["sort"], "relevance">): Promise<ListPage> {
+  // Full-text matches, counting at most `limit`.
+  private async matchCount(kind: Kind, match: string, limit: number): Promise<number> {
     const t = TABLES[kind];
-    const offset = q.cursor ? Math.min(Math.max(0, Number(decodeCursor(q.cursor)?.value ?? 0) || 0), SEARCH_DEPTH) : 0;
+    return (await this.first<{ n: number }>(this.d1.prepare(`SELECT COUNT(*) AS n FROM (SELECT rowid FROM ${t.fts} WHERE ${t.fts} MATCH ? LIMIT ?)`).bind(match, limit)))?.n ?? 0;
+  }
+
+  // The search with each word written out as its whole terms in the full-text index (a word of PREFIX_MIN or more
+  // characters: every term it starts, at most SEARCH_TERMS), and an upper bound on its matches: for each word the sum of
+  // its terms' entry counts, the least over the words. `exact` when that is one word of one term. Null when a word has
+  // more terms.
+  private async wholeTerms(kind: Kind, input: string): Promise<{ query: string; bound: number; exact: boolean } | null> {
+    const t = TABLES[kind];
+    const groups: string[] = [];
+    let bound = Infinity;
+    let count = 0;
+    const words = searchWords(input);
+    for (const w of words) {
+      const prefix = w.length >= PREFIX_MIN;
+      const end = prefix ? w.slice(0, -1) + String.fromCodePoint(w.codePointAt(w.length - 1)! + 1) : w;
+      const rows = await this.all<{ term: string; doc: number }>(this.d1.prepare(`SELECT term, doc FROM ${t.vocab} WHERE term >= ? AND term ${prefix ? "<" : "<="} ? LIMIT ${SEARCH_TERMS + 1}`).bind(w, end));
+      if (rows.length > SEARCH_TERMS) return null;
+      count += rows.length;
+      bound = Math.min(bound, rows.reduce((n, r) => n + r.doc, 0));
+      groups.push(rows.length === 0 ? `"${w}"` : `(${rows.map((x) => `"${x.term.replace(/"/g, '""')}"`).join(" OR ")})`);
+    }
+    if (groups.length === 0) return null;
+    return { query: groups.join(" AND "), bound: bound === Infinity ? 0 : bound, exact: words.length === 1 && count <= 1 };
+  }
+
+  // Relevance: a word in the name counts most, then in the title or class, then in the summary; then downloads.
+  private relevance(kind: Kind, q: ListQuery): { score: string; binds: string[] } {
     const words = searchWords(q.q ?? "");
     const title = kind === "component" ? "COALESCE(e.class_title, '')" : "e.title";
     const text = kind === "component" ? "e.description" : "e.summary";
-    const score = words.map(() => `(instr(lower(e.name), ?) > 0) * 4 + (instr(lower(${title}), ?) > 0) * 2 + (instr(lower(${text}), ?) > 0)`).join(" + ") || "0";
+    return { score: words.map(() => `(instr(lower(e.name), ?) > 0) * 4 + (instr(lower(${title}), ?) > 0) * 2 + (instr(lower(${text}), ?) > 0)`).join(" + ") || "0", binds: words.flatMap((w) => [w, w, w]) };
+  }
+
+  // A search with few matches: all of them, filtered and ordered in one query. Pages go by offset.
+  private async searchAll(kind: Kind, match: string, where: string[], binds: (string | number)[], q: ListQuery, sort: Exclude<ListQuery["sort"], "relevance">): Promise<ListPage> {
+    const t = TABLES[kind];
+    const offset = q.cursor ? Math.min(Math.max(0, Number(decodeCursor(q.cursor)?.value ?? 0) || 0), SEARCH_ALL) : 0;
+    const { score, binds: scoreBinds } = this.relevance(kind, q);
     const order = q.sort === "relevance" ? "score DESC, e.downloads DESC, e.seq DESC" : `e.${SORT_COLUMN[sort]} ${sort === "name" ? "ASC" : "DESC"}, e.seq DESC`;
-    const sql = `WITH c AS (SELECT rowid FROM ${t.fts} WHERE ${t.fts} MATCH ? ORDER BY rowid DESC LIMIT ${SEARCH_CANDIDATES})
-      SELECT ${SUMMARY_COLUMNS}, ${score} AS score, COUNT(*) OVER () AS matched, (SELECT COUNT(*) FROM c) AS candidates
+    const sql = `WITH c AS (SELECT rowid FROM ${t.fts} WHERE ${t.fts} MATCH ?)
+      SELECT ${SUMMARY_COLUMNS}, ${score} AS score, COUNT(*) OVER () AS matched
       FROM c JOIN ${t.entries} e ON e.seq = c.rowid LEFT JOIN developers d ON d.id = e.developer_id
       WHERE ${where.join(" AND ")} ORDER BY ${order} LIMIT ? OFFSET ?`;
-    const raw = await this.all(this.d1.prepare(sql).bind(match, ...words.flatMap((w) => [w, w, w]), ...binds, q.limit + 1, offset));
+    const raw = await this.all(this.d1.prepare(sql).bind(match, ...scoreBinds, ...binds, q.limit + 1, offset));
     const rows = raw.map(summaryRow);
-    const page = rows.slice(0, q.limit);
-    const matched = (raw[0]?.matched as number | undefined) ?? 0;
-    const capped = ((raw[0]?.candidates as number | undefined) ?? 0) >= SEARCH_CANDIDATES;
     return {
-      rows: page,
-      total: { count: Math.min(matched, COUNT_CAP), approximate: capped || matched > COUNT_CAP },
-      next: rows.length > q.limit && offset + q.limit < SEARCH_DEPTH ? encodeCursor({ value: offset + q.limit, seq: 0, back: false }) : null,
+      rows: rows.slice(0, q.limit),
+      total: { count: (raw[0]?.matched as number | undefined) ?? (offset > 0 ? offset : 0), approximate: false },
+      next: rows.length > q.limit ? encodeCursor({ value: offset + q.limit, seq: 0, back: false }) : null,
+      previous: offset > 0 ? encodeCursor({ value: Math.max(0, offset - q.limit), seq: 0, back: false }) : null,
+    };
+  }
+
+  // Relevance over many matches: the SEARCH_CANDIDATES most downloaded matches (from at most SCAN_BUDGET rows of the
+  // downloads index), ranked. Pages go by offset.
+  private async rankTop(kind: Kind, index: string, where: string[], binds: (string | number)[], residual: string[], residualBinds: (string | number)[], q: ListQuery, known: { count: number; approximate: boolean } | null, budget: number): Promise<ListPage> {
+    const t = TABLES[kind];
+    const offset = q.cursor ? Math.min(Math.max(0, Number(decodeCursor(q.cursor)?.value ?? 0) || 0), SEARCH_CANDIDATES) : 0;
+    const { score, binds: scoreBinds } = this.relevance(kind, q);
+    const sql = `SELECT ${SUMMARY_COLUMNS}, ${score} AS score, COUNT(*) OVER () AS matched FROM (
+        SELECT e.* FROM (SELECT e.* FROM ${t.entries} e INDEXED BY ${index} WHERE ${where.join(" AND ")} ORDER BY e.downloads DESC, e.seq DESC LIMIT ${budget}) e
+        WHERE ${residual.join(" AND ")} ORDER BY e.downloads DESC, e.seq DESC LIMIT ${SEARCH_CANDIDATES}) e
+      LEFT JOIN developers d ON d.id = e.developer_id ORDER BY score DESC, e.downloads DESC, e.seq DESC LIMIT ? OFFSET ?`;
+    const raw = await this.all(this.d1.prepare(sql).bind(...scoreBinds, ...binds, ...residualBinds, q.limit + 1, offset));
+    const rows = raw.map(summaryRow);
+    const matched = (raw[0]?.matched as number | undefined) ?? 0;
+    return {
+      rows: rows.slice(0, q.limit),
+      total: known ?? { count: matched, approximate: true },
+      next: rows.length > q.limit ? encodeCursor({ value: offset + q.limit, seq: 0, back: false }) : null,
       previous: offset > 0 ? encodeCursor({ value: Math.max(0, offset - q.limit), seq: 0, back: false }) : null,
     };
   }
 
   // The number of matching entries: up to COUNT_CAP rows of the index, and with other filters, the matches among the
   // first SCAN_BUDGET rows. Above either bound the count is a lower bound (`approximate`).
-  private async count(kind: Kind, index: string, where: string[], binds: (string | number)[], residual: string[], residualBinds: (string | number)[]): Promise<{ count: number; approximate: boolean }> {
+  private async count(kind: Kind, index: string, where: string[], binds: (string | number)[], residual: string[], residualBinds: (string | number)[], budget = SCAN_BUDGET): Promise<{ count: number; approximate: boolean }> {
     const t = TABLES[kind];
     if (residual.length === 0) {
       const n = (await this.first<{ n: number }>(this.d1.prepare(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM ${t.entries} e INDEXED BY ${index} WHERE ${where.join(" AND ")} LIMIT ${COUNT_CAP + 1})`).bind(...binds)))?.n ?? 0;
       return { count: Math.min(n, COUNT_CAP), approximate: n > COUNT_CAP };
     }
-    const r = await this.first<{ scanned: number; n: number }>(this.d1.prepare(`SELECT COUNT(*) AS scanned, COALESCE(SUM(CASE WHEN ${residual.join(" AND ")} THEN 1 ELSE 0 END), 0) AS n FROM (SELECT e.* FROM ${t.entries} e INDEXED BY ${index} WHERE ${where.join(" AND ")} LIMIT ${SCAN_BUDGET}) e`).bind(...residualBinds, ...binds));
+    const r = await this.first<{ scanned: number; n: number }>(this.d1.prepare(`SELECT COUNT(*) AS scanned, COALESCE(SUM(CASE WHEN ${residual.join(" AND ")} THEN 1 ELSE 0 END), 0) AS n FROM (SELECT e.* FROM ${t.entries} e INDEXED BY ${index} WHERE ${where.join(" AND ")} LIMIT ${budget}) e`).bind(...residualBinds, ...binds));
     const n = r?.n ?? 0;
-    return { count: Math.min(n, COUNT_CAP), approximate: (r?.scanned ?? 0) >= SCAN_BUDGET || n > COUNT_CAP };
+    return { count: Math.min(n, COUNT_CAP), approximate: (r?.scanned ?? 0) >= budget || n > COUNT_CAP };
+  }
+
+  // Removes totals older than TOTALS_SECONDS, then the oldest beyond `kept`. Totals are stamped by the clock.
+  async pruneListingTotals(kept = TOTALS_KEPT): Promise<void> {
+    const now = new Date();
+    await this.batch([
+      this.d1.prepare("DELETE FROM listing_totals WHERE computed_at < ?").bind(new Date(now.getTime() - TOTALS_SECONDS * 1000).toISOString()),
+      this.d1.prepare(`DELETE FROM listing_totals WHERE computed_at <= (SELECT computed_at FROM listing_totals ORDER BY computed_at DESC LIMIT 1 OFFSET ?)`).bind(kept),
+    ]);
   }
 
   // A filtered total, counted once and kept for TOTALS_SECONDS.
@@ -722,11 +829,6 @@ export class CatalogueDb {
     return this.first(this.d1.prepare("SELECT c.*, d.slug AS publisher_slug, d.display_name AS publisher_name FROM classes c LEFT JOIN developers d ON d.id = c.developer_id WHERE c.slug = ?").bind(slug));
   }
 
-  // Whether some component version provides or requires an interface of that type or port.
-  async interfaceExists(type: string, direction: "provides" | "requires"): Promise<boolean> {
-    return (await this.first<{ found: number }>(this.d1.prepare("SELECT EXISTS (SELECT 1 FROM component_interfaces WHERE type = ?1 AND direction = ?2) OR EXISTS (SELECT 1 FROM component_interfaces WHERE port_id = ?1 AND direction = ?2) AS found").bind(type, direction)))?.found === 1;
-  }
-
   // The developer who published the first class of a scope, or null.
   async scopeHolder(scope: string): Promise<string | null> {
     return (await this.first<{ developer_id: string | null }>(this.d1.prepare("SELECT developer_id FROM classes WHERE scope = ? ORDER BY created_at, seq LIMIT 1").bind(scope)))?.developer_id ?? null;
@@ -792,11 +894,20 @@ export class CatalogueDb {
     return r ? { digest: r.digest as string, type: r.type as "png" | "webp", width: r.width as number, height: r.height as number, bytes: r.bytes as number } : null;
   }
 
-  async images(digests: string[]): Promise<Map<string, { type: "png" | "webp"; width: number; height: number; claimed: boolean; uploadedBy: string | null }>> {
-    const out = new Map<string, { type: "png" | "webp"; width: number; height: number; claimed: boolean; uploadedBy: string | null }>();
+  // The images by digest, with whether a published entry names each and whether the developer uploaded its bytes.
+  async images(digests: string[], developerId: string): Promise<Map<string, { type: "png" | "webp"; width: number; height: number; claimed: boolean; uploaded: boolean }>> {
+    const out = new Map<string, { type: "png" | "webp"; width: number; height: number; claimed: boolean; uploaded: boolean }>();
     if (digests.length === 0) return out;
-    for (const r of await this.all(this.d1.prepare(`SELECT digest, type, width, height, claimed_at, uploaded_by FROM images WHERE digest IN (${digests.map(() => "?").join(", ")})`).bind(...digests))) out.set(r.digest as string, { type: r.type as "png" | "webp", width: r.width as number, height: r.height as number, claimed: r.claimed_at !== null, uploadedBy: (r.uploaded_by as string | null) ?? null });
+    const rows = await this.all(this.d1.prepare(`SELECT digest, type, width, height, claimed_at, EXISTS (SELECT 1 FROM image_uploaders u WHERE u.digest = images.digest AND u.developer_id = ?) AS uploaded FROM images WHERE digest IN (${digests.map(() => "?").join(", ")})`).bind(developerId, ...digests));
+    for (const r of rows) out.set(r.digest as string, { type: r.type as "png" | "webp", width: r.width as number, height: r.height as number, claimed: r.claimed_at !== null, uploaded: r.uploaded === 1 });
     return out;
+  }
+
+  // Records the developer as an uploader of the image; false when already recorded.
+  async addUploader(digest: string, developerId: string, now: string): Promise<boolean> {
+    const r = await this.d1.prepare("INSERT OR IGNORE INTO image_uploaders (digest, developer_id, uploaded_at) VALUES (?, ?, ?)").bind(digest, developerId, now).run();
+    this.note(r.meta as { rows_read?: number });
+    return (r.meta.changes ?? 0) > 0;
   }
 
   async claimImages(digests: string[], now: string): Promise<void> {
@@ -805,7 +916,7 @@ export class CatalogueDb {
   }
 
   async imagesUploadedSince(developerId: string, since: string): Promise<number> {
-    return (await this.first<{ n: number }>(this.d1.prepare("SELECT COUNT(*) AS n FROM images WHERE uploaded_by = ? AND uploaded_at >= ?").bind(developerId, since)))?.n ?? 0;
+    return (await this.first<{ n: number }>(this.d1.prepare("SELECT COUNT(*) AS n FROM image_uploaders WHERE developer_id = ? AND uploaded_at >= ?").bind(developerId, since)))?.n ?? 0;
   }
 
   async unclaimedImages(before: string, limit: number): Promise<string[]> {
@@ -813,11 +924,12 @@ export class CatalogueDb {
   }
 
   async removeImages(digests: string[]): Promise<void> {
-    await this.batch([this.d1.prepare(`DELETE FROM images WHERE claimed_at IS NULL AND digest IN (${digests.map(() => "?").join(", ")})`).bind(...digests)]);
+    const inList = digests.map(() => "?").join(", ");
+    await this.batch([this.d1.prepare(`DELETE FROM image_uploaders WHERE digest IN (SELECT digest FROM images WHERE claimed_at IS NULL AND digest IN (${inList}))`).bind(...digests), this.d1.prepare(`DELETE FROM images WHERE claimed_at IS NULL AND digest IN (${inList})`).bind(...digests)]);
   }
 
   async addImage(i: { digest: string; type: string; width: number; height: number; bytes: number }, developerId: string, now: string): Promise<void> {
-    await this.batch([this.d1.prepare("INSERT OR IGNORE INTO images (digest, type, width, height, bytes, uploaded_by, uploaded_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(i.digest, i.type, i.width, i.height, i.bytes, developerId, now)]);
+    await this.batch([this.d1.prepare("INSERT OR IGNORE INTO images (digest, type, width, height, bytes, uploaded_at) VALUES (?, ?, ?, ?, ?, ?)").bind(i.digest, i.type, i.width, i.height, i.bytes, now), this.d1.prepare("INSERT OR IGNORE INTO image_uploaders (digest, developer_id, uploaded_at) VALUES (?, ?, ?)").bind(i.digest, developerId, now)]);
   }
 
   // ---------------------------------------------------------------- downloads and trending
@@ -896,11 +1008,6 @@ export class CatalogueDb {
 
   // ---------------------------------------------------------------- vulnerabilities
 
-  // Package URLs not checked for a day, oldest first.
-  async purlsToCheck(before: string, limit: number): Promise<string[]> {
-    return (await this.all<{ purl: string }>(this.d1.prepare("SELECT purl FROM purls WHERE checked_at IS NULL OR checked_at < ? ORDER BY checked_at IS NOT NULL, checked_at LIMIT ?").bind(before, limit))).map((r) => r.purl);
-  }
-
   async knownAdvisories(ids: string[]): Promise<Map<string, string>> {
     const out = new Map<string, string>();
     for (let i = 0; i < ids.length; i += 90) {
@@ -914,39 +1021,114 @@ export class CatalogueDb {
     await this.batch(list.map((a) => this.d1.prepare("INSERT INTO advisories (id, summary, severity, fixed, modified, fetched_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (id) DO UPDATE SET summary = excluded.summary, severity = excluded.severity, fixed = excluded.fixed, modified = excluded.modified, fetched_at = excluded.fetched_at").bind(a.id, a.summary, a.severity, JSON.stringify(a.fixed), a.modified, now)));
   }
 
-  // Stores what OSV said of each purl, then recounts every version that names one and the entry rows of the newest.
-  // A purl OSV refused is `unqueryable`: every version naming it has unknown vulnerabilities (null, with checkedAt set).
+  // The count of a version's known advisories that are not waived; NULL when OSV refused one of its purls.
+  private static recount(kind: Kind): string {
+    const t = TABLES[kind];
+    return `CASE
+      WHEN EXISTS (SELECT 1 FROM version_purls vp JOIN purls p ON p.purl = vp.purl WHERE vp.kind = '${kind}' AND vp.entry_id = ${t.versions}.${t.fk} AND vp.version = ${t.versions}.version AND (p.unqueryable = 1 OR vp.unresolved = 1)) THEN NULL
+      ELSE (SELECT COUNT(DISTINCT a.value) FROM version_purls vp JOIN purls p ON p.purl = vp.purl, json_each(p.advisories) a
+        WHERE vp.kind = '${kind}' AND vp.entry_id = ${t.versions}.${t.fk} AND vp.version = ${t.versions}.version
+          AND a.value NOT IN (SELECT json_extract(w.value, '$.id') FROM json_each(${t.versions}.waivers) w)) END`;
+  }
+
+  // Stores what OSV said about each purl (`unqueryable`: OSV refused it) and counts again every version naming one that
+  // was checked before; a version checked for the first time is counted by finishVersions.
   async savePurlResults(results: { purl: string; advisories: string[]; unqueryable?: boolean }[], now: string): Promise<void> {
     if (results.length === 0) return;
-    const statements = results.map((r) => this.d1.prepare("UPDATE purls SET checked_at = ?, advisories = ?, unqueryable = ? WHERE purl = ?").bind(now, JSON.stringify(r.advisories), r.unqueryable ? 1 : 0, r.purl));
-    for (let i = 0; i < results.length; i += 90) {
-      const group = results.slice(i, i + 90).map((r) => r.purl);
-      const inList = group.map(() => "?").join(", ");
+    // A few statements per 500 purls, each reading its list as JSON, keep the run within D1's queries per invocation.
+    const statements: D1PreparedStatement[] = [];
+    for (let i = 0; i < results.length; i += 500) {
+      const group = results.slice(i, i + 500);
+      const list = JSON.stringify(group.map((r) => ({ p: r.purl, a: JSON.stringify(r.advisories), u: r.unqueryable ? 1 : 0 })));
+      const purls = JSON.stringify(group.map((r) => r.purl));
+      statements.push(this.d1.prepare("UPDATE purls SET checked_at = ?1, advisories = j.value ->> '$.a', unqueryable = j.value ->> '$.u' FROM json_each(?2) j WHERE purls.purl = j.value ->> '$.p'").bind(now, list));
+      statements.push(this.d1.prepare("UPDATE version_purls SET unresolved = 0 WHERE unresolved = 1 AND purl IN (SELECT value FROM json_each(?1))").bind(purls));
       for (const kind of ["component", "recipe"] as const) {
         const t = TABLES[kind];
-        const affected = `SELECT entry_id, version FROM version_purls WHERE kind = '${kind}' AND purl IN (${inList})`;
-        statements.push(
-          this.d1
-            .prepare(
-              `UPDATE ${t.versions} SET vulnerabilities = CASE
-                 WHEN EXISTS (SELECT 1 FROM version_purls vp JOIN purls p ON p.purl = vp.purl WHERE vp.kind = '${kind}' AND vp.entry_id = ${t.versions}.${t.fk} AND vp.version = ${t.versions}.version AND p.unqueryable = 1) THEN NULL
-                 ELSE (SELECT COUNT(DISTINCT a.value) FROM version_purls vp JOIN purls p ON p.purl = vp.purl, json_each(p.advisories) a
-                 WHERE vp.kind = '${kind}' AND vp.entry_id = ${t.versions}.${t.fk} AND vp.version = ${t.versions}.version
-                   AND a.value NOT IN (SELECT json_extract(w.value, '$.id') FROM json_each(${t.versions}.waivers) w)) END,
-               vulnerabilities_checked_at = ?
-               WHERE (${t.fk}, version) IN (${affected})`,
-            )
-            .bind(now, ...group),
-        );
-        statements.push(this.d1.prepare(`UPDATE ${t.entries} SET vulnerabilities = (SELECT v.vulnerabilities FROM ${t.versions} v WHERE v.${t.fk} = ${t.entries}.id AND v.version = ${t.entries}.latest_version) WHERE id IN (SELECT entry_id FROM version_purls WHERE kind = '${kind}' AND purl IN (${inList}))`).bind(...group));
+        const affected = `SELECT entry_id, version FROM version_purls WHERE kind = '${kind}' AND purl IN (SELECT value FROM json_each(?1))`;
+        statements.push(this.d1.prepare(`UPDATE ${t.versions} SET vulnerabilities = ${CatalogueDb.recount(kind)} WHERE vulnerabilities_checked_at IS NOT NULL AND (${t.fk}, version) IN (${affected})`).bind(purls));
+        statements.push(this.d1.prepare(`UPDATE ${t.entries} SET vulnerabilities = (SELECT v.vulnerabilities FROM ${t.versions} v WHERE v.${t.fk} = ${t.entries}.id AND v.version = ${t.entries}.latest_version) WHERE id IN (SELECT entry_id FROM version_purls WHERE kind = '${kind}' AND purl IN (SELECT value FROM json_each(?1)))`).bind(purls));
       }
     }
     await this.batch(statements);
   }
 
+  // Versions whose vulnerability check is due, the longest waiting first.
+  async osvDue(now: string, limit: number): Promise<OsvVersion[]> {
+    const out: OsvVersion[] = [];
+    for (const kind of ["component", "recipe"] as const) {
+      const t = TABLES[kind];
+      for (const r of await this.all(this.d1.prepare(`SELECT ${t.fk} AS entry_id, version, osv_alone, osv_runs, osv_due FROM ${t.versions} INDEXED BY ${t.versions}_osv_due WHERE osv_due IS NOT NULL AND osv_due <= ? ORDER BY osv_due LIMIT ?`).bind(now, limit))) {
+        out.push({ kind, entryId: r.entry_id as string, version: r.version as string, alone: r.osv_alone === 1, runs: r.osv_runs as number, due: r.osv_due as string });
+      }
+    }
+    return out.sort((a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : 0)).slice(0, limit);
+  }
+
+  // The purls of each version, with when each was last checked and whether OSV refused it.
+  async osvPurls(versions: OsvVersion[]): Promise<Map<string, { purl: string; checkedAt: string | null; unqueryable: boolean }[]>> {
+    const out = new Map<string, { purl: string; checkedAt: string | null; unqueryable: boolean }[]>();
+    for (const v of versions) out.set(osvKey(v), []);
+    for (const kind of ["component", "recipe"] as const) {
+      const ids = [...new Set(versions.filter((v) => v.kind === kind).map((v) => v.entryId))];
+      for (let i = 0; i < ids.length; i += 90) {
+        const group = ids.slice(i, i + 90);
+        const rows = await this.all(this.d1.prepare(`SELECT vp.entry_id, vp.version, vp.purl, p.checked_at, p.unqueryable FROM version_purls vp JOIN purls p ON p.purl = vp.purl WHERE vp.kind = ? AND vp.entry_id IN (${group.map(() => "?").join(", ")})`).bind(kind, ...group));
+        for (const r of rows) out.get(osvKey({ kind, entryId: r.entry_id as string, version: r.version as string }))?.push({ purl: r.purl as string, checkedAt: (r.checked_at as string | null) ?? null, unqueryable: r.unqueryable === 1 });
+      }
+    }
+    return out;
+  }
+
+  // From now on these versions' purls go to OSV only in batches of their own.
+  async osvAlone(versions: OsvVersion[]): Promise<void> {
+    await this.batch(this.byVersions(versions, (t, pick) => `UPDATE ${t.versions} SET osv_alone = 1 WHERE (${t.fk}, version) IN (${pick})`));
+  }
+
+  // One statement per kind and 500 versions, naming the versions as JSON: `pick` selects (entry id, version) from ?1.
+  private byVersions(versions: OsvVersion[], sql: (t: (typeof TABLES)[Kind], pick: string, kind: Kind) => string, ...more: (string | number)[]): D1PreparedStatement[] {
+    const out: D1PreparedStatement[] = [];
+    for (const kind of ["component", "recipe"] as const) {
+      const mine = versions.filter((v) => v.kind === kind);
+      for (let i = 0; i < mine.length; i += 500) {
+        const list = JSON.stringify(mine.slice(i, i + 500).map((v) => [v.entryId, v.version]));
+        out.push(this.d1.prepare(sql(TABLES[kind], "SELECT value ->> 0, value ->> 1 FROM json_each(?1)", kind)).bind(list, ...more));
+      }
+    }
+    return out;
+  }
+
+  // Purls of one version whose check gave up: that version's vulnerabilities are unknown.
+  async markUnresolved(v: OsvVersion, purls: string[]): Promise<void> {
+    if (purls.length === 0) return;
+    await this.batch([this.d1.prepare("UPDATE version_purls SET unresolved = 1 WHERE kind = ? AND entry_id = ? AND version = ? AND purl IN (SELECT value FROM json_each(?))").bind(v.kind, v.entryId, v.version, JSON.stringify(purls))]);
+  }
+
+  // Versions alone that used their requests this run without an answer for every purl.
+  async osvRunSpent(versions: OsvVersion[]): Promise<void> {
+    await this.batch(this.byVersions(versions, (t, pick) => `UPDATE ${t.versions} SET osv_runs = osv_runs + 1 WHERE (${t.fk}, version) IN (${pick})`));
+  }
+
+  // Versions whose every purl has an answer: counted, stamped checked, and due again at `next`. A version alone whose
+  // purls OSV all answered goes back into mixed batches.
+  async finishVersions(versions: OsvVersion[], now: string, next: string): Promise<void> {
+    await this.batch([
+      ...this.byVersions(
+        versions,
+        (t, pick, kind) => `UPDATE ${t.versions} SET vulnerabilities = ${CatalogueDb.recount(kind)}, vulnerabilities_checked_at = ?2, osv_due = ?3, osv_runs = 0,
+          osv_alone = EXISTS (SELECT 1 FROM version_purls vp JOIN purls p ON p.purl = vp.purl WHERE vp.kind = '${kind}' AND vp.entry_id = ${t.versions}.${t.fk} AND vp.version = ${t.versions}.version AND (p.unqueryable = 1 OR vp.unresolved = 1))
+          WHERE (${t.fk}, version) IN (${pick})`,
+        now,
+        next,
+      ),
+      ...this.byVersions(versions, (t, pick) => `UPDATE ${t.entries} SET vulnerabilities = (SELECT x.vulnerabilities FROM ${t.versions} x WHERE x.${t.fk} = ${t.entries}.id AND x.version = ${t.entries}.latest_version) WHERE id IN (SELECT e FROM (SELECT value ->> 0 AS e FROM json_each(?1)))`),
+    ]);
+  }
+
+
   // The purls of one version that OSV refused.
   async unqueryablePurls(kind: Kind, entryId: string, version: string): Promise<string[]> {
-    return (await this.all<{ purl: string }>(this.d1.prepare("SELECT vp.purl FROM version_purls vp JOIN purls p ON p.purl = vp.purl WHERE vp.kind = ? AND vp.entry_id = ? AND vp.version = ? AND p.unqueryable = 1 ORDER BY vp.purl").bind(kind, entryId, version))).map((r) => r.purl);
+    return (await this.all<{ purl: string }>(this.d1.prepare("SELECT vp.purl FROM version_purls vp JOIN purls p ON p.purl = vp.purl WHERE vp.kind = ? AND vp.entry_id = ? AND vp.version = ? AND (p.unqueryable = 1 OR vp.unresolved = 1) ORDER BY vp.purl").bind(kind, entryId, version))).map((r) => r.purl);
   }
 
   // The advisories affecting one version, with the purls each affects.

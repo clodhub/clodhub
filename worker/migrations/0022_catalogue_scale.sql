@@ -167,6 +167,9 @@ CREATE INDEX recipes_secure_downloads ON recipes(downloads DESC, seq DESC) WHERE
 -- Full-text search over name, title, summary, class and tags; rowid is the entry's seq.
 CREATE VIRTUAL TABLE component_fts USING fts5(name, title, summary, class, tags, tokenize = 'unicode61', prefix = '2 3');
 CREATE VIRTUAL TABLE recipe_fts USING fts5(name, title, summary, class, tags, tokenize = 'unicode61', prefix = '2 3');
+-- The terms of each full-text index, to write a search prefix out as whole terms.
+CREATE VIRTUAL TABLE component_vocab USING fts5vocab(component_fts, row);
+CREATE VIRTUAL TABLE recipe_vocab USING fts5vocab(recipe_fts, row);
 
 -- One row per version. document is the R2 key of the full entry.
 CREATE TABLE component_versions (
@@ -191,6 +194,12 @@ CREATE TABLE component_versions (
   live_tested_platform TEXT,
   vulnerabilities INTEGER,
   vulnerabilities_checked_at TEXT,
+  -- when the vulnerability check next looks at this version (NULL: it names no purl); osv_alone: OSV once refused a
+  -- batch holding it, so its purls are only ever sent in batches of their own; osv_runs: runs spent finding the purls
+  -- OSV refuses since it was last finished
+  osv_due TEXT,
+  osv_alone INTEGER NOT NULL DEFAULT 0,
+  osv_runs INTEGER NOT NULL DEFAULT 0,
   downloads INTEGER NOT NULL DEFAULT 0,
   source_repo TEXT NOT NULL,
   source_tag TEXT NOT NULL,
@@ -204,6 +213,7 @@ CREATE TABLE component_versions (
   PRIMARY KEY (component_id, version)
 );
 CREATE INDEX component_versions_class ON component_versions(class_name, class_version);
+CREATE INDEX component_versions_osv_due ON component_versions(osv_due) WHERE osv_due IS NOT NULL;
 
 CREATE TABLE recipe_versions (
   recipe_id TEXT NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
@@ -223,6 +233,12 @@ CREATE TABLE recipe_versions (
   live_tested_platform TEXT,
   vulnerabilities INTEGER,
   vulnerabilities_checked_at TEXT,
+  -- when the vulnerability check next looks at this version (NULL: it names no purl); osv_alone: OSV once refused a
+  -- batch holding it, so its purls are only ever sent in batches of their own; osv_runs: runs spent finding the purls
+  -- OSV refuses since it was last finished
+  osv_due TEXT,
+  osv_alone INTEGER NOT NULL DEFAULT 0,
+  osv_runs INTEGER NOT NULL DEFAULT 0,
   downloads INTEGER NOT NULL DEFAULT 0,
   has_diagram INTEGER NOT NULL DEFAULT 0,
   source_repo TEXT NOT NULL,
@@ -235,6 +251,7 @@ CREATE TABLE recipe_versions (
   unlisted_at TEXT,
   PRIMARY KEY (recipe_id, version)
 );
+CREATE INDEX recipe_versions_osv_due ON recipe_versions(osv_due) WHERE osv_due IS NOT NULL;
 
 -- One row per interface a component version provides or requires, for ?provides= and ?requires=.
 CREATE TABLE component_interfaces (
@@ -248,7 +265,6 @@ CREATE TABLE component_interfaces (
   FOREIGN KEY (component_id, version) REFERENCES component_versions(component_id, version) ON DELETE CASCADE
 );
 CREATE INDEX component_interfaces_type ON component_interfaces(type, direction);
-CREATE INDEX component_interfaces_port ON component_interfaces(port_id, direction);
 
 CREATE TABLE component_dependencies (
   component_id TEXT NOT NULL,
@@ -321,12 +337,19 @@ CREATE TABLE images (
   width INTEGER NOT NULL,
   height INTEGER NOT NULL,
   bytes INTEGER NOT NULL,
-  uploaded_by TEXT,
   uploaded_at TEXT NOT NULL,
   claimed_at TEXT
 );
 CREATE INDEX images_unclaimed ON images(uploaded_at) WHERE claimed_at IS NULL;
-CREATE INDEX images_uploader ON images(uploaded_by, uploaded_at);
+
+-- Every developer who uploaded an image's bytes, the first time; each may name the image in an entry.
+CREATE TABLE image_uploaders (
+  digest TEXT NOT NULL REFERENCES images(digest) ON DELETE CASCADE,
+  developer_id TEXT NOT NULL REFERENCES developers(id) ON DELETE CASCADE,
+  uploaded_at TEXT NOT NULL,
+  PRIMARY KEY (digest, developer_id)
+) WITHOUT ROWID;
+CREATE INDEX image_uploaders_developer ON image_uploaders(developer_id, uploaded_at);
 
 -- Download links issued per version and day (UTC), for the 30-day count and trending.
 CREATE TABLE downloads_daily (
@@ -349,6 +372,14 @@ CREATE TABLE downloads_seen (
   PRIMARY KEY (day, kind, entry_id, version, visitor)
 ) WITHOUT ROWID;
 
+-- The GitHub organisations a developer was an active member of at their last sign-in (a JSON array of lowercase
+-- logins), read with the sign-in token's read:org scope. Class scopes are organisations.
+CREATE TABLE developer_orgs (
+  developer_id TEXT PRIMARY KEY REFERENCES developers(id) ON DELETE CASCADE,
+  orgs TEXT NOT NULL CHECK (json_valid(orgs)),
+  checked_at TEXT NOT NULL
+);
+
 -- Requests per key and minute, for rate limits.
 CREATE TABLE rate_limits (
   key TEXT NOT NULL,
@@ -357,13 +388,15 @@ CREATE TABLE rate_limits (
   PRIMARY KEY (key, minute)
 ) WITHOUT ROWID;
 
--- Listing totals per kind and filter combination, kept for ten minutes.
+-- Listing totals per kind and filter combination, kept for ten minutes (the hourly job removes older rows and keeps at
+-- most 100,000).
 CREATE TABLE listing_totals (
   key TEXT PRIMARY KEY,
   count INTEGER NOT NULL,
   approximate INTEGER NOT NULL,
   computed_at TEXT NOT NULL
 );
+CREATE INDEX listing_totals_computed ON listing_totals(computed_at);
 
 -- Where a job that runs in chunks has got to: its pass (for example the day) and the last seq done.
 CREATE TABLE job_progress (
@@ -381,13 +414,15 @@ CREATE TABLE purls (
   advisories TEXT NOT NULL DEFAULT '[]',
   unqueryable INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX purls_checked ON purls(checked_at);
 
+-- unresolved: the check gave up finding whether OSV can read this purl for this version (its requests ran out), so the
+-- version's vulnerabilities are unknown; the purl itself is not marked, and other versions naming it are unaffected.
 CREATE TABLE version_purls (
   kind TEXT NOT NULL CHECK (kind IN ('recipe', 'component')),
   entry_id TEXT NOT NULL,
   version TEXT NOT NULL,
   purl TEXT NOT NULL,
+  unresolved INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (kind, entry_id, version, purl)
 );
 CREATE INDEX version_purls_purl ON version_purls(purl);

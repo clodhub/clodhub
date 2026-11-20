@@ -183,12 +183,22 @@ export default {
 
 // The cron triggers in wrangler.jsonc.
 export async function scheduled(cron: string, env: Env, deps: Deps): Promise<void> {
-  // Hourly: the purls not checked at OSV for a day, the next chunks of the day's download refresh, and the images
-  // nobody named within a day.
+  // Hourly: the vulnerability check, the next chunks of the day's download refresh, the images nobody named within a
+  // day, and old listing totals. Each runs whatever the others do; a failure is logged.
   if (cron === "7 * * * *") {
-    await checkVulnerabilities(env, deps);
-    await new CatalogueDb(env.DB).refreshDownloads(deps.now().toISOString().slice(0, 10));
-    await removeUnclaimedImages(env, deps);
+    const tasks: [string, () => Promise<unknown>][] = [
+      ["vulnerability check", () => checkVulnerabilities(env, deps)],
+      ["download refresh", () => new CatalogueDb(env.DB).refreshDownloads(deps.now().toISOString().slice(0, 10))],
+      ["image clean-up", () => removeUnclaimedImages(env, deps)],
+      ["listing totals clean-up", () => new CatalogueDb(env.DB).pruneListingTotals()],
+    ];
+    for (const [name, task] of tasks) {
+      try {
+        await task();
+      } catch (e) {
+        console.error(`hourly ${name} failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
     return;
   }
   // Every ten minutes: TestFlight builds into the testers' group and fresh builds before expiry.

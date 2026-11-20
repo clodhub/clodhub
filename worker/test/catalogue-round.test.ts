@@ -1,6 +1,6 @@
 // Channels, images, classes and categories, quality, vulnerabilities and downloads in the catalogue.
 import { beforeEach, describe, expect, it } from "vitest";
-import { EXAMPLE_BUNDLE_DIGEST, EXAMPLE_IMAGE, EXAMPLE_IMAGE_BYTES, descriptorDigest, exampleCategories, exampleClassEntries, exampleComponentEntries, exampleComponentEntry, pngHeader, webpHeader, type ClassList, type ClassVersionView, type ComponentList, type ComponentVersionView, type RecipeList, type VulnerabilityReport } from "@my/store-shared";
+import { crc32, EXAMPLE_BUNDLE_DIGEST, EXAMPLE_IMAGE, EXAMPLE_IMAGE_BYTES, descriptorDigest, exampleCategories, exampleClassEntries, exampleComponentEntries, exampleComponentEntry, pngHeader, webpHeader, type ClassList, type ClassVersionView, type ComponentList, type ComponentVersionView, type RecipeList, type VulnerabilityReport } from "@my/store-shared";
 import { CatalogueDb } from "../src/catalogue-db.js";
 import type { Env } from "../src/env.js";
 import { handle, scheduled } from "../src/index.js";
@@ -31,7 +31,7 @@ function stubs() {
     },
     "GET api.osv.dev/v1/vulns/GHSA-aaaa-bbbb-cccc": () => jsonRes({ id: "GHSA-aaaa-bbbb-cccc", summary: "Prototype pollution in left-pad", modified: "2026-11-01T00:00:00Z", database_specific: { severity: "HIGH" }, affected: [{ package: { purl: "pkg:npm/left-pad" }, ranges: [{ events: [{ introduced: "0" }, { fixed: "1.3.1" }] }] }] }),
   };
-  for (const [i, v] of ["0.1.0", "0.1.1", "0.1.2", "0.2.0", "0.3.0-preview.1", "1.0.0", "2.0.0", "3.0.0", "4.0.0", "5.0.0", "6.0.0"].entries()) Object.assign(routes, release("acme/card-deck", `v${v}`, `card-deck-${v}.tar`, 10 + i));
+  for (const [i, v] of ["0.1.0", "0.1.1", "0.1.2", "0.2.0", "0.3.0-preview.1", "1.0.0", "2.0.0", "3.0.0", "4.0.0", "5.0.0", "6.0.0", "7.0.0"].entries()) Object.assign(routes, release("acme/card-deck", `v${v}`, `card-deck-${v}.tar`, 10 + i));
   for (const [i, part] of exampleComponentEntries().entries()) Object.assign(routes, release(part.source.repository, part.source.tag, part.bundle.asset, 50 + i));
   Object.assign(routes, release("acme/poker-night-recipe", "v0.1.0", "poker-night-0.1.0.tar", 21));
   routes[`GET ${gh("/user/memberships/orgs/ourapps-ae")}`] = () => (member ? jsonRes({ state: "active" }) : new Response("not a member", { status: 404 }));
@@ -274,6 +274,51 @@ describe("vulnerabilities", () => {
     expect(osvCalls).toHaveLength(0);
   });
 
+  it("checks every other version in the same run when one version holds many purls OSV refuses, and never mixes it again", async () => {
+    await publish(withPad("0.1.0"));
+    const bad = Array.from({ length: 40 }, (_, i) => `pkg:generic/unreadable-${i}@1.0`);
+    await publish(withPad("0.2.0", (e) => {
+      const pad = e.foundations.upstream[0];
+      e.foundations.upstream = [pad, ...bad.map((purl, i) => ({ ...pad, name: `unreadable-${i}`, version: "1.0", purl })), { ...pad, name: "only-here", version: "1.0.0", purl: "pkg:npm/only-here@1.0.0" }];
+    }));
+    for (let i = 0; i < 6; i++) await publish(withPad(`${i + 1}.0.0`, (e) => (e.foundations.upstream = [{ ...e.foundations.upstream[0], name: `lib${i}`, version: "2.0.0", purl: `pkg:npm/lib${i}@2.0.0` }])));
+    osvCalls.length = 0;
+    await scheduled("7 * * * *", env, deps);
+    const perRun = () => osvCalls.filter((c) => c.url.endsWith("/v1/querybatch")).length;
+    expect(perRun()).toBeLessThanOrEqual(40);
+    for (let i = 1; i <= 6; i++) expect(((await (await get(`/api/components/card-deck/${i}.0.0/vulnerabilities`)).json()) as VulnerabilityReport).count).toBe(0);
+    for (let run = 0; run < 2; run++) {
+      deps.advance(3_600_000);
+      osvCalls.length = 0;
+      await scheduled("7 * * * *", env, deps);
+      expect(perRun()).toBeLessThanOrEqual(40);
+    }
+    const batches = () => osvCalls.filter((c) => c.url.endsWith("/v1/querybatch")).map((c) => (JSON.parse(c.body!) as { queries: { package: { purl: string } }[] }).queries.map((q) => q.package.purl));
+    const report = async (v: string) => (await (await get(`/api/components/card-deck/${v}/vulnerabilities`)).json()) as VulnerabilityReport;
+    expect((await report("0.1.0")).count).toBe(1);
+    for (let i = 1; i <= 6; i++) expect((await report(`${i}.0.0`)).count).toBe(0);
+    const held = await report("0.2.0");
+    expect(held.count).toBeNull();
+    expect(held.checkedAt).not.toBeNull();
+    expect(held.unqueryable.length).toBeGreaterThan(0);
+    // The version's requests ran out before only-here had an answer: it is unknown for this version alone. A version
+    // published later with the same purl is checked as usual.
+    expect(held.unqueryable).toContain("pkg:npm/only-here@1.0.0");
+    expect(await env.DB.prepare("SELECT unqueryable FROM purls WHERE purl = 'pkg:npm/only-here@1.0.0'").first()).toEqual({ unqueryable: 0 });
+    await publish(withPad("7.0.0", (e) => (e.foundations.upstream = [{ ...e.foundations.upstream[0], name: "only-here", version: "1.0.0", purl: "pkg:npm/only-here@1.0.0" }])));
+    await scheduled("7 * * * *", env, deps);
+    expect(await report("7.0.0")).toMatchObject({ count: 0, unqueryable: [] });
+    const proven = (await env.DB.prepare("SELECT purl FROM purls WHERE unqueryable = 1").all<{ purl: string }>()).results.map((r) => r.purl);
+    expect(proven.length).toBeGreaterThan(0);
+    deps.advance(86_400_000 + 1000);
+    osvCalls.length = 0;
+    await scheduled("7 * * * *", env, deps);
+    expect(batches().flat().filter((x) => proven.includes(x))).toEqual([]);
+    const alone = async (v: string) => (await env.DB.prepare("SELECT osv_alone FROM component_versions WHERE version = ?").bind(v).first<{ osv_alone: number }>())!.osv_alone;
+    expect(await alone("0.2.0")).toBe(1);
+    expect(await alone("1.0.0")).toBe(0);
+  });
+
   it("filters to no known vulnerabilities on the newest version, and does not count a waived advisory", async () => {
     await publish(withPad("0.1.0"));
     await scheduled("7 * * * *", env, deps);
@@ -357,10 +402,30 @@ describe("review fixes", () => {
     expect(((await res.json()) as { error: string }).error).toContain("belongs to another developer");
   });
 
-  it("answers 400 for an unknown value of every facet", async () => {
+  it("asks GitHub for read:org at sign-in, records the organisations, and says to sign in again when the token cannot read them", async () => {
+    const start = await handle(new Request(`${BASE}/api/auth/github`), env, deps);
+    expect(new URL(start.headers.get("Location")!).searchParams.get("scope")).toBe("read:user read:org");
+    const [deckClass] = exampleClassEntries() as Mutable[];
+    const scopeless = fakeFetch({ [`GET ${gh("/user/memberships/orgs/ourapps-ae")}`]: () => new Response(JSON.stringify({ message: "You need at least read:org scope" }), { status: 403 }) });
+    const refused = await handle(api(cookie, "POST", "/api/dev/classes", deckClass), env, { ...deps, fetch: scopeless.fetch });
+    expect(refused.status).toBe(403);
+    expect(((await refused.json()) as { error: string }).error).toBe("the saved GitHub token cannot read organisation membership; sign in to ourapps.app again");
+    member = false;
+    const sue = await signIn(env, deps, { id: 9, login: "sue", name: "Sue" }, true, ["ourapps-ae"]);
+    const res = await post("/api/dev/classes", deckClass, sue);
+    expect(res.status, await res.clone().text()).toBe(201);
+    expect(await env.DB.prepare("SELECT orgs FROM developer_orgs d JOIN developers v ON v.id = d.developer_id WHERE v.github_login = 'sue'").first()).toEqual({ orgs: '["ourapps-ae"]' });
+  });
+
+  it("answers 400 for a value outside a closed facet or a malformed one, and an empty page for an unmatched open value", async () => {
     await publish(card("0.1.0"));
-    for (const query of ["platform=linux", "licence=not%20a%20licence", "quality=gold", "certified=maybe", "channel=beta", "secure=sometimes", "sort=random", "deprecated=never", "category=music", "class=acme/none", "publisher=nobody", "provides=nothing.here", "requires=nothing.here"]) {
+    for (const query of ["platform=linux", "licence=not%20a%20licence", "quality=gold", "certified=maybe", "channel=beta", "secure=sometimes", "sort=random", "deprecated=never", "category=Music!", "class=not-a-class", "publisher=No%20Body", "provides=bad%20type", "requires=bad%20type"]) {
       expect((await get(`/api/components?${query}`)).status, query).toBe(400);
+    }
+    for (const query of ["category=music", "class=acme/none", "publisher=nobody", "provides=ae/nothing-here", "requires=ae/nothing-here"]) {
+      const res = await get(`/api/components?${query}`);
+      expect(res.status, query).toBe(200);
+      expect(((await res.json()) as ComponentList).components, query).toEqual([]);
     }
     for (const query of ["platform=tvos", "licence=MIT", "quality=reviewed", "channel=security", "category=games"]) expect((await get(`/api/components?${query}`)).status, query).toBe(200);
   });
@@ -400,6 +465,61 @@ describe("review fixes", () => {
     expect((await upload(webp, "image/webp")).status).toBe(201);
   });
 
+  it("refuses images carrying more than 64 KB of metadata or chunks of unknown kinds", async () => {
+    const png = pngHeader(8, 8);
+    const chunk = (type: string, data: Uint8Array) => {
+      const out = new Uint8Array(12 + data.length);
+      const view = new DataView(out.buffer);
+      view.setUint32(0, data.length);
+      out.set(new TextEncoder().encode(type), 4);
+      out.set(data, 8);
+      view.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+      return out;
+    };
+    const withText = (n: number) => {
+      const text = chunk("tEXt", new Uint8Array(n).fill(0x41));
+      const out = new Uint8Array(png.length + text.length);
+      out.set(png.subarray(0, 33));
+      out.set(text, 33);
+      out.set(png.subarray(33), 33 + text.length);
+      return out;
+    };
+    expect((await upload(withText(1000))).status).toBe(201);
+    const big = await upload(withText(64 * 1024 + 1));
+    expect(big.status).toBe(422);
+    expect(((await big.json()) as { error: string }).error).toContain("metadata");
+    const webp = webpHeader(8, 8);
+    const riff = (extra: Uint8Array) => {
+      const out = new Uint8Array(webp.length + extra.length);
+      out.set(webp);
+      out.set(extra, webp.length);
+      new DataView(out.buffer).setUint32(4, out.length - 8, true);
+      return out;
+    };
+    const webpChunk = (type: string, n: number) => {
+      const out = new Uint8Array(8 + n + (n % 2));
+      out.set(new TextEncoder().encode(type), 0);
+      new DataView(out.buffer).setUint32(4, n, true);
+      return out;
+    };
+    expect((await upload(riff(webpChunk("EXIF", 100)), "image/webp")).status).toBe(201);
+    expect((await upload(riff(webpChunk("XMP ", 64 * 1024 + 2)), "image/webp")).status).toBe(422);
+    expect((await upload(riff(webpChunk("JUNK", 100)), "image/webp")).status).toBe(422);
+  });
+
+  it("lets every developer who uploaded an image's bytes name it, even when someone else uploaded them first", async () => {
+    const mallory = await signIn(env, deps, { id: 7, login: "mallory", name: "Mallory" });
+    const front = pngHeader(1278, 800);
+    const hex = await hexOf(front);
+    expect((await upload(front, "image/png", undefined, mallory)).status).toBe(201);
+    const mine = await upload(front);
+    expect(mine.status).toBe(200);
+    expect(((await mine.json()) as { status: string }).status).toBe("unchanged");
+    await publishClasses();
+    const res = await post("/api/dev/components", card("0.1.0", (e) => (e.images[0] = { ...e.images[0], digest: `sha256:${hex}`, width: 1278 })));
+    expect(res.status, await res.clone().text()).toBe(201);
+  });
+
   it("lets only the uploader name an unclaimed image, removes images nobody named within a day, and limits uploads a day", async () => {
     const sue = await signIn(env, deps, { id: 9, login: "sue", name: "Sue" });
     const extra = pngHeader(1279, 800);
@@ -417,6 +537,47 @@ describe("review fixes", () => {
     expect((await upload(pngHeader(2, 2), "image/png", undefined, sue)).status).toBe(201);
     expect((await upload(pngHeader(3, 3), "image/png", undefined, sue)).status).toBe(201);
     expect((await upload(pngHeader(4, 4), "image/png", undefined, sue)).status).toBe(429);
+  });
+
+  it("orders a search with many matches by the chosen sort over all of them, and ranks relevance among the most downloaded", async () => {
+    await publish(card("0.1.0"));
+    const dev = (await env.DB.prepare("SELECT developer_id FROM components").first<{ developer_id: string }>())!.developer_id;
+    // 1,200 lobby entries: the oldest is the most downloaded; the rest are newer with fewer downloads.
+    await env.DB.prepare(
+      `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1200)
+       INSERT INTO components (id, name, scope, slug, developer_id, repo, latest_version, created_at, updated_at, description, class_name, class_version, class_title, category, category_top, platforms, licence, channel, published_at, downloads)
+       SELECT 'lobby' || i, 'acme/lobby-' || i, 'acme', 'lobby-' || i, ?1, 'acme/lobby-' || i, '0.1.0', '2026-10-01', '2026-10-01', 'A lobby for players', 'ourapps-ae/card-deck-class', '1.0.0', 'Card deck', 'games/cards', 'games', ' web ', 'MIT', 'features', '2026-10-01T00:00:00.000Z',
+              CASE WHEN i = 1 THEN 100000 ELSE i END FROM n`,
+    ).bind(dev).run();
+    await env.DB.prepare("INSERT INTO component_fts (rowid, name, title, summary, class, tags) SELECT seq, name, class_title, description, class_name, '' FROM components WHERE slug LIKE 'lobby-%'").run();
+    const first = async (query: string) => ((await (await get(`/api/components?${query}`)).json()) as ComponentList).components[0]?.name;
+    expect(await first("q=lobby&sort=downloads")).toBe("acme/lobby-1");
+    expect(await first("q=lobby")).toBe("acme/lobby-1");
+    expect(await first("q=lobb&sort=downloads")).toBe("acme/lobby-1");
+    const page = (await (await get("/api/components?q=lobby&sort=downloads&limit=2")).json()) as ComponentList;
+    expect(page.components.map((c) => c.name)).toEqual(["acme/lobby-1", "acme/lobby-1200"]);
+    expect(page.total).toEqual({ count: 1200, approximate: false });
+    const next = (await (await get(`/api/components?q=lobby&sort=downloads&limit=2&cursor=${page.next}`)).json()) as ComponentList;
+    expect(next.components.map((c) => c.name)).toEqual(["acme/lobby-1199", "acme/lobby-1198"]);
+    expect(await first("q=lobby&sort=name")).toBe("acme/lobby-1");
+  });
+
+  it("orders a search with more matches than the dense limit by looking each listed row up, prefix written out", async () => {
+    await publish(card("0.1.0"));
+    const dev = (await env.DB.prepare("SELECT developer_id FROM components").first<{ developer_id: string }>())!.developer_id;
+    await env.DB.prepare(
+      `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 20500)
+       INSERT INTO components (id, name, scope, slug, developer_id, repo, latest_version, created_at, updated_at, description, class_name, class_version, class_title, category, category_top, platforms, licence, channel, published_at, downloads)
+       SELECT 'lobby' || i, 'acme/lobby-' || i, 'acme', 'lobby-' || i, ?1, 'acme/lobby-' || i, '0.1.0', '2026-10-01', '2026-10-01', CASE WHEN i % 2 = 0 THEN 'A lobby for players' ELSE 'A lobbyist' END, 'ourapps-ae/card-deck-class', '1.0.0', 'Card deck', 'games/cards', 'games', ' web ', 'MIT', 'features', '2026-10-01T00:00:00.000Z',
+              CASE WHEN i = 1 THEN 100000 ELSE i END FROM n`,
+    ).bind(dev).run();
+    await env.DB.prepare("INSERT INTO component_fts (rowid, name, title, summary, class, tags) SELECT seq, '', class_title, description, class_name, '' FROM components WHERE slug LIKE 'lobby-%'").run();
+    const page = (await (await get("/api/components?q=lobb&sort=downloads&limit=3")).json()) as ComponentList;
+    expect(page.components.map((c) => c.name)).toEqual(["acme/lobby-1", "acme/lobby-20500", "acme/lobby-20499"]);
+    expect(page.total.approximate).toBe(true);
+    const narrower = (await (await get("/api/components?q=lobbyi&sort=downloads&limit=2")).json()) as ComponentList;
+    expect(narrower.components.map((c) => c.name)).toEqual(["acme/lobby-1", "acme/lobby-20499"]);
+    expect(((await (await get("/api/components?q=lobb&limit=1")).json()) as ComponentList).components[0]!.name).toBe("acme/lobby-1");
   });
 
   it("matches short search words whole and longer ones as prefixes", async () => {
@@ -452,6 +613,41 @@ describe("review fixes", () => {
     expect(new Set(seen).size).toBe(5);
     const back = (await (await get(`/api/components?sort=downloads&limit=2&cursor=${page.previous}`)).json()) as ComponentList;
     expect(back.components.map((c) => c.name)).toEqual(seen.slice(2, 4));
+  });
+
+  it("removes listing totals older than ten minutes and keeps at most the cap, newest first", async () => {
+    const old = new Date(Date.now() - 11 * 60_000).toISOString();
+    const at = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+    await env.DB.prepare("INSERT INTO listing_totals (key, count, approximate, computed_at) VALUES ('old', 1, 0, ?), ('a', 1, 0, ?), ('b', 1, 0, ?), ('c', 1, 0, ?)").bind(old, at(30), at(20), at(10)).run();
+    await new CatalogueDb(env.DB).pruneListingTotals(2);
+    expect((await env.DB.prepare("SELECT key FROM listing_totals ORDER BY key").all<{ key: string }>()).results.map((r) => r.key)).toEqual(["b", "c"]);
+    await env.DB.prepare("INSERT INTO listing_totals (key, count, approximate, computed_at) VALUES ('stale', 1, 0, ?)").bind(old).run();
+    await scheduled("7 * * * *", env, deps);
+    expect((await env.DB.prepare("SELECT key FROM listing_totals ORDER BY key").all<{ key: string }>()).results.map((r) => r.key)).toEqual(["b", "c"]);
+  });
+
+  it("runs every hourly task when the vulnerability check fails, and logs the failure", async () => {
+    await publish(card("0.1.0", (e) => (e.foundations.upstream = [{ name: "left-pad", version: "1.3.0", repository: "https://github.com/left-pad/left-pad", purl: "pkg:npm/left-pad@1.3.0", licence: "MIT", notices: ["src/index.mjs"], revision: "e".repeat(40), delivery: { kind: "bundled", files: [{ path: "src/index.mjs", digest: "d".repeat(64) }] } }])));
+    const sue = await signIn(env, deps, { id: 9, login: "sue", name: "Sue" });
+    const extra = pngHeader(5, 5);
+    expect((await upload(extra, "image/png", undefined, sue)).status).toBe(201);
+    const id = (await env.DB.prepare("SELECT id FROM components").first<{ id: string }>())!.id;
+    deps.advance(86_400_000 + 1000);
+    await env.DB.prepare("INSERT INTO downloads_daily (kind, entry_id, version, day, n) VALUES ('component', ?, '0.1.0', ?, 5)").bind(id, deps.now().toISOString().slice(0, 10)).run();
+    const failing = deps.fetch;
+    deps.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => (String(input).includes("osv.dev") ? new Response("down", { status: 503 }) : failing(input, init))) as typeof fetch;
+    const errors: string[] = [];
+    const original = console.error;
+    console.error = (...a: unknown[]) => void errors.push(a.join(" "));
+    try {
+      await scheduled("7 * * * *", env, deps);
+    } finally {
+      console.error = original;
+      deps.fetch = failing;
+    }
+    expect(errors.join("\n")).toContain("hourly vulnerability check failed: OSV querybatch answered 503");
+    expect((await env.DB.prepare("SELECT downloads FROM components").first<{ downloads: number }>())!.downloads).toBe(5);
+    expect((await get(`/images/${await hexOf(extra)}.png`)).status).toBe(404);
   });
 
   it("names curators by GitHub id, not login", async () => {

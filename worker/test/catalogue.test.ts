@@ -484,7 +484,7 @@ describe("reading recipes", () => {
     expect(await names("/api/recipes?platform=windows")).toEqual(["acme/garden-planner"]);
     expect(await names("/api/recipes?licence=MIT")).toEqual(["acme/garden-planner"]);
     expect(await names("/api/recipes?publisher=george&sort=name")).toEqual(["acme/garden-planner", "acme/poker-night"]);
-    expect((await get("/api/recipes?publisher=nobody")).status).toBe(400);
+    expect(await names("/api/recipes?publisher=nobody")).toEqual([]);
     expect(await names("/api/recipes?category=games&licence=MIT")).toEqual([]);
     expect(await names("/api/recipes?channel=features&sort=name")).toEqual(["acme/garden-planner", "acme/poker-night"]);
     expect(await names("/api/recipes?channel=security")).toEqual([]);

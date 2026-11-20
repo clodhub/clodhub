@@ -294,7 +294,7 @@ POST   /api/dev/recipes/&lt;name&gt;/undeprecate</code></pre>
       body: html`
         <ol class="steps">
           <li>Open <a href="${origin}/dev">${origin}/dev</a> and tap <b>Sign in with GitHub</b>. Any GitHub account works, including a free one.</li>
-          <li>GitHub asks you to allow ourapps to read your public profile (scope <code>read:user</code>). That is all sign-in reads. Repository access comes later, from a token you create yourself.</li>
+          <li>GitHub asks you to allow ourapps to read your public profile and your organisation memberships (scopes <code>read:user</code> and <code>read:org</code>). Memberships decide who may publish classes in an organisation's scope. Repository access comes later, from a token you create yourself.</li>
           <li>You land on the console. Your public page address is set from your GitHub login, for example <a href="/${slug}">${origin}/${slug}</a>. Change it and your display name under <a href="/dev/settings">Settings</a>; the display name is what your people see on every install page.</li>
         </ol>
         ${callout("info", html`<p>Sign-in lasts 30 days on a browser. Sign out from the sidebar. The console is a normal website; nothing to install.</p>`)}
@@ -676,7 +676,7 @@ suspend fun checkForUpdate(context: Context) {
 
         <h3 id="security-access">Who can act on your account</h3>
         <ul class="bullets">
-          <li><b>You, in a browser.</b> Sign-in is GitHub OAuth reading your public profile only. The session cookie is HttpOnly, Secure, SameSite, lasts 30 days, and is stored as a keyed hash. State-changing requests are refused unless they come from this site. "Sign out everywhere" under Settings ends every session.</li>
+          <li><b>You, in a browser.</b> Sign-in is GitHub OAuth reading your public profile and organisation memberships. The session cookie is HttpOnly, Secure, SameSite, lasts 30 days, and is stored as a keyed hash. State-changing requests are refused unless they come from this site. "Sign out everywhere" under Settings ends every session.</li>
           <li><b>Your agents, with an API key.</b> Each key has a scope (read only, or manage), an expiry you choose, and can be revoked alone or all at once. A key can never create or revoke keys, change credentials, delete your account or sign out sessions; those need you in a browser. Keys are per developer: no key can see another developer's apps or links.</li>
           <li><b>Your app's repository, with a build token.</b> Per app, used to fetch the signing certificate, its key and the App Store profile, and to upload builds to TestFlight through ourapps. Whoever holds it can sign builds as you and send them to your TestFlight, so keep it in repository secrets only; rotate it on the app's page.</li>
           <li><b>Nobody else.</b> There is no shared admin interface; every row is tied to one developer and every query is filtered by it.</li>

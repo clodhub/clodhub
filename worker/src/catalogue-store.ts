@@ -39,7 +39,12 @@ export interface ImageFacts {
   type: "png" | "webp";
   width: number;
   height: number;
+  // Bytes of chunks that are not the picture: PNG ancillary chunks, WebP ICCP, EXIF and XMP.
+  metadata: number;
 }
+
+// The most metadata an image may carry.
+export const IMAGE_METADATA_BYTES = 64 * 1024;
 
 const CRC_TABLE = (() => {
   const t = new Uint32Array(256);
@@ -67,6 +72,7 @@ function pngFacts(bytes: Uint8Array): ImageFacts | null {
   let first = true;
   let idat = false;
   let size: { width: number; height: number } | null = null;
+  let metadata = 0;
   while (at + 12 <= bytes.length) {
     const length = view.getUint32(at);
     const type = ascii(bytes, at + 4, 4);
@@ -79,14 +85,15 @@ function pngFacts(bytes: Uint8Array): ImageFacts | null {
       first = false;
     } else if (type === "IHDR") return null;
     if (type === "IDAT") idat = true;
-    if (type === "IEND") return length === 0 && end === bytes.length && idat && size ? { type: "png", ...size } : null;
+    if (!["IHDR", "PLTE", "IDAT", "IEND"].includes(type)) metadata += length;
+    if (type === "IEND") return length === 0 && end === bytes.length && idat && size ? { type: "png", ...size, metadata } : null;
     at = end;
   }
   return null;
 }
 
 // A WebP whose RIFF size is the file's, whose chunks fill it exactly, and which holds one complete still image
-// (a VP8 or VP8L chunk). Animations are refused.
+// (a VP8 or VP8L chunk). Animations and chunks of other kinds are refused.
 function webpFacts(bytes: Uint8Array): ImageFacts | null {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (bytes.length < 30 || ascii(bytes, 0, 4) !== "RIFF" || ascii(bytes, 8, 4) !== "WEBP" || view.getUint32(4, true) + 8 !== bytes.length) return null;
@@ -94,6 +101,7 @@ function webpFacts(bytes: Uint8Array): ImageFacts | null {
   let size: { width: number; height: number } | null = null;
   let image = false;
   let extended: { width: number; height: number } | null = null;
+  let metadata = 0;
   while (at < bytes.length) {
     if (at + 8 > bytes.length) return null;
     const type = ascii(bytes, at, 4);
@@ -101,7 +109,8 @@ function webpFacts(bytes: Uint8Array): ImageFacts | null {
     const end = at + 8 + length + (length % 2);
     if (end > bytes.length) return null;
     const data = at + 8;
-    if (type === "ANIM" || type === "ANMF") return null;
+    if (!["VP8X", "VP8 ", "VP8L", "ALPH", "ICCP", "EXIF", "XMP "].includes(type)) return null;
+    if (type === "ICCP" || type === "EXIF" || type === "XMP ") metadata += length;
     if (type === "VP8X" && at === 12 && length >= 10) extended = { width: 1 + (bytes[data + 4]! | (bytes[data + 5]! << 8) | (bytes[data + 6]! << 16)), height: 1 + (bytes[data + 7]! | (bytes[data + 8]! << 8) | (bytes[data + 9]! << 16)) };
     if (type === "VP8L" && !image) {
       if (length < 5 || bytes[data] !== 0x2f) return null;
@@ -117,7 +126,7 @@ function webpFacts(bytes: Uint8Array): ImageFacts | null {
   }
   if (at !== bytes.length || !image || !size) return null;
   if (extended && (extended.width !== size.width || extended.height !== size.height)) return null;
-  return { type: "webp", ...size };
+  return { type: "webp", ...size, metadata };
 }
 
 // The type and size of a structurally complete PNG or WebP; null for anything else.

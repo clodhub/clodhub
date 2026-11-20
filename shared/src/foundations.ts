@@ -68,10 +68,43 @@ const PURL_NAMESPACE: Record<string, number> = { maven: 1, swift: 2, golang: 1, 
 // Types that have no namespace.
 const PURL_NO_NAMESPACE = new Set(["cargo", "gem", "pypi", "nuget", "hex", "pub", "cocoapods", "hackage", "conda"]);
 
+// Characters a package URL may hold unencoded; anything else, and every "%" not followed by two hex digits, is refused.
+const PURL_CHARS = /^[A-Za-z0-9._~!$&'()*+,;=:@%/?#-]*$/;
+const PERCENT = /%(?![0-9A-Fa-f]{2})/;
+
+// Qualifiers: key=value pairs joined by "&", keys lowercase ASCII letters, digits, ".", "-" and "_" not starting with a
+// digit, each key once, values not empty. The subpath: "/"-separated segments, none empty, "." or "..".
+function purlQualifiers(q: string | undefined): boolean {
+  if (q === undefined) return true;
+  const pairs = q.slice(1).split("&");
+  const keys = new Set<string>();
+  for (const pair of pairs) {
+    const eq = pair.indexOf("=");
+    if (eq < 1) return false;
+    const key = pair.slice(0, eq);
+    const value = pair.slice(eq + 1);
+    if (!/^[a-z.\-_][a-z0-9.\-_]*$/.test(key) || keys.has(key) || value === "" || value.includes("=")) return false;
+    keys.add(key);
+  }
+  return true;
+}
+
+function purlSubpath(sub: string | undefined): boolean {
+  if (sub === undefined) return true;
+  const segments = sub.slice(1).replace(/^\/+|\/+$/g, "").split("/");
+  return segments.every((x) => x !== "" && x !== "." && x !== ".." && !x.includes("#") && !x.includes("?"));
+}
+
 export function parsePurl(v: unknown): Purl | null {
-  if (typeof v !== "string" || v.length > 1000 || /[\s\\]/.test(v)) return null;
+  if (typeof v !== "string" || v.length > 1000 || !PURL_CHARS.test(v) || PERCENT.test(v)) return null;
   const m = /^pkg:([A-Za-z][A-Za-z0-9.+-]*)\/+([^?#]+)(\?[^#]*)?(#.*)?$/.exec(v);
   if (!m) return null;
+  if (!purlQualifiers(m[3]) || !purlSubpath(m[4])) return null;
+  try {
+    decodeURIComponent(v);
+  } catch {
+    return null;
+  }
   const type = m[1]!.toLowerCase();
   if (m[1] !== type) return null;
   let path = m[2]!.replace(/\/+$/, "");

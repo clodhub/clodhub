@@ -59,13 +59,28 @@ export function startLogin(env: Env): Response {
   const params = new URLSearchParams({
     client_id: env.GITHUB_OAUTH_CLIENT_ID!,
     redirect_uri: `${env.PUBLIC_ORIGIN}/api/auth/callback`,
-    scope: "read:user",
+    scope: "read:user read:org",
     state,
   });
   return new Response(null, {
     status: 302,
     headers: { Location: `${env.GITHUB_OAUTH_BASE}/login/oauth/authorize?${params}`, "Set-Cookie": cookie(stateCookieName(env), state, 600, isSecure(env)) },
   });
+}
+
+// The organisations the sign-in token shows active membership of. A token without read:org records nothing, so a
+// later class publish asks the developer to sign in again.
+async function recordOrgs(env: Env, deps: Deps, developerId: string, token: string, now: string): Promise<void> {
+  let res: Response;
+  try {
+    res = await deps.fetch(`${env.GITHUB_API_BASE}/user/memberships/orgs?state=active&per_page=100`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "ourapps" } });
+  } catch {
+    return;
+  }
+  if (!res.ok) return;
+  const list = (await res.json().catch(() => [])) as { organization?: { login?: string }; state?: string }[];
+  const orgs = Array.isArray(list) ? list.filter((m) => m.state === "active" && m.organization?.login).map((m) => m.organization!.login!.toLowerCase()) : [];
+  await env.DB.prepare("INSERT INTO developer_orgs (developer_id, orgs, checked_at) VALUES (?, ?, ?) ON CONFLICT (developer_id) DO UPDATE SET orgs = excluded.orgs, checked_at = excluded.checked_at").bind(developerId, JSON.stringify(orgs), now).run();
 }
 
 // Step 2: swap the code for a token, read the GitHub user, create or find the developer.
@@ -95,6 +110,7 @@ export async function finishLogin(request: Request, env: Env, deps: Deps): Promi
     dev = { id: randomId(8), githubId: user.id, githubLogin: user.login, slug: await freeSlug(db, user.login), displayName: user.name?.trim() || user.login, createdAt: now.toISOString(), termsAcceptedVersion: null, termsAcceptedAt: null };
     await db.insertDeveloper(dev);
   }
+  await recordOrgs(env, deps, dev.id, token, now.toISOString());
   const sessionId = randomId(24);
   const expires = new Date(now.getTime() + SESSION_DAYS * 86_400_000);
   await db.insertSession(await sessionHash(env, sessionId), dev.id, expires.toISOString());

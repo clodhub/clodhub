@@ -59,7 +59,7 @@ function listUrl(origin: string, path: string, q: ListQuery, change: Partial<Rec
 
 const totalText = (t: { count: number; approximate: boolean }): string => (t.approximate ? `more than ${t.count.toLocaleString("en-GB")}` : t.count.toLocaleString("en-GB"));
 
-const LIST_HELP = "Parameters: q (search), category, platform, licence, quality (packaged|reviewed|integration-tested|live-tested, that level or above), certified=true|false, channel (security|features|preview), secure=true (no known vulnerabilities), publisher, deprecated=exclude|include|only, sort (relevance with q, downloads, trending, updated, name), cursor (from Next or Previous), limit (1 to 100, default 30).";
+const LIST_HELP = "Parameters: q (search; a word of 3 or more characters also matches word starts, a shorter one whole words only. Results follow the sort over every match: with at most 1,000 matches all are ordered at once; with more, a page may come back short after checking 20,000 entries, and Next continues. Relevance with more than 1,000 matches ranks the 1,000 most downloaded), category, platform, licence, quality (packaged|reviewed|integration-tested|live-tested, that level or above), certified=true|false, channel (security|features|preview), secure=true (no known vulnerabilities), publisher, deprecated=exclude|include|only, sort (relevance with q, downloads, trending, updated, name), cursor (from Next or Previous), limit (1 to 100, default 30).";
 
 function pageLinks(origin: string, path: string, l: { query: ListQuery; next: string | null; previous: string | null }): string[] {
   return [...(l.previous ? [`Previous: ${listUrl(origin, path, l.query, { cursor: l.previous })}`] : []), ...(l.next ? [`Next: ${listUrl(origin, path, l.query, { cursor: l.next })}`] : [])];

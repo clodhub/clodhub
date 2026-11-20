@@ -61,7 +61,7 @@ import { audit } from "../audit.js";
 import type { AuthedDeveloper } from "../auth.js";
 import { classListText, classText, categoriesText, componentDetailsText, componentListText, componentText, recipeDetailsText, recipeListText, recipeText } from "../catalogue-text.js";
 import { CatalogueDb, entryStatus, type EntryRow, type Kind, type Listing, type SummaryRow, type VersionRow } from "../catalogue-db.js";
-import { imageFacts, imageKey, putDocument, readDocument, readDocuments, sha256Hex } from "../catalogue-store.js";
+import { imageFacts, IMAGE_METADATA_BYTES, imageKey, putDocument, readDocument, readDocuments, sha256Hex } from "../catalogue-store.js";
 import { randomId } from "../crypto.js";
 import type { Deps, Env } from "../env.js";
 import { dlUrl } from "../flow.js";
@@ -217,7 +217,7 @@ function asVersion(e: SummaryRow, v: VersionRow): SummaryRow {
 const subject = (kind: Kind, e: EntryRow, version: string) => ({ kind, entryId: e.id, name: e.name, version, developerId: e.developerId, flag: e.flag });
 
 async function imageViews(env: Env, d: CatalogueDb, images: PackageImage[]): Promise<ImageView[]> {
-  const known = await d.images(images.map((i) => hexOf(i.digest)));
+  const known = await d.images(images.map((i) => hexOf(i.digest)), "");
   return images.map((i) => ({ url: `${env.PUBLIC_ORIGIN}/images/${hexOf(i.digest)}.${known.get(hexOf(i.digest))?.type ?? "png"}`, thumbnail: thumbnailUrl(env, i.thumbnail)!, caption: i.caption, platform: i.platform, width: i.width, height: i.height }));
 }
 
@@ -303,10 +303,6 @@ async function publisherId(env: Env, slug: string | undefined): Promise<string |
 
 async function listing(env: Env, d: CatalogueDb, kind: Kind, q: ListQuery) {
   const pid = await publisherId(env, q.publisher);
-  if (pid === null) throw new HttpError(400, `publisher ${q.publisher} is not a publisher on ourapps`);
-  if (q.category && !(await d.categoryExists(q.category))) throw new HttpError(400, `category ${q.category} is not in the category tree`);
-  if (q.class && !(await d.classByName(q.class))) throw new HttpError(400, `class ${q.class} is not published`);
-  for (const [direction, types] of [["provides", q.provides], ["requires", q.requires]] as const) for (const type of types ?? []) if (!(await d.interfaceExists(type, direction))) throw new HttpError(400, `${direction} ${type}: no component ${direction} that interface`);
   const empty = { rows: [] as SummaryRow[], total: { count: 0, approximate: false }, next: null, previous: null };
   const [page, categories] = await Promise.all([pid === null ? Promise.resolve(empty) : d.list(kind, q, pid ?? null), d.categoryChildren(q.category ?? null)]);
   const trees = await d.deprecationsFor(page.rows.map((r) => subject(kind, r, r.latestVersion!)));
@@ -531,14 +527,23 @@ export async function uploadImage(request: Request, env: Env, deps: Deps, dev: A
   if ((await sha256Hex(bytes)) !== hex) throw new HttpError(422, "the sha256 of the bytes is not the one in the address");
   const facts = imageFacts(bytes);
   if (!facts || `image/${facts.type}` !== declared) throw new HttpError(422, `the bytes are not a complete ${declared.slice(6).toUpperCase()} image`);
+  if (facts.metadata > IMAGE_METADATA_BYTES) throw new HttpError(422, `the image carries ${facts.metadata} bytes of metadata; at most ${IMAGE_METADATA_BYTES} are allowed`);
   if (facts.width < 1 || facts.height < 1 || facts.width > IMAGE_LIMITS.side || facts.height > IMAGE_LIMITS.side) throw new HttpError(422, `width and height must be 1 to ${IMAGE_LIMITS.side} pixels`);
   const d = db(env);
-  if (await d.image(hex)) return json({ status: "unchanged", digest: `sha256:${hex}`, ...facts, bytes: bytes.length, url: `${env.PUBLIC_ORIGIN}/images/${hex}.${facts.type}` });
+  const now = deps.now().toISOString();
+  const unchanged = () => json({ status: "unchanged", digest: `sha256:${hex}`, type: facts.type, width: facts.width, height: facts.height, bytes: bytes.length, url: `${env.PUBLIC_ORIGIN}/images/${hex}.${facts.type}` });
+  const mine = (await d.images([hex], dev.id)).get(hex);
+  if (mine?.uploaded) return unchanged();
   const limit = Number(env.IMAGE_UPLOADS_PER_DAY ?? DEFAULT_IMAGE_UPLOADS_PER_DAY);
   if ((await d.imagesUploadedSince(dev.id, new Date(deps.now().getTime() - 86_400_000).toISOString())) >= limit) throw new HttpError(429, `at most ${limit} images can be uploaded a day`);
+  // Bytes another developer uploaded first: this developer is recorded as an uploader too, and may name the image.
+  if (mine) {
+    await d.addUploader(hex, dev.id, now);
+    return unchanged();
+  }
   await env.CATALOGUE.put(imageKey(hex), bytes, { httpMetadata: { contentType: declared, cacheControl: "public, max-age=31536000, immutable" } });
-  await d.addImage({ digest: hex, type: facts.type, width: facts.width, height: facts.height, bytes: bytes.length }, dev.id, deps.now().toISOString());
-  return json({ status: "stored", digest: `sha256:${hex}`, ...facts, bytes: bytes.length, url: `${env.PUBLIC_ORIGIN}/images/${hex}.${facts.type}` }, 201);
+  await d.addImage({ digest: hex, type: facts.type, width: facts.width, height: facts.height, bytes: bytes.length }, dev.id, now);
+  return json({ status: "stored", digest: `sha256:${hex}`, type: facts.type, width: facts.width, height: facts.height, bytes: bytes.length, url: `${env.PUBLIC_ORIGIN}/images/${hex}.${facts.type}` }, 201);
 }
 
 // Images nobody named within a day are removed (hourly, a bounded number at a time).
@@ -552,10 +557,10 @@ export async function removeUnclaimedImages(env: Env, deps: Deps): Promise<numbe
 }
 
 // Every listed image and thumbnail must be uploaded first, with the width and height the entry states, and be named
-// by a published entry already or have been uploaded by the same developer.
+// by a published entry already or have been uploaded (its bytes sent) by the same developer.
 async function checkImages(d: CatalogueDb, images: PackageImage[], developerId: string): Promise<void> {
-  const known = await d.images(images.flatMap((i) => [hexOf(i.digest), hexOf(i.thumbnail)]));
-  for (const [hex, i] of known) if (!i.claimed && i.uploadedBy !== developerId) known.delete(hex);
+  const known = await d.images(images.flatMap((i) => [hexOf(i.digest), hexOf(i.thumbnail)]), developerId);
+  for (const [hex, i] of known) if (!i.claimed && !i.uploaded) known.delete(hex);
   images.forEach((i, n) => {
     const full = known.get(hexOf(i.digest));
     const thumb = known.get(hexOf(i.thumbnail));
@@ -942,17 +947,25 @@ export async function publishClass(request: Request, env: Env, deps: Deps, dev: 
   return json(url, 201);
 }
 
-// Whether the developer's saved GitHub token shows an active membership of the organisation.
+// Whether the developer is an active member of the organisation: by the memberships read at their last sign-in, or
+// else by their saved GitHub token. A token GitHub refuses for lack of the read:org scope gets 403 with what to do.
+export const ORG_SCOPE_MISSING = "the saved GitHub token cannot read organisation membership; sign in to ourapps.app again";
 async function memberOf(env: Env, deps: Deps, dev: AuthedDeveloper, org: string): Promise<boolean> {
+  const recorded = await env.DB.prepare("SELECT orgs FROM developer_orgs WHERE developer_id = ?").bind(dev.id).first<{ orgs: string }>();
+  if (recorded && (JSON.parse(recorded.orgs) as string[]).includes(org.toLowerCase())) return true;
   const token = (await loadSecrets(env, dev.id, ["githubToken"])).githubToken;
-  if (!token) throw new HttpError(409, "save a GitHub token in Settings first: it shows which organisations you belong to");
+  if (!token) {
+    if (recorded) return false;
+    throw new HttpError(403, ORG_SCOPE_MISSING);
+  }
   let res: Response;
   try {
     res = await fetchUpstream(env, deps, `${env.GITHUB_API_BASE}/user/memberships/orgs/${encodeURIComponent(org)}`, token, "application/vnd.github+json");
   } catch {
     throw new HttpError(502, "GitHub could not be reached");
   }
-  if (res.status === 404 || res.status === 403) return false;
+  if (res.status === 403 || res.status === 401) throw new HttpError(403, ORG_SCOPE_MISSING);
+  if (res.status === 404) return false;
   if (!res.ok) throw new HttpError(502, `GitHub answered ${res.status} for your membership of ${org}`);
   return ((await res.json().catch(() => ({}))) as { state?: string }).state === "active";
 }
