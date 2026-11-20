@@ -1014,12 +1014,14 @@ export class CatalogueDb {
     return true;
   }
 
-  // Removes the hashed download addresses of days before `now`'s (UTC), and rate-limit counts older than an hour, so
-  // no address hash outlives its day by more than the hour until the next run.
+  // Removes the hashed download addresses of days before `now`'s (UTC), in downloads_seen and in rate-limit keys, and
+  // rate-limit counts older than an hour, so no address hash outlives its day by more than the hour until the next run.
   async forgetVisitors(now: Date): Promise<void> {
+    const today = now.toISOString().slice(0, 10);
+    const hourAgo = new Date(now.getTime() - 3_600_000).toISOString().slice(0, 16);
     await this.batch([
-      this.d1.prepare("DELETE FROM downloads_seen WHERE day < ?").bind(now.toISOString().slice(0, 10)),
-      this.d1.prepare("DELETE FROM rate_limits WHERE minute < ?").bind(new Date(now.getTime() - 3_600_000).toISOString().slice(0, 16)),
+      this.d1.prepare("DELETE FROM downloads_seen WHERE day < ?").bind(today),
+      this.d1.prepare("DELETE FROM rate_limits WHERE minute < ?").bind(hourAgo > `${today}T00:00` ? hourAgo : `${today}T00:00`),
     ]);
   }
 

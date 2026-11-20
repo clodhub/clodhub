@@ -243,7 +243,7 @@ You need Python 3.12, Node.js and Graphviz. aepm is the installer: https://githu
 ```
 git clone https://github.com/ourapps-ae/aepm && export PYTHONPATH=$PWD/aepm
 python3 -m aepm fetch <recipe>@<version> --with-dependencies --store store
-tar -xf store/objects/<recipe digest without sha256:>.tar INSTRUCTIONS.md   # the recipe's instructions; works in PowerShell and cmd on Windows 10 and later too; each recipe's .txt page gives it with the digest
+tar -xf store/objects/<recipe digest without sha256:>.tar INSTRUCTIONS.md   # the recipe's instructions; works in PowerShell and cmd on Windows 10 version 1803 or later too; each recipe's .txt page gives it with the digest
 python3 -m aepm questions <recipe>@<version> --store store
 # answer from the person's description; ask only what it leaves open; write answers.json (question id to answer)
 python3 -m aepm design <recipe>@<version> --store store --answers answers.json --out definition.json

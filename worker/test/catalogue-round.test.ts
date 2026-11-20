@@ -707,6 +707,18 @@ describe("review fixes", () => {
     expect(await held()).toEqual([0, 0]);
   });
 
+  it("deletes a download link's address hash from 23:59 at the first hourly run after midnight", async () => {
+    await publish(card("0.1.0"));
+    const now = deps.now();
+    deps.advance(Date.parse(`${now.toISOString().slice(0, 10)}T23:59:10Z`) - now.getTime());
+    expect((await handle(new Request(`${BASE}/api/components/card-deck/0.1.0/bundle`, { headers: { "CF-Connecting-IP": "198.51.100.10" } }), env, deps)).status).toBe(200);
+    const held = async () => [(await env.DB.prepare("SELECT COUNT(*) AS n FROM downloads_seen").first<{ n: number }>())!.n, (await env.DB.prepare("SELECT COUNT(*) AS n FROM rate_limits").first<{ n: number }>())!.n];
+    expect(await held()).toEqual([1, 1]);
+    deps.advance(8 * 60_000);
+    await scheduled("7 * * * *", env, deps);
+    expect(await held()).toEqual([0, 0]);
+  });
+
   it("names curators by GitHub id, not login", async () => {
     env.CATALOGUE_CURATORS = "george";
     expect((await post("/api/dev/categories", exampleCategories())).status).toBe(403);
