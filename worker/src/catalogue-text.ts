@@ -25,6 +25,18 @@ const buildSteps = (v: { slug: string; version: string; instructions?: string | 
   "7. python3 -m aepm install definition.json --lock lock.json --store store --policy policy.json --target app",
   "8. build and run: section \"Build and run\" of INSTRUCTIONS.md in the recipe archive (local: cd app/server && npm ci && npm start, then cd app/web && npm ci && npm run dev)",
 ];
+// One line per build report.
+const reportLines = (v: RecipeVersionView): string[] =>
+  v.buildReports.length === 0
+    ? []
+    : [
+        "",
+        `Build reports (${v.buildReports.length}): agents building an application from this recipe, newest first`,
+        ...v.buildReports.map(
+          (r) =>
+            `- ${r.version}${r.current ? "" : " (not the current version)"}, ${r.date}: ${r.agent.harness}, ${r.agent.model}; ${r.activeMinutes} active minutes, US$${r.costUsd.toFixed(2)}; built ${r.results.filter((x) => x.built).length} of ${r.results.length} targets; ${r.problems.length} problem${r.problems.length === 1 ? "" : "s"}; rated ${r.rating.score}/${r.rating.of}; ${r.url}`,
+        ),
+      ];
 const publisherLine = (p: { displayName: string; slug: string } | null): string => (p ? `Publisher: ${p.displayName} (${p.slug})` : "Publisher: none (the publisher deleted their account)");
 
 function page(title: string, body: string[]): string {
@@ -251,6 +263,7 @@ export function recipeText(v: RecipeVersionView, origin: string): string {
     ...releaseLines(v, "recipes", origin),
     `Bundle download: GET ${v.bundle.url} returns a link valid for one hour${v.status === "orphaned" ? "; with no publisher the link exists only while the release is public, otherwise the status is bundle-unavailable" : ""}`,
     ...buildSteps(v),
+    ...reportLines(v),
     "",
     `Questions (${v.questions.length})`,
     ...questionGroups(v.questions).flatMap((g) => ["", `${g.heading} (${g.questions.length})`, ...g.questions.flatMap(question)]),

@@ -1,5 +1,5 @@
 // The recipe library and the component catalogue: browse, search, and read one entry.
-import type { CategoryCount, ClassList, ClassVersionView, FoundationSummary, Foundations, ImageView, LineView, PackageDetails, Quality, VersionRef, VulnerabilityReport, VulnerabilitySummary } from "@my/store-shared";
+import type { BuildReportView, CategoryCount, ClassList, ClassVersionView, FoundationSummary, Foundations, ImageView, LineView, PackageDetails, Quality, VersionRef, VulnerabilityReport, VulnerabilitySummary } from "@my/store-shared";
 import { COMPONENT_PACKAGE, QUALITY_LEVELS, QUALITY_TEXT, RECIPE_PACKAGE, SIGNATURES_NOTE, classSettings, kindText, questionGroups, type BundleLink, type ClassInterface, type PackageSummary, type ComponentList, type ComponentSummary, type ComponentVersionView, type Deprecation, type EntryStatus, type Profile, type RecipeList, type RecipeSlotView, type RecipeSummary, type RecipeVersionView, type SettingDeclaration } from "@my/store-shared";
 import { ApiError, api, whoAmI } from "../api.js";
 import { html, mount, raw, type Raw } from "../html.js";
@@ -320,6 +320,31 @@ function wireBundle(root: HTMLElement, url: string): void {
 }
 
 // What a download is, at a glance: the same words appear in the plain-text pages and the documents.
+// Agents' runs of the recipe, newest first (spec section 6b).
+export function buildReportsCard(v: { version: string; buildReports: BuildReportView[] }): Raw | string {
+  if (v.buildReports.length === 0) return "";
+  return html`
+    <div class="card mt" id="build-reports">
+      <h2>Build reports (${v.buildReports.length})</h2>
+      <p class="muted">Coding agents building an application from this recipe, as the person saw each run.</p>
+      ${v.buildReports.map(
+        (r) => html`
+          <div class="build-report mt" id="report-${r.id}">
+            <h3>Version ${r.version}, ${r.date}</h3>
+            ${r.current ? "" : html`<p class="small muted">This report is of version ${r.version}; the current version is ${v.version}.</p>`}
+            <p class="small">${r.agent.harness}, ${r.agent.model}. ${r.activeMinutes} active minutes, US$${r.costUsd.toFixed(2)}. Rated ${r.rating.score} of ${r.rating.of} by ${r.rating.by}.</p>
+            <table class="table">
+              <tr><th>Target</th><th>Built</th><th>Tested</th><th>Ran</th></tr>
+              ${r.results.map((x) => html`<tr><td>${x.target}</td><td>${x.built ? "yes" : "no"}</td><td>${x.tested}</td><td>${x.ran}</td></tr>`)}
+            </table>
+            ${r.problems.length > 0 ? html`<details class="mt-s"><summary>Problems (${r.problems.length})</summary><ul class="bullets">${r.problems.map((p) => html`<li>${p}</li>`)}</ul></details>` : html`<p class="small muted">No problems reported.</p>`}
+            <p class="small muted">Most helpful next: ${r.rating.mostHelpful}. <a href="${r.url}">The full report</a></p>
+          </div>`,
+      )}
+    </div>
+  `;
+}
+
 export function packageCard(summary: PackageSummary, v: { bundle: { asset: string }; digest: string; source: { repository: string; tag: string } }): Raw {
   return html`
           <div class="card mt" id="what-you-download">
@@ -420,6 +445,8 @@ export function recipeBody(v: RecipeVersionView, requested: string): Raw {
             ${copyRow(`Build an application from the ${v.title} recipe: https://ourapps.app/recipes/${v.slug}.txt`)}
             <div class="row wrap mt-s"><button class="btn secondary sm" id="bundle-link" type="button">${icon("external")} Download the archive</button><span class="small faint">The link is valid for one hour. Digest ${v.bundle.digest.slice(0, 19)}</span></div>
           </div>
+
+          ${buildReportsCard(v)}
 
           <div class="card mt" id="about">
             <h2>About</h2>

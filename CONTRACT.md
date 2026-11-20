@@ -535,6 +535,23 @@ POST /api/dev/components/:name/:version/quality      (and /api/dev/recipes/:name
 
 Curators only (403 otherwise). It replaces the version's quality, for example when a published recipe whose review passed pins this version, or when live checks pass.
 
+#### Build reports
+
+```
+POST /api/dev/recipes/:name/reports      a build report (tools/evidence/*.json), as the body
+-> 201 { "status": "published", "id": "<32 hex>", "name": "ourapps-ae/ourpoker", "version": "0.8.0", "url": "https://ourapps.app/api/recipes/ourpoker/reports/<id>" }
+-> 200 the same with "status": "unchanged" when that report is stored already
+GET  /api/recipes/:name/reports          -> { name, currentVersion, reports: [{ id, version, digest, date, publishedAt, current, agent: { harness, model }, activeMinutes, costUsd, results, problems, rating, url, report }] }, newest first
+GET  /api/recipes/:name/reports/:id      -> one of those
+```
+
+- Curators only (403 otherwise). The report's `recipe.name` is the recipe at `:name`.
+- The body is format 1, kind `recipe-build`, with exactly these fields: `recipe` { name, version, digest }, `aepm` { repository (owner/name), commit (7 to 40 hex) }, `date` (YYYY-MM-DD, not after tomorrow), `agent` { harness, model, session } (each at most 200 characters), `prompt`, `conditions` and `update` (each at most 2,000), `answers` (at most 60, each text of at most 500 characters, a number, true, false, null or a list of at most 30 texts of at most 100), `measured` { method (at most 1,000), elapsedMinutes, waitingForPersonMinutes, activeMinutes, replies, toolCalls, tokens { input, output, reasoning, cacheRead, cacheWrite, total }, costUsd }, `results` (1 to 20 of { target, built, tested, ran }, `tested` and `ran` at most 300 characters each), `problems` (at most 30, each at most 1,000) and `rating` { score (0 to `of`), of (1 to 100), by (at most 200), mostHelpful (at most 500) }. Texts are plain: no control or format characters, no tabs or line breaks, no leading or trailing space. At most 32 KiB in all. A report holding a secret is refused.
+- `recipe.version` must have been published under the name with `recipe.digest`, now or before: the catalogue keeps every version and digest ever published per name (versions published before migration 0022 included). Otherwise 422.
+- The id is the first 32 hex digits of the sha256 of the report's RFC 8785 canonical JSON. Reports are kept by recipe name, version and id, apart from the version rows: unlisting or publishing again leaves them.
+- A report whose every target `built` makes that version `integration-tested` when the version is listed now and rated lower.
+- The recipe page shows "Build reports" after "Build it", newest first, with a note on a report of another version than the current one; the text page lists one line per report with its `url`.
+
 #### Errors common to entries
 
 400 invalid entry (the message lists what is wrong, at most ten items); 403 quality from someone who is not a curator, or the GitHub account cannot push to the repository; 409 the name belongs to another developer or repository, the version is published with another digest, the developer has no GitHub token saved, or a limit is reached; 422 an image is not uploaded or differs, or GitHub cannot see the repository, the release or the asset, or the asset's digest differs; 502 GitHub could not be reached. Entries containing secret values are refused.

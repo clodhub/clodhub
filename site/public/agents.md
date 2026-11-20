@@ -268,6 +268,7 @@ With no machine of the developer's: the same steps run in GitHub Actions, from `
 ```
 GET /api/recipes?<listing parameters>                       -> { query, total: { count, approximate }, next, previous, categories, recipes: [summary] }
 GET /api/recipes/:name/:version                             -> the version (":version" may be "latest")
+GET /api/recipes/:name/reports                             -> { name, currentVersion, reports: [{ id, version, date, current, agent, activeMinutes, costUsd, results, problems, rating, url, report }] }: agents' build reports, newest first
 GET /api/recipes/:name/:version/bundle                      -> { name, version, digest, asset, assetDigest, status, url, expiresAt, deprecations }
 GET /api/recipes/:name/:version/deprecations                -> { name, version, status, affected, checked, deprecations }
 GET /api/recipes/:name/:version/diagram.svg                 -> the design diagram

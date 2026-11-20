@@ -1,4 +1,5 @@
 // What the public recipe and component routes return. Never carries tokens or credentials.
+import type { BuildReportView } from "./build-reports.js";
 import type { BundlePointer, Channel, ClassInterface, ComponentDependency, MigrationSummary, Port, Quality, QualityLevel, Recipe, RecipeSlot, ReleaseChannel, ReleasePointer, EntryModule, SettingDeclaration, Suitability, Targets, VulnerabilityWaiver } from "./catalogue.js";
 import type { ClassDescriptor, ClassReference, Compatibility, Foundations, Presentation } from "./foundations.js";
 
@@ -157,6 +158,8 @@ export interface RecipeVersionView extends RecipeSummary, VersionCommon {
   tests: Recipe["tests"];
   instructions: string;
   versions: VersionRef[];
+  // Build reports of any version of the recipe, newest first (spec section 6b).
+  buildReports: BuildReportView[];
 }
 
 // `usedBy` lists the listed recipes whose newest version names this component in a slot, with each slot and whether the

@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { descriptorDigest, EXAMPLE_IMAGE, EXAMPLE_IMAGE_BYTES, exampleCategories, exampleClassEntries, pngHeader, webpHeader, SIGNATURES_NOTE, summariseFoundations, type Foundations, type PackageDetails, EXAMPLE_BUNDLE_DIGEST, EXAMPLE_INTERFACE_DIGEST, exampleComponentEntries, exampleComponentEntry, exampleRecipeEntry, type BundleLink, type ComponentList, type ComponentVersionView, type DeprecationReport, type RecipeList, type RecipeVersionView } from "@my/store-shared";
+import { descriptorDigest, EXAMPLE_IMAGE, EXAMPLE_IMAGE_BYTES, exampleCategories, exampleClassEntries, pngHeader, webpHeader, SIGNATURES_NOTE, summariseFoundations, type Foundations, type PackageDetails, EXAMPLE_BUNDLE_DIGEST, EXAMPLE_INTERFACE_DIGEST, exampleComponentEntries, exampleComponentEntry, exampleRecipeEntry, type BundleLink, type BuildReportList, type BuildReportView, type ComponentList, type ComponentVersionView, type DeprecationReport, type RecipeList, type RecipeVersionView } from "@my/store-shared";
 import { Db } from "../src/db.js";
+import report060 from "./fixtures/ourpoker-0.6.0-2026-11-16.json";
+import report080 from "./fixtures/ourpoker-0.8.0-2026-11-20.json";
 import { ftsQuery } from "../src/catalogue-db.js";
 import { componentDetailsText, componentText, recipeDetailsText, recipeText } from "../src/catalogue-text.js";
 import type { Env } from "../src/env.js";
@@ -1340,5 +1342,85 @@ describe("account deletion keeps the catalogue and orphans it", () => {
     const dev = (await env.DB.prepare("SELECT id FROM developers").first<{ id: string }>())!.id;
     await env.DB.prepare("UPDATE components SET deprecated_at = NULL, deprecated_reason = NULL").run();
     await expect(env.DB.prepare("DELETE FROM developers WHERE id = ?").bind(dev).run()).rejects.toThrow();
+  });
+});
+
+describe("build reports", () => {
+  const ourpoker = "ourapps-ae/ourpoker";
+  const reports = [report060, report080] as unknown as Mutable[];
+
+  // OurPoker as migration 0022 leaves it: the name and owner, no listed version, and the digests it published.
+  async function ourpokerBeforeTheRound() {
+    const dev = (await env.DB.prepare("SELECT id FROM developers WHERE github_id = 42").first<{ id: string }>())!.id;
+    await env.DB.prepare("INSERT INTO recipes (id, name, scope, slug, developer_id, repo, created_at, updated_at) VALUES ('ourpoker', ?, 'ourapps-ae', 'ourpoker', ?, 'ourapps-ae/ourpoker', '2026-11-01', '2026-11-20')").bind(ourpoker, dev).run();
+    for (const r of reports) await env.DB.prepare("INSERT INTO published_digests (kind, name, version, digest, published_at) VALUES ('recipe', ?, ?, ?, ?)").bind(ourpoker, r.recipe.version, r.recipe.digest, `${r.date}T00:00:00Z`).run();
+  }
+
+  const send = (r: unknown, c: string | null = cookie, slug = "ourpoker") => post(`/api/dev/recipes/${slug}/reports`, r, c);
+  // The reports are of 16 and 20 November; sessions last 30 days, so sign in again on the later day.
+  beforeEach(async () => {
+    deps.advance(40 * 86_400_000);
+    cookie = await signIn(env, deps);
+  });
+
+  it("keeps the two OurPoker reports of versions no longer listed, newest first, and answers the same report again unchanged", async () => {
+    await ourpokerBeforeTheRound();
+    for (const r of reports) {
+      const res = await send(r);
+      expect(res.status, await res.clone().text()).toBe(201);
+      expect(await res.json()).toMatchObject({ status: "published", name: ourpoker, version: r.recipe.version });
+    }
+    const again = await send(reports[0]);
+    expect(again.status).toBe(200);
+    expect(((await again.json()) as { status: string }).status).toBe("unchanged");
+    const list = (await (await get("/api/recipes/ourpoker/reports")).json()) as BuildReportList;
+    expect(list.currentVersion).toBeNull();
+    expect(list.reports.map((r) => [r.version, r.date, r.current, r.activeMinutes, r.costUsd])).toEqual([["0.8.0", "2026-11-20", false, 27.6, 1.85], ["0.6.0", "2026-11-16", false, 28.1, 3.2]]);
+    expect(list.reports[0]!.report).toEqual(report080);
+    const one = (await (await get(`/api/recipes/ourpoker/reports/${list.reports[1]!.id}`)).json()) as BuildReportView;
+    expect(one.results).toHaveLength(7);
+    expect((await get("/api/recipes/ourpoker/reports/0000")).status).toBe(404);
+  });
+
+  it("refuses a report from a non-curator, of a version or digest never published, with a secret, or with fields out of shape", async () => {
+    await ourpokerBeforeTheRound();
+    const sue = await signIn(env, deps, { id: 9, login: "sue", name: "Sue" });
+    expect((await send(reports[1], sue)).status).toBe(403);
+    const error = async (patch: (r: Mutable) => void) => {
+      const r = structuredClone(reports[1]!);
+      patch(r);
+      const res = await send(r);
+      return [res.status, ((await res.json()) as { error: string }).error] as const;
+    };
+    expect(await error((r) => (r.recipe.version = "0.9.0"))).toEqual([422, `${ourpoker} 0.9.0 has never been published`]);
+    expect((await error((r) => (r.recipe.digest = `sha256:${"0".repeat(64)}`)))[0]).toBe(422);
+    expect((await error((r) => (r.prompt = `use ghp_${"a".repeat(36)}`)))[0]).toBe(400);
+    expect((await error((r) => (r.problems = ["one\ttwo"])))[1]).toContain("problems must list");
+    expect((await error((r) => (r.extra = 1)))[1]).toContain("report.extra is not a field");
+    expect((await error((r) => (r.format = 2)))[1]).toContain("format-refused");
+    expect((await error((r) => (r.rating.score = 11)))[1]).toContain("rating.score");
+    expect((await error((r) => (r.results[0].built = "yes")))[1]).toContain("results[0].built");
+    expect((await error((r) => (r.recipe.name = "ourapps-ae/other")))[1]).toContain("not ourapps-ae/ourpoker");
+    expect((await error((r) => (r.date = "2099-01-01")))[1]).toContain("future");
+  });
+
+  it("shows reports on the recipe page and text page, notes an older version, and makes a fully built version integration-tested", async () => {
+    await publishRecipe();
+    const listed = (await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView;
+    const current = structuredClone(reports[1]!);
+    current.recipe = { name: "acme/poker-night", version: "0.1.0", digest: listed.digest };
+    expect((await send(current, cookie, "poker-night")).status).toBe(201);
+    await env.DB.prepare("INSERT INTO published_digests (kind, name, version, digest, published_at) VALUES ('recipe', 'acme/poker-night', '0.0.9', ?, '2026-11-01')").bind(`sha256:${"9".repeat(64)}`).run();
+    const older = structuredClone(reports[0]!);
+    older.recipe = { name: "acme/poker-night", version: "0.0.9", digest: `sha256:${"9".repeat(64)}` };
+    older.results[0].built = false;
+    expect((await send(older, cookie, "poker-night")).status).toBe(201);
+    const view = (await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView;
+    expect(view.quality).toMatchObject({ level: "integration-tested" });
+    expect(view.buildReports.map((r) => [r.version, r.current])).toEqual([["0.1.0", true], ["0.0.9", false]]);
+    const text = await (await get("/recipes/poker-night.txt")).text();
+    expect(text).toContain("Build reports (2): agents building an application from this recipe, newest first");
+    expect(text).toContain("- 0.1.0, 2026-11-20: OpenCode 2.3.2, anthropic/claude-opus-5-5; 27.6 active minutes, US$1.85; built 7 of 7 targets; 6 problems; rated 7/10; ");
+    expect(text).toContain("- 0.0.9 (not the current version), 2026-11-16: OpenCode, anthropic/claude-opus-5-5; 28.1 active minutes, US$3.20; built 6 of 7 targets;");
   });
 });

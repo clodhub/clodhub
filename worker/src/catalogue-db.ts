@@ -400,6 +400,7 @@ export class CatalogueDb {
       statements.push(this.d1.prepare(`INSERT INTO recipe_versions (recipe_id, title, summary, has_diagram, ${commonColumns}) VALUES (${marks(4 + common.length)})`).bind(target.id, v.listing.title, v.listing.summary, v.hasDiagram ? 1 : 0, ...common));
       for (const ref of slotComponents(v.recipe!)) statements.push(this.d1.prepare("INSERT INTO recipe_slots (recipe_id, version, slot_id, component_name, component_version, preferred, included_when) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(target.id, v.version, ref.slot, ref.name, ref.version, ref.preferred ? 1 : 0, ref.includedWhen));
     }
+    statements.push(this.d1.prepare("INSERT OR IGNORE INTO published_digests (kind, name, version, digest, published_at) VALUES (?, ?, ?, ?, ?)").bind(kind, target.name, v.version, v.digest, now));
     for (const purl of v.purls) {
       statements.push(this.d1.prepare("INSERT OR IGNORE INTO purls (purl) VALUES (?)").bind(purl));
       statements.push(this.d1.prepare("INSERT OR IGNORE INTO version_purls (kind, entry_id, version, purl) VALUES (?, ?, ?, ?)").bind(kind, target.id, v.version, purl));
@@ -440,6 +441,26 @@ export class CatalogueDb {
     this.note(res.meta as { rows_read?: number });
     await this.batch(await this.refreshStatements(kind, entry, entry, now));
     return res.meta.changes ?? 0;
+  }
+
+  // ---------------------------------------------------------------- build reports
+
+  // The digest a name's version was published with, now or before (null when never).
+  async publishedDigest(kind: Kind, name: string, version: string): Promise<string | null> {
+    return (await this.first<{ digest: string }>(this.d1.prepare("SELECT digest FROM published_digests WHERE kind = ? AND name = ? AND version = ?").bind(kind, name, version)))?.digest ?? null;
+  }
+
+  // Stores a report; false when the same report is stored already.
+  async addBuildReport(r: { name: string; version: string; id: string; digest: string; date: string; report: string; by: string; now: string }): Promise<boolean> {
+    const res = await this.d1.prepare("INSERT OR IGNORE INTO build_reports (recipe_name, version, id, digest, date, report, published_by, published_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)").bind(r.name, r.version, r.id, r.digest, r.date, r.report, r.by, r.now).run();
+    this.note(res.meta as { rows_read?: number });
+    return (res.meta.changes ?? 0) > 0;
+  }
+
+  // A recipe's reports, newest first (by the run's date, then by when they were sent).
+  async buildReports(name: string, limit = 50): Promise<{ id: string; version: string; digest: string; date: string; report: string; publishedAt: string }[]> {
+    const rows = await this.all(this.d1.prepare("SELECT id, version, digest, date, report, published_at FROM build_reports INDEXED BY build_reports_recent WHERE recipe_name = ? ORDER BY date DESC, published_at DESC LIMIT ?").bind(name, limit));
+    return rows.map((r) => ({ id: r.id as string, version: r.version as string, digest: r.digest as string, date: r.date as string, report: r.report as string, publishedAt: r.published_at as string }));
   }
 
   // Sets the quality of one version and, when it is the newest listed one, of the entry row.

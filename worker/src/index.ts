@@ -98,6 +98,7 @@ async function route(request: Request, env: Env, deps: Deps): Promise<Response> 
     const kind = p[0] === "recipes" ? "recipe" : "component";
     if (p.length === 1) return catalogue.list(env, kind, url);
     if (p.length === 2) return catalogue.versionView(env, kind, p[1]!, "latest");
+    if (kind === "recipe" && p[2] === "reports" && (p.length === 3 || p.length === 4)) return catalogue.buildReports(env, p[1]!, p[3] ?? null);
     if (p.length === 3) return catalogue.versionView(env, kind, p[1]!, p[2]!);
     if (p.length === 4 && p[3] === "bundle") return catalogue.bundle(request, env, deps, kind, p[1]!, p[2]!);
     if (p.length === 4 && p[3] === "diagram.svg" && kind === "recipe") return catalogue.recipeDiagram(env, p[1]!, p[2]!);
@@ -156,6 +157,7 @@ async function route(request: Request, env: Env, deps: Deps): Promise<Response> 
       if (p.length === 2 && m === "GET") return catalogue.listMine(env, me, recipes ? "recipe" : "component");
       if (p.length === 2 && m === "POST") return recipes ? catalogue.publishRecipe(request, env, deps, me) : catalogue.publishComponent(request, env, deps, me);
       if (p.length === 5 && m === "POST" && p[4] === "quality") return catalogue.setQuality(request, env, deps, me, recipes ? "recipe" : "component", p[2]!, p[3]!);
+      if (recipes && p.length === 4 && m === "POST" && p[3] === "reports") return catalogue.publishBuildReport(request, env, deps, me, p[2]!);
       if (p.length === 4 && m === "POST" && (p[3] === "deprecate" || p[3] === "undeprecate")) return catalogue.setDeprecation(request, env, deps, me, recipes ? "recipe" : "component", p[2], p[3] === "deprecate");
       if ((p.length === 3 || p.length === 4) && m === "DELETE") return catalogue.unlist(request, env, deps, me, recipes ? "recipe" : "component", p[2], p[3] ?? null);
     }

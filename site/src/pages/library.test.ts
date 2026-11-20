@@ -64,6 +64,7 @@ function recipeView(patch: Partial<RecipeVersionView> = {}): RecipeVersionView {
     connections: r.connections,
     tests: r.tests,
     instructions: r.instructions,
+    buildReports: [],
     versions: [{ version: r.version, digest: e.digest, publishedAt: "2026-10-16T10:00:00.000Z", channel: "features", fixes: [] }],
     ...patch,
   };

@@ -4,6 +4,36 @@
 -- version rows keep only what pages and checks read. Entries are format 2: every stored version is removed and published
 -- again; entries keep their names and owners. Classes and the category tree are entries too. Images live in R2 by sha256.
 
+-- Every version and digest ever published under a name, kept when version rows go: build reports name versions that
+-- were listed before this migration removed them.
+CREATE TABLE published_digests (
+  kind TEXT NOT NULL CHECK (kind IN ('recipe', 'component')),
+  name TEXT NOT NULL,
+  version TEXT NOT NULL,
+  digest TEXT NOT NULL,
+  published_at TEXT NOT NULL,
+  PRIMARY KEY (kind, name, version)
+) WITHOUT ROWID;
+INSERT OR IGNORE INTO published_digests (kind, name, version, digest, published_at)
+  SELECT 'recipe', r.name, v.version, v.digest, v.published_at FROM recipe_versions v JOIN recipes r ON r.id = v.recipe_id;
+INSERT OR IGNORE INTO published_digests (kind, name, version, digest, published_at)
+  SELECT 'component', c.name, v.version, v.digest, v.published_at FROM component_versions v JOIN components c ON c.id = v.component_id;
+
+-- Build reports (spec section 6b), by recipe name, version and report id (the first 32 hex digits of the sha256 of the
+-- report's canonical JSON), apart from the version rows. report is the report as sent.
+CREATE TABLE build_reports (
+  recipe_name TEXT NOT NULL,
+  version TEXT NOT NULL,
+  id TEXT NOT NULL,
+  digest TEXT NOT NULL,
+  date TEXT NOT NULL,
+  report TEXT NOT NULL CHECK (json_valid(report)),
+  published_by TEXT,
+  published_at TEXT NOT NULL,
+  PRIMARY KEY (recipe_name, version, id)
+) WITHOUT ROWID;
+CREATE INDEX build_reports_recent ON build_reports(recipe_name, date DESC, published_at DESC);
+
 DROP TABLE catalogue_fts;
 DROP TABLE recipe_slots;
 DROP TABLE component_dependencies;

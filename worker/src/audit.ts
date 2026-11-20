@@ -27,6 +27,7 @@ export type AuditEvent =
   | "recipe-quality"
   | "component-quality"
   | "class-published"
+  | "recipe-report-published"
   | "categories-published";
 
 export async function audit(request: Request | null, env: Env, deps: Deps, developerId: string, event: AuditEvent, detail = ""): Promise<void> {

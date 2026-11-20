@@ -29,6 +29,11 @@ import {
   validateRecipeEntry,
   versionLine,
   type Advisory,
+  type BuildReport,
+  type BuildReportList,
+  type BuildReportView,
+  validateBuildReport,
+  canonical,
   type ClassDescriptor,
   type BundleLink,
   type CategoryCount,
@@ -240,11 +245,12 @@ async function versionCommon(env: Env, d: CatalogueDb, kind: Kind, e: SummaryRow
 
 async function recipeView(env: Env, d: CatalogueDb, e: SummaryRow, v: VersionRow, doc: RecipeEntry): Promise<RecipeVersionView> {
   const recipe = doc.recipe;
-  const [listed, [tree], common, alternatives] = await Promise.all([
+  const [listed, [tree], common, alternatives, reports] = await Promise.all([
     d.catalogueFor(recipe.components.map((s) => s.preferred)),
     d.deprecationsFor([subject("recipe", e, v.version)]),
     versionCommon(env, d, "recipe", e, v),
     Promise.all(recipe.components.map((s) => d.implementationCount(s.class.name, s.preferred.name))),
+    d.buildReports(e.name, 20),
   ]);
   return {
     ...recipeSummary(env, asVersion(e, v), tree.notices),
@@ -270,7 +276,74 @@ async function recipeView(env: Env, d: CatalogueDb, e: SummaryRow, v: VersionRow
     connections: recipe.connections,
     tests: recipe.tests,
     instructions: recipe.instructions,
+    buildReports: reports.map((r) => reportView(env, e.slug, r, e.latestVersion)),
   };
+}
+
+// ---------------------------------------------------------------- build reports
+
+function reportView(env: Env, slug: string, r: { id: string; version: string; digest: string; date: string; report: string; publishedAt: string }, current: string | null): BuildReportView & { report: BuildReport } {
+  const report = JSON.parse(r.report) as BuildReport;
+  return {
+    id: r.id,
+    version: r.version,
+    digest: r.digest,
+    date: r.date,
+    publishedAt: r.publishedAt,
+    current: r.version === current,
+    agent: { harness: report.agent.harness, model: report.agent.model },
+    activeMinutes: report.measured.activeMinutes,
+    costUsd: report.measured.costUsd,
+    results: report.results,
+    problems: report.problems,
+    rating: report.rating,
+    url: `${env.PUBLIC_ORIGIN}/api/recipes/${slug}/reports/${r.id}`,
+    report,
+  };
+}
+
+// GET /api/recipes/:name/reports and /api/recipes/:name/reports/:id
+export async function buildReports(env: Env, name: string, id: string | null): Promise<Response> {
+  const d = db(env);
+  const entry = await d.entryBySlug("recipe", slugOf(name));
+  if (!entry) throw new HttpError(404, "not found");
+  const views = (await d.buildReports(entry.name, 200)).map((r) => reportView(env, entry.slug, r, entry.latestVersion));
+  if (id !== null) {
+    const one = views.find((v) => v.id === id);
+    if (!one) throw new HttpError(404, "not found");
+    return json(one);
+  }
+  return json({ name: entry.name, currentVersion: entry.latestVersion, reports: views } satisfies BuildReportList);
+}
+
+// POST /api/dev/recipes/:name/reports with a build report. Curators only. The report's version must have been published
+// under the name with that digest, now or before; the same report again answers "unchanged".
+export async function publishBuildReport(request: Request, env: Env, deps: Deps, dev: AuthedDeveloper, name: string): Promise<Response> {
+  if (!curator(env, dev)) throw new HttpError(403, "only the catalogue's curators publish build reports");
+  const body = await readJson<unknown>(request);
+  if (SECRET_PATTERN.test(JSON.stringify(body))) throw new HttpError(400, "the report appears to contain a secret; reports name secrets, never hold them");
+  const result = validateBuildReport(body);
+  if (!result.ok) throw new HttpError(400, `invalid report: ${result.errors.slice(0, 10).join("; ")}${result.errors.length > 10 ? `; and ${result.errors.length - 10} more` : ""}`);
+  const r = result.report;
+  const d = db(env);
+  const entry = await d.entryBySlug("recipe", slugOf(name));
+  if (!entry) throw new HttpError(404, "not found");
+  if (entry.name !== r.recipe.name) throw new HttpError(400, `the report is of ${r.recipe.name}, not ${entry.name}`);
+  const now = deps.now();
+  if (r.date > new Date(now.getTime() + 86_400_000).toISOString().slice(0, 10)) throw new HttpError(400, "date is in the future");
+  const digest = await d.publishedDigest("recipe", entry.name, r.recipe.version);
+  if (digest === null) throw new HttpError(422, `${entry.name} ${r.recipe.version} has never been published`);
+  if (digest !== r.recipe.digest) throw new HttpError(422, `${entry.name} ${r.recipe.version} was published with digest ${digest}, not ${r.recipe.digest}`);
+  const id = (await sha256Hex(new TextEncoder().encode(canonical(body)))).slice(0, 32);
+  const added = await d.addBuildReport({ name: entry.name, version: r.recipe.version, id, digest, date: r.date, report: JSON.stringify(body), by: dev.id, now: now.toISOString() });
+  // A listed version with a report whose every target built is integration-tested, unless it is rated higher.
+  const listed = await d.version("recipe", entry.slug, r.recipe.version, true);
+  const q = listed?.row.quality ?? null;
+  if (added && listed && listed.row.digest === digest && r.results.every((x) => x.built) && (q === null || QUALITY_LEVELS.indexOf(q.level) < QUALITY_LEVELS.indexOf("integration-tested"))) {
+    await d.setQuality("recipe", entry, listed.row.version, { level: "integration-tested", certified: q?.certified ?? false, liveTested: null });
+  }
+  if (added) await audit(request, env, deps, dev.id, "recipe-report-published", `${entry.name} ${r.recipe.version} ${id}`);
+  return json({ status: added ? "published" : "unchanged", id, name: entry.name, version: r.recipe.version, url: `${env.PUBLIC_ORIGIN}/api/recipes/${entry.slug}/reports/${id}` }, added ? 201 : 200);
 }
 
 async function componentView(env: Env, d: CatalogueDb, e: SummaryRow, v: VersionRow, doc: ComponentEntry): Promise<ComponentVersionView> {
