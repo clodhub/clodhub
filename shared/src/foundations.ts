@@ -3,8 +3,13 @@ import { bytesToHex } from "@noble/hashes/utils.js";
 
 export const FOUNDATION_PLATFORMS = ["web", "server", "ios", "macos", "tvos", "android", "windows"] as const;
 export interface ClassReference { name: string; version: string; digest: string }
+// A category path: lower-case segments of letters, digits and hyphens, joined by "/".
+export const CATEGORY_PATH = /^[a-z0-9]+(-[a-z0-9]+)*(\/[a-z0-9]+(-[a-z0-9]+)*){0,5}$/;
+export const PRESENTATIONS = ["visual", "none"] as const;
+export type Presentation = typeof PRESENTATIONS[number];
 export interface ClassDescriptor {
-  format: 1; name: string; version: string;
+  format: 2; name: string; version: string;
+  title: string; summary: string; category: string; presentation: Presentation;
   provides: { type: string; version: string; path: string; modules: Record<string, string[]> }[];
   requires: { type: string; version: string }[];
   settings: { type: "object"; properties: Record<string, { type: "string" | "integer" | "boolean"; pattern?: string }>; required: string[]; additionalProperties: false };
@@ -128,9 +133,13 @@ export function validateDescriptor(value: unknown, patterns: readonly string[]):
 
 function descriptorProblems(value: unknown, patterns: readonly string[]): string[] {
   const e: string[] = []; const need = (ok: unknown, code: string) => { if (!ok) e.push(code); };
-  if (!keys(value, "format name version provides requires settings inventory verification")) return ["class-fields"];
+  if (!keys(value, "format name version title summary category presentation provides requires settings inventory verification")) return ["class-fields"];
   const c = value;
-  need(c.format === 1 && isClassReference({ name: c.name, version: c.version, digest: "0".repeat(64) }), "class-identity");
+  if (c.format !== 2) return ["class-format-refused"];
+  need(c.format === 2 && isClassReference({ name: c.name, version: c.version, digest: "0".repeat(64) }), "class-identity");
+  need(text(c.title) && c.title.length <= 80 && text(c.summary) && c.summary.length <= 300, "class-title");
+  need(typeof c.category === "string" && c.category.length <= 100 && CATEGORY_PATH.test(c.category), "class-category");
+  need((PRESENTATIONS as readonly unknown[]).includes(c.presentation), "class-presentation");
   const inventory = list(c.inventory);
   need(inventory.length && inventory.every(v => keys(v, "path digest") && path(v.path) && digest(v.digest)) && unique(inventory.map(v => v.path)), "class-inventory");
   const paths = new Set(inventory.map(v => v.path));

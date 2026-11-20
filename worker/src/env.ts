@@ -1,6 +1,10 @@
 export interface Env {
   DB: D1Database;
   WEBAPP_FILES: KVNamespace;
+  CATALOGUE: R2Bucket;
+  // GitHub logins, comma-separated, whose publish calls may set quality.
+  CATALOGUE_CURATORS?: string;
+  OSV_API_BASE?: string;
   ASSETS?: Fetcher;
   PUBLIC_ORIGIN: string;
   APPLE_API_BASE: string;

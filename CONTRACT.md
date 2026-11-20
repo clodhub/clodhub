@@ -421,33 +421,135 @@ A recipe or a component is published from its own GitHub repository. ourapps kee
 ### A recipe repository implements
 
 - A GitHub release for each version with the package as a release asset.
-- In the package: `recipe.json` (format 1: name, version, title, summary, category, tags, `targets.client` from `web ios android macos windows tvos`, `targets.server`, components, jobs, scale, questions, connections, tests, page, instructions), the page description (Markdown or text), an optional SVG diagram, and `INSTRUCTIONS.md`.
+- In the package: `recipe.json` (format 2: name, version, title, summary, category, tags, `targets.client` from `web ios android macos windows tvos`, `targets.server`, components, jobs, scale, questions, connections, tests, page, instructions), the page description (Markdown or text), an optional SVG diagram, and `INSTRUCTIONS.md`.
 - Each entry of `components` is a slot: `{ id, class: { name, version, digest }, preferred: { name, version }, configuration, includedWhen }`. The exact class reference resolves in the recipe manifest's `classes`, independently of the preferred component. Each class entry is `{ reference, descriptor }`; `reference.digest` is the lowercase SHA-256 of the descriptor's RFC 8785 canonical bytes. The descriptor owns interface declarations, per-platform module paths, closed settings schema, file/digest inventory and shared behaviour suites. The reserved `application` instance names the recipe's own component.
 - A candidate carries the same class declaration and lists its exact reference in `implements`. It provides the class interfaces at their versions, adds no nonoptional requirement, accepts class setting types and grammars, introduces no required setting without a default, and installs each relevant class module. Provider interface documents need not match the preferred implementation's bytes. `aepm alternatives <recipe>@<version> <slot> --store store` lists fitting implementations; `aepm design ... --substitute <slot>=<name>@<version>` selects one.
 - Platforms are `web`, `server`, `ios`, `macos`, `tvos`, `android`, `windows`. Selected targets include `server` whenever the recipe declares it. Runtime range intersections must be nonempty; framework roles must agree on names and ranges; shared exact dependency pins must agree, while isolated versions may differ. Global stylesheet namespace overlap and declared stylesheet conflicts fail fit. Publication checks every candidate against the recipe authority and graph conflicts among unconditional, non-job preferred slots; conditional selection and answer evaluation remain in aepm.
 - Wrapper and upstream licences are distinct expressions. Each upstream record declares exact name/version, revision, repository, package URL, notices and delivery. Bundled delivery lists source file digests. Build-time delivery names `npm`, `gradle` or `swift`, an exact lock and its digest. npm also declares `packagePath` and integrity; Gradle declares verification metadata, configurations and artifact digests; Swift binds an exact source revision. Bundled Gradle wrappers carry their own inventory and distribution checksum. Maintenance declares owners, contact, repository and update source/strategy.
 - A slot is included when its `includedWhen` is null or true. `includedWhen` and a question's `askWhen` are conditions: CEL (Common Expression Language, https://cel.dev) expressions of type bool, for example `"video"`, `"'ios' in targets"`, `"computerPlayers != 'none'"`, `"scale in ['medium', 'large']"` or `"storeInvitation != ''"`. Each question id is a variable holding its answer: a `set` question is a list of strings, `boolean` a bool, `integer` an int, and `choice`, `text`, `secretRef` and `account` a string. A condition uses only literals (quoted text, whole numbers, `true`, `false` and lists of one type), question ids, `==`, `!=`, `<`, `<=`, `>`, `>=`, `in` (list membership), `&&`, `||`, `!`, parentheses and `size()`. The check parses each condition with `@bufbuild/cel` and type-checks it to bool; text compared with a choice or set question must be one of its options, and a question's `askWhen` may not lead back to itself.
-- A question is `{ id, ask, askAgent, askWhen, type, options, default, min, max, effects }`. `type` is `set`, `choice`, `boolean`, `integer` (with `min` and `max`), `text`, `secretRef` or `account`. A question with `askWhen` has a `default`, which it takes when the condition is false. Questions of type `secretRef` carry no value and no default.
+- A question is `{ id, question, ask, askAgent, askWhen, type, options, default, min, max, effects }`: `question` is the text, `ask` is `required`, `unless-settled` or `default` (see "Recipes" under "Catalogue publish API"). `type` is `set`, `choice`, `boolean`, `integer` (with `min` and `max`), `text`, `secretRef` or `account`. A `required` question has no `default`; an `unless-settled` or `default` question has one, which it also takes when its `askWhen` is false. Questions of type `secretRef` carry no value and no default, so they are `required`.
 - An effect is `{ "sets": { "<slotId>.<settingId>": value } }`; the slot id may be `application`. The setting must be declared in the slot's class configuration, and literals must validate against it. `includes` is not an effect: a slot is included only through `includedWhen`. A value is a literal, `"$answer"` (a set becomes a space-separated string), `{ "map": { "<option>": literal } }` (a choice question, one entry per option), `{ "fromScale": "concurrentPeople" | "requestsPerDay" | "storedMegabytes" }`, `{ "template": "prefix-{{answer}}" }` or `{ "ref": "<secretRef question id>" }`. A secret setting takes only `ref`. Two questions may not set one target to different values unless their `askWhen` conditions cannot both hold, which the check proves only when both confine one question to values that do not overlap: `==` a literal, `in` a list, a boolean question alone or negated, joined by `&&` and `||`.
 - A job is `{ id, slot, candidates: [{ component, version?, profile, includedWhen? }], overrideQuestion? }`; a candidate other than the slot's preferred component carries `version`; `overrideQuestion` names a choice or text question whose answer restricts the candidates first. `scale` is `{ question, bands }`: the question is a choice whose options are the band ids, and a band is `{ id, label, load }`.
 - A connection joins `{ instance, port }` endpoints whose instances are slot ids or `application`; the source port is one its class provides, the target port one its class requires, both of one type and version.
 
-### Publishing
+### Catalogue publish API
 
-A signed-in developer, or a `manage` API key, sends the entry. The service validates it, checks with the developer's saved GitHub token that the token can push to the repository and that the tagged release holds the named asset (and that GitHub's recorded digest for it matches), then records the pointer.
+The publish tool sends these requests with a `manage` API key (`Authorization: Bearer oa_...`) or a signed-in session. Every body is JSON unless stated; every error is `{ "error": "<what is wrong>" }`. Entry bodies are format 2: a body with `format: 1` is refused with 400 `invalid entry: format-refused: ...`, and the version is published again with the current tool.
+
+Order for one package version: upload its images, publish the class it implements (once per class version), then publish the component or recipe.
+
+#### Categories
 
 ```
-POST /api/dev/components   the component entry
-POST /api/dev/recipes      { format: 1, recipe: <recipe.json>, digest, source, bundle, page }
-DELETE /api/dev/components/:name[/:version]
+POST /api/dev/categories          classes/categories.json
+{ "format": 1, "categories": [{ "id": "games", "title": "Games", "parent": null }, { "id": "games/cards", "title": "Cards", "parent": "games" }] }
+-> 200 { "status": "published", "added": ["games/cards"], "renamed": [], "total": 42 }
+```
+
+- Only the catalogue's curators (GitHub logins in the Worker's `CATALOGUE_CURATORS`) may send it; anyone else gets 403.
+- `id` is a category path: lowercase segments of letters, digits and hyphens joined by `/`, at most 6 deep. `parent` is the path without its last segment, or null. A parent must be in the body or already in the tree.
+- Missing categories are added, existing ones take the new title; nothing is removed.
+
+#### Classes
+
+```
+POST /api/dev/classes
+{ "format": 2, "class": <class.json> }
+-> 201 { "status": "published", "name": "ourapps-ae/card-deck-class", "version": "1.0.0", "digest": "sha256:<hex>", "url": "https://ourapps.app/classes/card-deck-class", "api": "https://ourapps.app/api/classes/card-deck-class/1.0.0" }
+-> 200 the same with "status": "unchanged" when that version is already published with that digest
+```
+
+- `class` is class.json itself (format 2; an earlier format is refused with `class-format-refused`): `{ format: 2, name, version, title, summary, category, presentation, provides, requires, settings, inventory, verification }`. `title` is at most 80 characters, `summary` at most 300, `category` a path that exists in the tree, `presentation` `visual` or `none`. The same four fields are required on every descriptor in a package's `foundations.classes`, and they are inside the descriptor digest.
+- The digest is computed by the catalogue (sha256 of the RFC 8785 canonical descriptor); the body carries none.
+- 400 invalid class (the message lists the codes, for example `class: class-fields`) or a category outside the tree; 409 the name belongs to another developer, or the version is published with another digest.
+
+#### Images
+
+```
+PUT /api/dev/images/<sha256 hex>
+Content-Type: image/png | image/webp
+<the image bytes>
+-> 201 { "status": "stored", "digest": "sha256:<hex>", "type": "png", "width": 1280, "height": 800, "bytes": 482113, "url": "https://ourapps.app/images/<hex>.png" }
+-> 200 the same with "status": "unchanged" when that sha256 is already stored
+```
+
+- The catalogue checks that the sha256 of the bytes equals the one in the address (422 otherwise), that the bytes are the declared type (422), that the size is at most 2 MiB (413) and that width and height are 1 to 16,384 pixels. Other types get 415.
+- Upload each image and its 480-pixel-wide WebP thumbnail (a thumbnail of an image narrower than 480 pixels keeps its width). Images are served at `GET /images/<hex>.<png|webp>` with `Cache-Control: public, max-age=31536000, immutable`.
+
+#### Components
+
+```
+POST /api/dev/components
+{
+  "format": 2,
+  "name": "acme/card-deck", "version": "0.1.0", "digest": "sha256:<archive>",
+  "description": "...", "tags": ["cards"], "targets": { "client": ["web"], "server": [] }, "guardians": ["Level N Ltd (guardian key 08775f20)"],
+  "provides": [{ "id": "card-deck", "type": "ae/card-deck", "version": "1.0.0" }],
+  "requires": [{ "id": "random-source", "type": "ae/random-source", "version": "1.0.0", "optional": true }],
+  "settings": [{ "id": "seed", "type": "string", "grammar": "label", "required": false, "secret": false, "hasDefault": true }],
+  "interfaceDigests": { "ae/card-deck@1.0.0": "sha256:<hex>" }, "interfaceModules": { "ae/card-deck@1.0.0": { "web": { "path": "web/index.ts", "installed": true } } },
+  "dependencies": [], "suitability": <suitability.json>, "migration": null,
+  "source": { "repository": "acme/card-deck", "tag": "v0.1.0" }, "bundle": { "asset": "card-deck-0.1.0.tar", "digest": "sha256:<asset>" },
+  "foundations": { "licence", "platforms", "classes", "implements", "upstream", "compatibility", "maintenance", "files", "artefacts" },
+  "release": { "channel": "features", "fixes": [] },
+  "images": [{ "digest": "sha256:<image>", "thumbnail": "sha256:<webp thumbnail>", "caption": "The table during a hand, night look", "platform": "web", "width": 1280, "height": 800 }],
+  "vulnerabilityWaivers": [{ "id": "GHSA-xxxx-xxxx-xxxx", "reason": "the affected function is not reachable: ..." }],
+  "quality": { "level": "reviewed", "certified": true, "liveTested": null }
+}
+-> 201 { "status": "published", "name": "acme/card-deck", "version": "0.1.0", "url": "https://ourapps.app/components/card-deck", "api": "https://ourapps.app/api/components/card-deck/0.1.0" }
+-> 200 the same with "status": "unchanged" for the same version and digest again
+```
+
+- `version` is three integers, with a pre-release (`0.9.0-preview.1`) only for the preview channel.
+- `release` comes from the verified manifest. `channel` is `security` (patch above 0; `fixes` lists one or more OSV, GHSA or CVE ids), `features` (patch 0; `fixes` empty) or `preview` (a pre-release; `fixes` empty).
+- `foundations.implements` names exactly one class, and that class's descriptor is in `foundations.classes`. The component's listing category is that class's `category`, which must be in the tree; the body has no `category` field.
+- `images`: at most 12, read from the verified archive, each uploaded first (with its thumbnail) with the width and height stated. A component whose class has `presentation: "visual"` needs at least one. The first image is the main image. `caption` is at most 140 characters; `platform` is one of `foundations.platforms`.
+- `vulnerabilityWaivers` is `[]` when none; each `reason` is at most 500 characters.
+- `quality` is null or left out, except from a curator: `level` is `packaged`, `reviewed`, `integration-tested` or `live-tested` (each includes the ones before it), `certified` is true when the guardian signature is Level N's, `liveTested` is `{ at: "<ISO date>", platform }` for `live-tested` and null otherwise. Quality from anyone else gets 403.
+- The other fields are as before this format: ports, settings, interface facts and dependencies from `aepm.bundle.read_archive`; `foundations` copied from the manifest (`licence` is `identity.licence`).
+- The full entry is stored as a document; the listing keeps a summary of the newest listed version. The newest listed version is the highest that is not a preview, or the highest preview while nothing else is listed.
+
+#### Recipes
+
+```
+POST /api/dev/recipes
+{ "format": 2, "recipe": <recipe.json format 2>, "digest", "source", "bundle", "page": { "description": "<markdown>", "diagram": "<svg>" | null }, "foundations", "release", "images", "vulnerabilityWaivers", "quality" }
+-> 201 / 200 as for components, with "url": "https://ourapps.app/recipes/<name>"
+```
+
+- `recipe.category` is a category path in the tree. A recipe with any client target needs at least one image of the application as built.
+- recipe.json format 2: each question is `{ id, question, ask, askAgent?, askWhen?, type, options?, default?, min?, max?, effects }`. `question` is the text put to the person (at most 300 characters). `ask` is `required` (no default; always put to the person when its condition holds), `unless-settled` (has a default; asked when the request does not settle it) or `default` (has a default, taken unless the request says otherwise). A format 1 recipe.json is refused with `format-refused`.
+- `release`, `images`, `vulnerabilityWaivers` and `quality` are as for components.
+
+#### Quality after publishing
+
+```
+POST /api/dev/components/:name/:version/quality      (and /api/dev/recipes/:name/:version/quality)
+{ "level": "integration-tested", "certified": true, "liveTested": null }
+-> 200 { "name": "acme/card-deck", "version": "0.1.0", "quality": { ... } }
+```
+
+Curators only (403 otherwise). It replaces the version's quality, for example when a published recipe whose review passed pins this version, or when live checks pass.
+
+#### Errors common to entries
+
+400 invalid entry (the message lists what is wrong, at most ten items); 403 quality from someone who is not a curator, or the GitHub account cannot push to the repository; 409 the name belongs to another developer or repository, the version is published with another digest, the developer has no GitHub token saved, or a limit is reached; 422 an image is not uploaded or differs, or GitHub cannot see the repository, the release or the asset, or the asset's digest differs; 502 GitHub could not be reached. Entries containing secret values are refused.
+
+#### Other publishing routes
+
+```
+GET    /api/dev/components | /api/dev/recipes      -> { components: [{ name, slug, repository, latestVersion, status, deprecated, versions: [{ version, digest, publishedAt, channel, fixes, listed }] }] }
+DELETE /api/dev/components/:name[/:version]          unlist one version, or every version; the rows and digests stay
 DELETE /api/dev/recipes/:name[/:version]
-POST /api/dev/components/:name/deprecate     optional { replacement }; undeprecate reverses it
-POST /api/dev/recipes/:name/deprecate        the same for recipes
+POST   /api/dev/components/:name/deprecate           optional { replacement }; undeprecate reverses it
+POST   /api/dev/recipes/:name/deprecate              the same for recipes
 ```
 
-Every entry carries `digest` (the package fingerprint), `source` `{ repository, tag }` and `bundle` `{ asset, digest }` (the sha256 of the release asset, `sha256:` and 64 lowercase hex characters). Publishing the same version with the same digest changes nothing; the same version with a different digest is refused. A name stays bound to its first repository and developer. The component entry's `dependencies` is an optional list of `{ name, version }` (default empty). A recipe's `page` is `{ description, diagram, screenshots }`: text, an SVG without scripts or outside references (or null), and https image addresses.
+Deprecating a name flags every version; the catalogue then shows a warning on the entry and on every recipe and component that uses it, and agents read it as the `deprecations` array. A recipe or component whose developer deleted their account stays listed as orphaned and nobody can publish to its name.
 
-Deprecating a name flags every version; the catalogue then shows a warning on the entry and on every recipe and component that uses it, and agents read it as the `deprecations` array. A recipe or component whose developer deleted their account stays listed and downloadable, flagged orphaned; its bundle is served only while the release is public, and unavailable otherwise.
+#### What the catalogue reads back
+
+`GET /api/{components,recipes}/:name/:version` (`:version` may be `latest`) returns, among the fields in agents.md, `versions: [{ version, digest, publishedAt, channel, fixes }]` for every listed version, `release: { channel, fixes }` of the shown version, `line: { line, securityReleases: [{ version, fixes, publishedAt }] }`, `quality`, `images`, `vulnerabilitySummary` and `vulnerabilityWaivers`. aepm's `outdated` reads `versions` and needs no archive. `GET .../vulnerabilities` returns `{ name, version, checkedAt, count, advisories: [{ id, summary, severity, affected: [purl], fixedIn, waived }] }`; the catalogue checks every published version's purls (from `foundations.upstream`) at OSV daily.
 
 Public reads, bundle links and the plain-text and JSON variants are in agents.md.
 

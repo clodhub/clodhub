@@ -32,6 +32,9 @@ async function render(): Promise<void> {
     case "components": await (await library()).componentsPage(root); break;
     case "component": await (await library()).componentPage(root, route.slug); break;
     case "details": await (await library()).detailsPage(root, route.kind, route.slug); break;
+    case "classes": await (await library()).classesPage(root); break;
+    case "class": await (await library()).classPage(root, route.slug); break;
+    case "categories": await (await library()).categoriesPage(root); break;
     case "example": await (await import("./pages/example.js")).examplePage(root); break;
     case "example-app": await (await import("./pages/example.js")).exampleApp(root); break;
     default: (await publicPages()).notFound(root);

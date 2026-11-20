@@ -1,43 +1,64 @@
-// The recipe library and component catalogue: public reads, and publishing by a signed-in developer or a manage key.
-// D1 holds pointers and page material; the packages stay in the publisher's GitHub releases.
-import { classDescriptor, type Foundations } from "@my/store-shared";
+// The recipe library, the component catalogue and the class entries: public reads, and publishing by a signed-in
+// developer or a manage key. D1 holds the listing and pointers; R2 holds each version's document and the images; the
+// packages stay in the publisher's GitHub releases.
 import {
+  CATEGORY_PATH,
+  CHANNELS,
   DEPRECATED_FILTERS,
+  IMAGE_LIMITS,
   NEIGHBOURS_SHOWN,
-  fit,
+  PAGE_SIZE,
+  QUALITY_LEVELS,
+  SORTS,
+  classDescriptor,
   componentConnectionsSvg,
-  providersPath,
-  recipeComponentsSvg,
+  componentFacts,
   isCatalogueName,
   isCatalogueSlug,
-  isVersion,
+  isPackageVersion,
+  recipeComponentsSvg,
+  slotClass,
   splitName,
+  summariseFoundations,
+  validateCategories,
+  validateClassEntry,
   validateComponentEntry,
+  validateQuality,
   validateRecipeEntry,
+  versionLine,
+  type Advisory,
   type BundleLink,
+  type CategoryCount,
+  type Channel,
+  type ClassList,
+  type ClassSummary,
+  type ClassVersionView,
+  type ComponentEntry,
+  type ComponentFacts,
   type ComponentList,
-  type ComponentSearch,
   type ComponentSummary,
   type ComponentVersionView,
-  type ComponentFacts,
   type Deprecation,
-  type DeprecatedFilter,
   type DeprecationReport,
+  type Foundations,
+  type ImageView,
+  type ListQuery,
+  type PackageDetails,
+  type PackageImage,
+  type Quality,
   type RecipeContext,
+  type RecipeEntry,
   type RecipeList,
-  type RecipeSearch,
-  type RecipeSlot,
-  type RecipeSlotView,
   type RecipeSummary,
   type RecipeVersionView,
-  type PackageDetails,
-  slotClass,
-  summariseFoundations,
+  type Sort,
+  type VulnerabilityReport,
 } from "@my/store-shared";
 import { audit } from "../audit.js";
 import type { AuthedDeveloper } from "../auth.js";
-import { componentDetailsText, componentListText, componentSearchText, componentText, recipeDetailsText, recipeListText, recipeSearchText, recipeText } from "../catalogue-text.js";
-import { CatalogueDb, entryStatus, type ComponentRow, type EntryRow, type Kind, type ListFilter, type RecipeRow } from "../catalogue-db.js";
+import { classListText, classText, categoriesText, componentDetailsText, componentListText, componentText, recipeDetailsText, recipeListText, recipeText } from "../catalogue-text.js";
+import { CatalogueDb, entryStatus, type EntryRow, type Kind, type Listing, type SummaryRow, type VersionRow } from "../catalogue-db.js";
+import { imageFacts, imageKey, putDocument, readDocument, readDocuments, sha256Hex } from "../catalogue-store.js";
 import { randomId } from "../crypto.js";
 import type { Deps, Env } from "../env.js";
 import { dlUrl } from "../flow.js";
@@ -48,10 +69,14 @@ import { fetchUpstream } from "../upstream.js";
 export const MAX_RECIPES_PER_DEVELOPER = 50;
 export const MAX_COMPONENTS_PER_DEVELOPER = 200;
 export const MAX_VERSIONS_PER_ENTRY = 200;
+export const MAX_CLASSES_PER_DEVELOPER = 200;
 
 const SECRET_PATTERN = /-----BEGIN [A-Z ]*PRIVATE KEY-----|\bgh[pousr]_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{30,}|\boa_[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b/;
 
-// ---------------------------------------------------------------- public reads
+type Plural = "recipes" | "components";
+const plural = (kind: Kind): Plural => (kind === "recipe" ? "recipes" : "components");
+
+// ---------------------------------------------------------------- reading parameters
 
 function db(env: Env): CatalogueDb {
   return new CatalogueDb(env.DB);
@@ -64,18 +89,26 @@ function word(url: URL, key: string, pattern: RegExp): string | undefined {
   return value;
 }
 
+function oneOf<T extends string>(url: URL, key: string, values: readonly T[]): T | undefined {
+  const value = url.searchParams.get(key)?.trim();
+  if (!value) return undefined;
+  if (!(values as readonly string[]).includes(value)) throw new HttpError(400, `${key} must be one of ${values.join(", ")}`);
+  return value as T;
+}
+
+function yes(url: URL, key: string): boolean | undefined {
+  const value = url.searchParams.get(key)?.trim();
+  if (!value) return undefined;
+  if (value !== "true" && value !== "false") throw new HttpError(400, `${key} must be true or false`);
+  return value === "true";
+}
+
 function intParam(url: URL, key: string, fallback: number, min: number, max: number): number {
   const value = url.searchParams.get(key);
   if (value === null || value === "") return fallback;
   const n = Number(value);
   if (!Number.isInteger(n) || n < min || n > max) throw new HttpError(400, `${key} must be a whole number from ${min} to ${max}`);
   return n;
-}
-
-function deprecatedParam(url: URL): DeprecatedFilter {
-  const value = url.searchParams.get("deprecated")?.trim() || "include";
-  if (!(DEPRECATED_FILTERS as readonly string[]).includes(value)) throw new HttpError(400, `deprecated must be one of ${DEPRECATED_FILTERS.join(", ")}`);
-  return value as DeprecatedFilter;
 }
 
 // Every value of a repeated parameter: a component must match each one.
@@ -86,25 +119,32 @@ function words(url: URL, key: string, pattern: RegExp, max: number): string[] | 
   return values.length === 0 ? undefined : values;
 }
 
-function listFilter(url: URL): ListFilter {
-  const slug = /^[a-z0-9-]{1,40}$/;
-  return {
-    category: word(url, "category", slug),
-    target: word(url, "target", slug),
-    tag: word(url, "tag", slug),
-    provides: words(url, "provides", /^[A-Za-z0-9_.:/-]{1,80}$/, 10),
-    requires: words(url, "requires", /^[A-Za-z0-9_.:/-]{1,80}$/, 10),
-    deprecated: deprecatedParam(url),
-    limit: intParam(url, "limit", 50, 1, 100),
-    offset: intParam(url, "offset", 0, 0, 100_000),
+// The listing parameters. The page, its .txt and its .json and /api/<kind> all read these.
+export function listQuery(url: URL, kind: Kind): ListQuery {
+  const q = url.searchParams.get("q")?.trim() || undefined;
+  if (q && q.length > 200) throw new HttpError(400, "q is at most 200 characters");
+  const sort = oneOf<Sort>(url, "sort", SORTS) ?? (q ? "relevance" : "downloads");
+  if (sort === "relevance" && !q) throw new HttpError(400, "sort=relevance needs q");
+  const query: ListQuery = {
+    q,
+    category: word(url, "category", CATEGORY_PATH),
+    class: kind === "component" ? word(url, "class", /^[a-z0-9-]{1,39}\/[a-z0-9-]{1,40}$/) : undefined,
+    platform: word(url, "platform", /^[a-z][a-z0-9-]{0,30}$/),
+    licence: word(url, "licence", /^[A-Za-z0-9.+-]{1,60}$/),
+    quality: oneOf(url, "quality", QUALITY_LEVELS),
+    certified: yes(url, "certified"),
+    channel: oneOf<Channel>(url, "channel", CHANNELS),
+    secure: yes(url, "secure"),
+    publisher: word(url, "publisher", /^[a-z0-9-]{1,40}$/),
+    provides: kind === "component" ? words(url, "provides", /^[A-Za-z0-9_.:/-]{1,80}$/, 10) : undefined,
+    requires: kind === "component" ? words(url, "requires", /^[A-Za-z0-9_.:/-]{1,80}$/, 10) : undefined,
+    deprecated: oneOf(url, "deprecated", DEPRECATED_FILTERS) ?? "include",
+    sort,
+    cursor: word(url, "cursor", /^[A-Za-z0-9_-]{1,400}$/),
+    limit: intParam(url, "limit", PAGE_SIZE, 1, 100),
   };
-}
-
-function query(url: URL): string {
-  const q = url.searchParams.get("q")?.trim() ?? "";
-  if (q === "") throw new HttpError(400, "q is required");
-  if (q.length > 200) throw new HttpError(400, "q is at most 200 characters");
-  return q;
+  for (const key of Object.keys(query) as (keyof ListQuery)[]) if (query[key] === undefined) delete query[key];
+  return query;
 }
 
 function slugOf(input: string): string {
@@ -113,66 +153,103 @@ function slugOf(input: string): string {
 }
 
 function versionOf(input: string): string {
-  if (input !== "latest" && !isVersion(input)) throw new HttpError(404, "not found");
+  if (input !== "latest" && !isPackageVersion(input)) throw new HttpError(404, "not found");
   return input;
 }
 
 const publisher = (r: { publisherSlug: string | null; publisherName: string | null }) => (r.publisherSlug === null ? null : { slug: r.publisherSlug, displayName: r.publisherName ?? r.publisherSlug });
 
-export function recipeSummary(env: Env, r: RecipeRow, deprecations: Deprecation[]): RecipeSummary {
-  return { name: r.name, slug: r.slug, version: r.version, title: r.title, summary: r.summary, category: r.category, tags: r.tags, targets: r.targets, publishedAt: r.publishedAt, publisher: publisher(r), repository: r.sourceRepo, url: `${env.PUBLIC_ORIGIN}/recipes/${r.slug}`, status: entryStatus(r.developerId, r.flag), deprecations };
-}
+const hexOf = (digest: string): string => digest.replace(/^sha256:/, "");
+export const thumbnailUrl = (env: Env, digest: string | null): string | null => (digest ? `${env.PUBLIC_ORIGIN}/images/${hexOf(digest)}.webp` : null);
 
-export function componentSummary(env: Env, r: ComponentRow, deprecations: Deprecation[]): ComponentSummary {
-  return { name: r.name, slug: r.slug, version: r.version, description: r.description, category: r.category, tags: r.tags, targets: r.targets, provides: r.provides, requires: r.requires, publishedAt: r.publishedAt, publisher: publisher(r), repository: r.sourceRepo, url: `${env.PUBLIC_ORIGIN}/components/${r.slug}`, status: entryStatus(r.developerId, r.flag), deprecations };
-}
+// ---------------------------------------------------------------- summaries and views
 
-const subject = (kind: Kind, r: RecipeRow | ComponentRow) => ({ kind, entryId: r.entryId, name: r.name, version: r.version, developerId: r.developerId, flag: r.flag });
-
-async function recipeSummaries(env: Env, d: CatalogueDb, rows: RecipeRow[]): Promise<RecipeSummary[]> {
-  const trees = await d.deprecationsFor(rows.map((r) => subject("recipe", r)));
-  return rows.map((r, i) => recipeSummary(env, r, trees[i].notices));
-}
-
-async function componentSummaries(env: Env, d: CatalogueDb, rows: ComponentRow[]): Promise<ComponentSummary[]> {
-  const trees = await d.deprecationsFor(rows.map((r) => subject("component", r)));
-  return rows.map((r, i) => componentSummary(env, r, trees[i].notices));
-}
-
-// Counts independent class implementations among the newest listed component versions.
-async function alternativesFor(env: Env, d: CatalogueDb, slots: RecipeSlot[], authority: Foundations): Promise<RecipeSlotView["alternatives"][]> {
-  const provides = (s: RecipeSlot) => classDescriptor(s.class, authority)!.provides;
-  const candidates = await d.providerFacts([...new Set(slots.flatMap((s) => provides(s).map((p) => p.type)))]);
-  return slots.map((s) => {
-    return {
-      count: provides(s).length === 0 ? 0 : candidates.filter((c) => c.name !== s.preferred.name && fit(s.class, c, authority).length === 0).length,
-      url: `${env.PUBLIC_ORIGIN}${providersPath(provides(s).map((p) => p.type))}`,
-    };
-  });
-}
-
-async function recipeView(env: Env, d: CatalogueDb, entry: EntryRow, r: RecipeRow): Promise<RecipeVersionView> {
-  const recipe = r.recipe;
-  const [listed, [tree]] = await Promise.all([d.catalogueFor(recipe.components.map((s) => s.preferred)), d.deprecationsFor([subject("recipe", r)])]);
-  const alternatives = await alternativesFor(env, d, recipe.components, r.foundations);
+function summaryCommon(env: Env, kind: Kind, e: SummaryRow, deprecations: Deprecation[]) {
   return {
-    foundations: summariseFoundations(r.foundations, `${env.PUBLIC_ORIGIN}/api/recipes/${r.slug}/${r.version}/details`), foundationEvidence: "publisher-declared",
-    ...recipeSummary(env, r, tree.notices),
-    digest: r.digest,
-    source: { repository: r.sourceRepo, tag: r.sourceTag },
-    bundle: { asset: r.bundleAsset, digest: r.bundleDigest, url: `${env.PUBLIC_ORIGIN}/api/recipes/${r.slug}/${r.version}/bundle` },
-    description: r.description,
-    diagram: r.diagram ? `${env.PUBLIC_ORIGIN}/api/recipes/${r.slug}/${r.version}/diagram.svg` : null,
-    screenshots: r.screenshots,
+    name: e.name,
+    slug: e.slug,
+    version: e.latestVersion ?? "",
+    category: e.category,
+    platforms: e.platforms,
+    licence: e.licence,
+    quality: e.quality,
+    channel: e.channel,
+    vulnerabilities: e.vulnerabilities,
+    thumbnail: thumbnailUrl(env, e.thumbnail),
+    downloads: e.downloads,
+    updatedAt: e.publishedAt,
+    publishedAt: e.publishedAt,
+    tags: e.tags,
+    publisher: publisher(e),
+    repository: e.repo,
+    url: `${env.PUBLIC_ORIGIN}/${plural(kind)}/${e.slug}`,
+    status: entryStatus(e.developerId, e.flag),
+    deprecations,
+  };
+}
+
+export function recipeSummary(env: Env, e: SummaryRow, deprecations: Deprecation[]): RecipeSummary {
+  return { ...summaryCommon(env, "recipe", e, deprecations), title: e.title, summary: e.summary, targets: e.targets };
+}
+
+export function componentSummary(env: Env, e: SummaryRow, deprecations: Deprecation[]): ComponentSummary {
+  return { ...summaryCommon(env, "component", e, deprecations), description: e.description, class: { name: e.className ?? "", version: e.classVersion ?? "", title: e.classTitle ?? "" }, targets: e.targets };
+}
+
+// The entry's row with the shown version's own facts in place of the newest version's.
+function asVersion(e: SummaryRow, v: VersionRow): SummaryRow {
+  const l = v.listing;
+  return { ...e, ...l, latestVersion: v.version, quality: v.quality, channel: v.channel, vulnerabilities: v.vulnerabilities, publishedAt: v.publishedAt, category: l.category, licence: l.licence, thumbnail: l.thumbnail };
+}
+
+const subject = (kind: Kind, e: EntryRow, version: string) => ({ kind, entryId: e.id, name: e.name, version, developerId: e.developerId, flag: e.flag });
+
+async function imageViews(env: Env, d: CatalogueDb, images: PackageImage[]): Promise<ImageView[]> {
+  const known = await d.images(images.map((i) => hexOf(i.digest)));
+  return images.map((i) => ({ url: `${env.PUBLIC_ORIGIN}/images/${hexOf(i.digest)}.${known.get(hexOf(i.digest))?.type ?? "png"}`, thumbnail: thumbnailUrl(env, i.thumbnail)!, caption: i.caption, platform: i.platform, width: i.width, height: i.height }));
+}
+
+async function versionCommon(env: Env, d: CatalogueDb, kind: Kind, e: SummaryRow, v: VersionRow) {
+  const line = versionLine(v.version);
+  const [images, securityReleases, versions] = await Promise.all([imageViews(env, d, v.images), d.securityReleases(kind, e.id, line), d.versions(kind, e.id)]);
+  return {
+    release: { channel: v.channel, fixes: v.fixes },
+    line: { line, securityReleases },
+    images,
+    vulnerabilitySummary: { count: v.vulnerabilities, checkedAt: v.vulnerabilitiesCheckedAt, url: `${env.PUBLIC_ORIGIN}/api/${plural(kind)}/${e.slug}/${v.version}/vulnerabilities` },
+    vulnerabilityWaivers: v.waivers,
+    versionDownloads: v.downloads,
+    digest: v.digest,
+    source: { repository: v.sourceRepo, tag: v.sourceTag },
+    bundle: { asset: v.bundleAsset, digest: v.bundleDigest, url: `${env.PUBLIC_ORIGIN}/api/${plural(kind)}/${e.slug}/${v.version}/bundle` },
+    versions: versions.map(({ version, digest, publishedAt, channel, fixes }) => ({ version, digest, publishedAt, channel, fixes })),
+  };
+}
+
+async function recipeView(env: Env, d: CatalogueDb, e: SummaryRow, v: VersionRow, doc: RecipeEntry): Promise<RecipeVersionView> {
+  const recipe = doc.recipe;
+  const [listed, [tree], common, alternatives] = await Promise.all([
+    d.catalogueFor(recipe.components.map((s) => s.preferred)),
+    d.deprecationsFor([subject("recipe", e, v.version)]),
+    versionCommon(env, d, "recipe", e, v),
+    Promise.all(recipe.components.map((s) => d.implementationCount(s.class.name, s.preferred.name))),
+  ]);
+  return {
+    ...recipeSummary(env, asVersion(e, v), tree.notices),
+    ...common,
+    foundations: summariseFoundations(doc.foundations, `${env.PUBLIC_ORIGIN}/api/recipes/${e.slug}/${v.version}/details`),
+    foundationEvidence: "publisher-declared",
+    description: doc.page.description,
+    diagram: doc.page.diagram ? `${env.PUBLIC_ORIGIN}/api/recipes/${e.slug}/${v.version}/diagram.svg` : null,
     components: recipe.components.map((s, i) => {
-      const listedEntry = listed[i] ?? null;
+      const found = listed[i] ?? null;
       return {
         ...s,
-        declaration: slotClass(classDescriptor(s.class, r.foundations)!),
-        preferred: { ...s.preferred, url: listedEntry ? `${env.PUBLIC_ORIGIN}/components/${listedEntry.slug}` : null },
-        catalogue: listedEntry ? { description: listedEntry.description, suitability: listedEntry.suitability, guardians: listedEntry.guardians } : null,
-        deprecation: tree.notices.find((n) => n.name === s.preferred.name && n.version === s.preferred.version && n.via.includes(r.name)) ?? null,
-        alternatives: alternatives[i]!,
+        declaration: slotClass(classDescriptor(s.class, doc.foundations)!),
+        preferred: { ...s.preferred, url: found ? `${env.PUBLIC_ORIGIN}/components/${found.slug}` : null },
+        catalogue: found ? { description: found.row.description, suitability: found.row.suitability!, guardians: found.row.guardians, quality: found.row.quality, thumbnail: thumbnailUrl(env, found.row.listing.thumbnail) } : null,
+        deprecation: tree.notices.find((n) => n.name === s.preferred.name && n.version === s.preferred.version && n.via.includes(e.name)) ?? null,
+        alternatives: { count: alternatives[i]!, url: `${env.PUBLIC_ORIGIN}/components?class=${encodeURIComponent(s.class.name)}` },
       };
     }),
     jobs: recipe.jobs,
@@ -181,156 +258,169 @@ async function recipeView(env: Env, d: CatalogueDb, entry: EntryRow, r: RecipeRo
     connections: recipe.connections,
     tests: recipe.tests,
     instructions: recipe.instructions,
-    versions: (await d.versions("recipe", entry.id)).map(({ version, digest, publishedAt }) => ({ version, digest, publishedAt })),
   };
 }
 
-async function componentView(env: Env, d: CatalogueDb, entry: EntryRow, r: ComponentRow): Promise<ComponentVersionView> {
-  const [tree] = await d.deprecationsFor([subject("component", r)]);
+async function componentView(env: Env, d: CatalogueDb, e: SummaryRow, v: VersionRow, doc: ComponentEntry): Promise<ComponentVersionView> {
+  const [[tree], common, usedBy] = await Promise.all([d.deprecationsFor([subject("component", e, v.version)]), versionCommon(env, d, "component", e, v), d.recipesUsing(e.name)]);
   return {
-    foundations: summariseFoundations(r.foundations, `${env.PUBLIC_ORIGIN}/api/components/${r.slug}/${r.version}/details`), foundationEvidence: "publisher-declared",
-    ...componentSummary(env, r, tree.notices),
-    digest: r.digest,
-    guardians: r.guardians,
-    settings: r.settings,
-    interfaceDigests: r.interfaceDigests,
-    interfaceModules: r.interfaceModules,
-    dependencies: r.dependencies,
-    suitability: r.suitability,
-    migration: r.migration,
-    source: { repository: r.sourceRepo, tag: r.sourceTag },
-    bundle: { asset: r.bundleAsset, digest: r.bundleDigest, url: `${env.PUBLIC_ORIGIN}/api/components/${r.slug}/${r.version}/bundle` },
-    versions: (await d.versions("component", entry.id)).map(({ version, digest, publishedAt }) => ({ version, digest, publishedAt })),
-    usedBy: (await d.recipesUsing(r.name)).map((u) => ({ ...u, url: `${env.PUBLIC_ORIGIN}/recipes/${u.slug}` })),
+    ...componentSummary(env, asVersion(e, v), tree.notices),
+    ...common,
+    foundations: summariseFoundations(doc.foundations, `${env.PUBLIC_ORIGIN}/api/components/${e.slug}/${v.version}/details`),
+    foundationEvidence: "publisher-declared",
+    guardians: doc.guardians,
+    provides: doc.provides,
+    requires: doc.requires,
+    settings: doc.settings,
+    interfaceDigests: doc.interfaceDigests,
+    interfaceModules: doc.interfaceModules,
+    dependencies: doc.dependencies,
+    suitability: doc.suitability,
+    migration: doc.migration,
+    usedBy: usedBy.map((u) => ({ ...u, url: `${env.PUBLIC_ORIGIN}/recipes/${u.slug}` })),
   };
 }
 
-// GET /api/recipes
-export async function listRecipes(env: Env, url: URL): Promise<Response> {
-  return json(await recipeList(env, url));
+// ---------------------------------------------------------------- listings
+
+async function publisherId(env: Env, slug: string | undefined): Promise<string | null | undefined> {
+  if (!slug) return undefined;
+  const r = await env.DB.prepare("SELECT id FROM developers WHERE slug = ?").bind(slug).first<{ id: string }>();
+  return r?.id ?? null;
 }
 
-async function recipeList(env: Env, url: URL): Promise<RecipeList> {
-  const f = listFilter(url);
+async function listing(env: Env, d: CatalogueDb, kind: Kind, q: ListQuery) {
+  const pid = await publisherId(env, q.publisher);
+  const empty = { rows: [] as SummaryRow[], total: { count: 0, approximate: false }, next: null, previous: null };
+  const [page, categories] = await Promise.all([pid === null ? Promise.resolve(empty) : d.list(kind, q, pid ?? null), d.categoryChildren(q.category ?? null)]);
+  const trees = await d.deprecationsFor(page.rows.map((r) => subject(kind, r, r.latestVersion!)));
+  return { page, trees, categories: categories.map((c): CategoryCount => c) };
+}
+
+export async function recipeList(env: Env, d: CatalogueDb, url: URL): Promise<RecipeList> {
+  const q = listQuery(url, "recipe");
+  const { page, trees, categories } = await listing(env, d, "recipe", q);
+  return { query: q, total: page.total, next: page.next, previous: page.previous, categories, recipes: page.rows.map((r, i) => recipeSummary(env, r, trees[i]!.notices)) };
+}
+
+export async function componentList(env: Env, d: CatalogueDb, url: URL): Promise<ComponentList> {
+  const q = listQuery(url, "component");
+  const { page, trees, categories } = await listing(env, d, "component", q);
+  return { query: q, total: page.total, next: page.next, previous: page.previous, categories, components: page.rows.map((r, i) => componentSummary(env, r, trees[i]!.notices)) };
+}
+
+// D1's rows read and query count for a response, so a caller can see what a page costs.
+function timed(d: CatalogueDb, res: Response): Response {
+  res.headers.set("Server-Timing", `d1;desc="rows read ${d.rowsRead}, queries ${d.queries}"`);
+  res.headers.set("X-D1-Rows-Read", String(d.rowsRead));
+  return res;
+}
+
+// GET /api/recipes and /api/components
+export async function list(env: Env, kind: Kind, url: URL): Promise<Response> {
   const d = db(env);
-  const { rows, total } = await d.listRecipes(f);
-  return { recipes: await recipeSummaries(env, d, rows), total, limit: f.limit, offset: f.offset, categories: await d.categories("recipe") };
+  return timed(d, json(kind === "recipe" ? await recipeList(env, d, url) : await componentList(env, d, url)));
 }
 
-// GET /api/recipes/search?q=
-export async function searchRecipes(env: Env, url: URL): Promise<Response> {
-  return json(await recipeSearch(env, url));
+// ---------------------------------------------------------------- one version
+
+async function found(env: Env, d: CatalogueDb, kind: Kind, name: string, version: string): Promise<{ entry: SummaryRow; row: VersionRow }> {
+  const f = await d.version(kind, slugOf(name), versionOf(version));
+  if (!f) throw new HttpError(404, `no such ${kind} version`);
+  return f;
 }
 
-async function recipeSearch(env: Env, url: URL): Promise<RecipeSearch> {
-  const q = query(url);
+async function recipeFull(env: Env, d: CatalogueDb, name: string, version: string): Promise<{ view: RecipeVersionView; details: PackageDetails; doc: RecipeEntry }> {
+  const f = await found(env, d, "recipe", name, version);
+  const doc = await readDocument<RecipeEntry>(env, f.row.document);
+  return { view: await recipeView(env, d, f.entry, f.row, doc), details: packageDetails(f.entry.name, f.row.version, doc.foundations), doc };
+}
+
+async function componentFull(env: Env, d: CatalogueDb, name: string, version: string): Promise<{ view: ComponentVersionView; details: PackageDetails; doc: ComponentEntry }> {
+  const f = await found(env, d, "component", name, version);
+  const doc = await readDocument<ComponentEntry>(env, f.row.document);
+  return { view: await componentView(env, d, f.entry, f.row, doc), details: packageDetails(f.entry.name, f.row.version, doc.foundations), doc };
+}
+
+const packageDetails = (name: string, version: string, foundations: Foundations): PackageDetails => ({ name, version, foundationEvidence: "publisher-declared", foundations });
+
+// GET /api/recipes/:name/:version and /api/components/:name/:version (version may be "latest")
+export async function versionView(env: Env, kind: Kind, name: string, version: string): Promise<Response> {
   const d = db(env);
-  return { query: q, recipes: await recipeSummaries(env, d, await d.searchRecipes(q, intParam(url, "limit", 20, 1, 50), deprecatedParam(url))) };
+  const body = kind === "recipe" ? (await recipeFull(env, d, name, version)).view : (await componentFull(env, d, name, version)).view;
+  return timed(d, json(body));
 }
-
-// GET /api/recipes/:name/:version (version may be "latest")
-export async function recipeDetail(env: Env, name: string, version: string): Promise<Response> {
-  return json(await recipeDetailView(env, name, version));
-}
-
-async function recipeDetailView(env: Env, name: string, version: string): Promise<RecipeVersionView> {
-  return (await recipeFull(env, name, version)).view;
-}
-
-async function recipeFull(env: Env, name: string, version: string): Promise<{ view: RecipeVersionView; details: PackageDetails }> {
-  const d = db(env);
-  const found = await d.recipeVersion(slugOf(name), versionOf(version));
-  if (!found) throw new HttpError(404, "no such recipe version");
-  return { view: await recipeView(env, d, found.entry, found.row), details: packageDetails(found.row) };
-}
-
-const packageDetails = (r: { name: string; version: string; foundations: Foundations }): PackageDetails => ({ name: r.name, version: r.version, foundationEvidence: "publisher-declared", foundations: r.foundations });
 
 // GET /api/{recipes,components}/:name/:version/details
 export async function versionDetails(env: Env, kind: Kind, name: string, version: string): Promise<Response> {
   const d = db(env);
-  const found = kind === "recipe" ? await d.recipeVersion(slugOf(name), versionOf(version)) : await d.componentVersion(slugOf(name), versionOf(version));
-  if (!found) throw new HttpError(404, `no such ${kind} version`);
-  return json(packageDetails(found.row));
+  const f = await found(env, d, kind, name, version);
+  const doc = await readDocument<ComponentEntry | RecipeEntry>(env, f.row.document);
+  return json(packageDetails(f.entry.name, f.row.version, doc.foundations));
 }
 
-export async function listComponents(env: Env, url: URL): Promise<Response> {
-  return json(await componentList(env, url));
+// GET /api/{recipes,components}/:name/:version/vulnerabilities
+export async function vulnerabilities(env: Env, kind: Kind, name: string, version: string): Promise<Response> {
+  return json(await vulnerabilityReport(env, db(env), kind, name, version));
 }
 
-async function componentList(env: Env, url: URL): Promise<ComponentList> {
-  const f = listFilter(url);
-  const d = db(env);
-  const { rows, total } = await d.listComponents(f);
-  return { components: await componentSummaries(env, d, rows), total, limit: f.limit, offset: f.offset, categories: await d.categories("component") };
-}
-
-export async function searchComponents(env: Env, url: URL): Promise<Response> {
-  return json(await componentSearch(env, url));
-}
-
-async function componentSearch(env: Env, url: URL): Promise<ComponentSearch> {
-  const q = query(url);
-  const d = db(env);
-  return { query: q, components: await componentSummaries(env, d, await d.searchComponents(q, intParam(url, "limit", 20, 1, 50), deprecatedParam(url))) };
-}
-
-export async function componentDetail(env: Env, name: string, version: string): Promise<Response> {
-  return json(await componentDetailView(env, name, version));
-}
-
-async function componentDetailView(env: Env, name: string, version: string): Promise<ComponentVersionView> {
-  return (await componentFull(env, name, version)).view;
-}
-
-async function componentFull(env: Env, name: string, version: string): Promise<{ view: ComponentVersionView; details: PackageDetails }> {
-  const d = db(env);
-  const found = await d.componentVersion(slugOf(name), versionOf(version));
-  if (!found) throw new HttpError(404, "no such component version");
-  return { view: await componentView(env, d, found.entry, found.row), details: packageDetails(found.row) };
+export async function vulnerabilityReport(env: Env, d: CatalogueDb, kind: Kind, name: string, version: string): Promise<VulnerabilityReport> {
+  const f = await found(env, d, kind, name, version);
+  const waived = new Map(f.row.waivers.map((w) => [w.id, w.reason]));
+  const advisories: Advisory[] = (await d.versionAdvisories(kind, f.entry.id, f.row.version)).map((a) => ({
+    id: a.id,
+    summary: a.summary,
+    severity: a.severity,
+    affected: a.purls,
+    fixedIn: [...new Set(Object.entries(a.fixed).filter(([pkg]) => a.purls.some((p) => p.startsWith(pkg.split("@")[0]!) || pkg.endsWith(`:${p.split("/").pop()!.split("@")[0]}`))).flatMap(([, v]) => v))],
+    waived: waived.get(a.id) ?? null,
+  }));
+  return { name: f.entry.name, version: f.row.version, checkedAt: f.row.vulnerabilitiesCheckedAt, count: f.row.vulnerabilities, advisories };
 }
 
 const SVG_HEADERS = { "Content-Type": "image/svg+xml", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox" };
 
 // GET /api/recipes/:name/:version/diagram.svg
 export async function recipeDiagram(env: Env, name: string, version: string): Promise<Response> {
-  const found = await db(env).recipeVersion(slugOf(name), versionOf(version));
-  if (!found?.row.diagram) throw new HttpError(404, "no diagram");
-  return new Response(found.row.diagram, { headers: { ...SVG_HEADERS, "Cache-Control": "no-store" } });
+  const d = db(env);
+  const f = await found(env, d, "recipe", name, version);
+  if (!f.row.hasDiagram) throw new HttpError(404, "no diagram");
+  const doc = await readDocument<RecipeEntry>(env, f.row.document);
+  return new Response(doc.page.diagram, { headers: { ...SVG_HEADERS, "Cache-Control": "public, max-age=300" } });
 }
 
-// GET /api/recipes/:name/:version/components.svg: the recipe's slots, each with its preferred component, by category
-// and the connections between them.
+// GET /api/recipes/:name/:version/components.svg
 export async function recipeComponentsDiagram(env: Env, name: string, version: string): Promise<Response> {
   const d = db(env);
-  const found = await d.recipeVersion(slugOf(name), versionOf(version));
-  if (!found) throw new HttpError(404, "no such recipe version");
-  const r = found.row;
-  const listed = await d.catalogueFor(r.recipe.components.map((s) => s.preferred));
-  const svg = recipeComponentsSvg({ name: r.name, version: r.version, title: r.title, components: r.recipe.components.map(s => ({ ...s, class: classDescriptor(s.class, r.foundations)! })), connections: r.recipe.connections, catalogue: listed });
+  const f = await found(env, d, "recipe", name, version);
+  const doc = await readDocument<RecipeEntry>(env, f.row.document);
+  const r = doc.recipe;
+  const listed = await d.catalogueFor(r.components.map((s) => s.preferred));
+  const docs = await readDocuments<ComponentEntry>(env, listed.map((l) => l?.row.document ?? null));
+  // Each zone is the last part of the component's category, so the cards and connections stay readable.
+  const catalogue = docs.map((c, i) => (c ? { name: c.name, version: c.version, category: listed[i]!.row.listing.category.split("/").pop()!, provides: c.provides, requires: c.requires } : null));
+  const svg = recipeComponentsSvg({ name: r.name, version: r.version, title: r.title, components: r.components.map((s) => ({ ...s, class: classDescriptor(s.class, doc.foundations)! })), connections: r.connections, catalogue });
   return new Response(svg, { headers: { ...SVG_HEADERS, "Cache-Control": "public, max-age=300" } });
 }
 
-// GET /api/components/:name/:version/connections.svg: what the component requires and provides, and the catalogue
-// components on the other side of each interface, found with the same queries as ?provides= and ?requires=.
+// GET /api/components/:name/:version/connections.svg
 export async function componentConnectionsDiagram(env: Env, name: string, version: string): Promise<Response> {
   const d = db(env);
-  const found = await d.componentVersion(slugOf(name), versionOf(version));
-  if (!found) throw new HttpError(404, "no such component version");
-  const r = found.row;
+  const f = await found(env, d, "component", name, version);
+  const doc = await readDocument<ComponentEntry>(env, f.row.document);
   const lookup = async (direction: "provides" | "requires", type: string) => {
-    const { rows, total } = await d.listComponents({ [direction]: [type], deprecated: "include", limit: NEIGHBOURS_SHOWN + 1, offset: 0 });
-    const others = rows.filter((x) => x.name !== r.name);
-    return { components: others.map((x) => ({ name: x.name, version: x.version, category: x.category })), total: total - (rows.length - others.length) };
+    const page = await d.list("component", { [direction]: [type], deprecated: "include", sort: "downloads", limit: NEIGHBOURS_SHOWN + 1 }, null);
+    const others = page.rows.filter((x) => x.name !== doc.name);
+    return { components: others.map((x) => ({ name: x.name, version: x.latestVersion!, category: x.category })), total: page.total.count - (page.rows.length - others.length) };
   };
   const pairs = async (ports: { type: string }[], direction: "provides" | "requires") => Object.fromEntries(await Promise.all([...new Set(ports.map((p) => p.type))].map(async (t) => [t, await lookup(direction, t)] as const)));
-  const [providers, consumers] = await Promise.all([pairs(r.requires, "provides"), pairs(r.provides, "requires")]);
-  const svg = componentConnectionsSvg({ name: r.name, version: r.version, category: r.category, targets: r.targets, provides: r.provides, requires: r.requires, profiles: r.suitability?.profiles ?? [], providers, consumers });
+  const [providers, consumers] = await Promise.all([pairs(doc.requires, "provides"), pairs(doc.provides, "requires")]);
+  const svg = componentConnectionsSvg({ name: doc.name, version: doc.version, category: f.row.listing.category, targets: doc.targets, provides: doc.provides, requires: doc.requires, profiles: doc.suitability.profiles, providers, consumers });
   return new Response(svg, { headers: { ...SVG_HEADERS, "Cache-Control": "public, max-age=300" } });
 }
 
-// The release asset behind a version, checked against the recorded digest. The publisher's token is used while the
-// publisher exists; an orphaned entry is read without any token, which only works for a public release.
+// ---------------------------------------------------------------- bundle links and downloads
+
 async function releaseAsset(env: Env, deps: Deps, developerId: string | null, repo: string, tag: string, assetName: string, digest: string): Promise<{ url: string } | "unavailable"> {
   const token = developerId === null ? undefined : (await loadSecrets(env, developerId, ["githubToken"])).githubToken;
   const release = await githubRelease(env, deps, repo, tag, token);
@@ -367,46 +457,75 @@ async function githubRelease(env: Env, deps: Deps, repo: string, tag: string, to
   return { status: "ok", assets: Array.isArray(body?.assets) ? body!.assets! : [] };
 }
 
-async function bundleLink(env: Env, deps: Deps, d: CatalogueDb, kind: Kind, found: { entry: EntryRow; row: RecipeRow | ComponentRow }): Promise<Response> {
-  const { entry, row } = found;
-  const [tree] = await d.deprecationsFor([subject(kind, row)]);
-  const base = { name: row.name, version: row.version, digest: row.digest, asset: row.bundleAsset, assetDigest: row.bundleDigest, deprecations: tree.notices };
+// GET /api/{recipes,components}/:name/:version/bundle. Each link issued counts one download of that version.
+export async function bundle(env: Env, deps: Deps, kind: Kind, name: string, version: string): Promise<Response> {
+  const d = db(env);
+  const { entry, row } = await found(env, d, kind, name, version);
+  const [tree] = await d.deprecationsFor([subject(kind, entry, row.version)]);
+  const base = { name: entry.name, version: row.version, digest: row.digest, asset: row.bundleAsset, assetDigest: row.bundleDigest, deprecations: tree!.notices };
   const asset = await releaseAsset(env, deps, entry.developerId, row.sourceRepo, row.sourceTag, row.bundleAsset, row.bundleDigest);
-  if (asset === "unavailable") {
-    const body: BundleLink = { ...base, status: "bundle-unavailable", url: null, expiresAt: null };
-    return json(body);
-  }
+  if (asset === "unavailable") return json({ ...base, status: "bundle-unavailable", url: null, expiresAt: null } satisfies BundleLink);
   const url = await dlUrl(env, deps, { url: asset.url, kind: "bundle", dev: entry.developerId ?? "", name: row.bundleAsset });
   const expiresAt = new Date(Math.floor(deps.now().getTime() / 1000) * 1000 + 60 * 60 * 1000).toISOString();
-  const body: BundleLink = { ...base, status: "available", url, expiresAt };
-  return json(body);
-}
-
-// GET /api/recipes/:name/:version/bundle
-export async function recipeBundle(env: Env, deps: Deps, name: string, version: string): Promise<Response> {
-  const d = db(env);
-  const found = await d.recipeVersion(slugOf(name), versionOf(version));
-  if (!found) throw new HttpError(404, "no such recipe version");
-  return bundleLink(env, deps, d, "recipe", found);
-}
-
-export async function componentBundle(env: Env, deps: Deps, name: string, version: string): Promise<Response> {
-  const d = db(env);
-  const found = await d.componentVersion(slugOf(name), versionOf(version));
-  if (!found) throw new HttpError(404, "no such component version");
-  return bundleLink(env, deps, d, "component", found);
+  await d.countDownload(kind, entry.id, row.version, deps.now().toISOString().slice(0, 10));
+  return json({ ...base, status: "available", url, expiresAt } satisfies BundleLink);
 }
 
 // GET /api/recipes/:name/:version/deprecations and the same for components
 export async function deprecations(env: Env, kind: Kind, name: string, version: string): Promise<Response> {
   const d = db(env);
-  const slug = slugOf(name);
-  const wanted = versionOf(version);
-  const found = kind === "recipe" ? await d.recipeVersion(slug, wanted) : await d.componentVersion(slug, wanted);
-  if (!found) throw new HttpError(404, `no such ${kind} version`);
-  const [tree] = await d.deprecationsFor([subject(kind, found.row)]);
-  const report: DeprecationReport = { name: found.row.name, version: found.row.version, status: entryStatus(found.row.developerId, found.row.flag), affected: tree.notices.length > 0, checked: tree.checked, deprecations: tree.notices };
+  const { entry, row } = await found(env, d, kind, name, version);
+  const [tree] = await d.deprecationsFor([subject(kind, entry, row.version)]);
+  const report: DeprecationReport = { name: entry.name, version: row.version, status: entryStatus(entry.developerId, entry.flag), affected: tree!.notices.length > 0, checked: tree!.checked, deprecations: tree!.notices };
   return json(report);
+}
+
+// ---------------------------------------------------------------- images
+
+// GET /images/<sha256>.<png|webp>: the bytes never change, so caches keep them for a year.
+export async function image(env: Env, file: string): Promise<Response> {
+  const m = /^([0-9a-f]{64})\.(png|webp)$/.exec(file);
+  if (!m) throw new HttpError(404, "not found");
+  const known = await db(env).image(m[1]!);
+  if (!known || known.type !== m[2]) throw new HttpError(404, "not found");
+  const object = await env.CATALOGUE.get(imageKey(m[1]!));
+  if (!object) throw new HttpError(404, "not found");
+  return new Response(object.body, { headers: { "Content-Type": `image/${known.type}`, "Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff", ETag: `"${m[1]}"` } });
+}
+
+// PUT /api/dev/images/:sha256 with the image bytes (image/png or image/webp). The worker checks the sha256, the type
+// against the bytes and the size, and reads the width and height from the header.
+export async function uploadImage(request: Request, env: Env, deps: Deps, dev: AuthedDeveloper, digest: string): Promise<Response> {
+  const hex = hexOf(digest);
+  if (!/^[0-9a-f]{64}$/.test(hex)) throw new HttpError(404, "not found");
+  const declared = (request.headers.get("Content-Type") ?? "").split(";")[0]!.trim();
+  if (declared !== "image/png" && declared !== "image/webp") throw new HttpError(415, "Content-Type must be image/png or image/webp");
+  const length = Number(request.headers.get("Content-Length") ?? "0");
+  if (length > IMAGE_LIMITS.bytes) throw new HttpError(413, `an image is at most ${IMAGE_LIMITS.bytes} bytes`);
+  const bytes = new Uint8Array(await request.arrayBuffer());
+  if (bytes.length === 0 || bytes.length > IMAGE_LIMITS.bytes) throw new HttpError(413, `an image is 1 to ${IMAGE_LIMITS.bytes} bytes`);
+  if ((await sha256Hex(bytes)) !== hex) throw new HttpError(422, "the sha256 of the bytes is not the one in the address");
+  const facts = imageFacts(bytes);
+  if (!facts || `image/${facts.type}` !== declared) throw new HttpError(422, `the bytes are not a ${declared.slice(6).toUpperCase()} image`);
+  if (facts.width < 1 || facts.height < 1 || facts.width > IMAGE_LIMITS.side || facts.height > IMAGE_LIMITS.side) throw new HttpError(422, `width and height must be 1 to ${IMAGE_LIMITS.side} pixels`);
+  const d = db(env);
+  if (await d.image(hex)) return json({ status: "unchanged", digest: `sha256:${hex}`, ...facts, bytes: bytes.length, url: `${env.PUBLIC_ORIGIN}/images/${hex}.${facts.type}` });
+  await env.CATALOGUE.put(imageKey(hex), bytes, { httpMetadata: { contentType: declared, cacheControl: "public, max-age=31536000, immutable" } });
+  await d.addImage({ digest: hex, type: facts.type, width: facts.width, height: facts.height, bytes: bytes.length }, dev.id, deps.now().toISOString());
+  return json({ status: "stored", digest: `sha256:${hex}`, ...facts, bytes: bytes.length, url: `${env.PUBLIC_ORIGIN}/images/${hex}.${facts.type}` }, 201);
+}
+
+// Every listed image and thumbnail must be uploaded first, with the width and height the entry states.
+async function checkImages(d: CatalogueDb, images: PackageImage[]): Promise<void> {
+  const known = await d.images(images.flatMap((i) => [hexOf(i.digest), hexOf(i.thumbnail)]));
+  images.forEach((i, n) => {
+    const full = known.get(hexOf(i.digest));
+    const thumb = known.get(hexOf(i.thumbnail));
+    if (!full) throw new HttpError(422, `images[${n}].digest: upload the image first (PUT /api/dev/images/<sha256>)`);
+    if (full.width !== i.width || full.height !== i.height) throw new HttpError(422, `images[${n}]: the uploaded image is ${full.width} by ${full.height}, not ${i.width} by ${i.height}`);
+    if (!thumb) throw new HttpError(422, `images[${n}].thumbnail: upload the thumbnail first (PUT /api/dev/images/<sha256>)`);
+    if (thumb.type !== "webp" || thumb.width > 480 || thumb.width !== Math.min(480, i.width)) throw new HttpError(422, `images[${n}].thumbnail must be a WebP ${Math.min(480, i.width)} pixels wide`);
+  });
 }
 
 // ---------------------------------------------------------------- page variants
@@ -418,69 +537,150 @@ export function wantsHtml(request: Request): boolean {
   return /text\/html/i.test(request.headers.get("Accept") ?? "");
 }
 
-// /recipes.txt, /recipes.json, /recipes/:name.txt, /recipes/:name.json, /recipes/:name/details.txt and the same for
-// components. Returns null for any other path. ?version= picks a version; ?q= searches a list.
+const SECTIONS = ["recipes", "components", "classes", "categories"] as const;
+type Section = typeof SECTIONS[number];
+
+// /recipes, /components, /classes and /categories, each with .txt and .json, one entry (/recipes/:name.txt, .json),
+// and /recipes/:name/details.txt. A client that does not ask for HTML gets the plain text at the page's own address.
+// Returns null for any other path. ?version= picks a version.
 export function pageVariant(env: Env, parts: string[], url: URL, request?: Request): Promise<Response> | null {
-  const catalogue = parts[0] === "recipes" || parts[0] === "components";
-  // A client that does not ask for HTML (an agent's fetch tool, curl) gets the plain-text page at the page's own address.
-  const bareDetails = catalogue && parts.length === 3 && parts[2] === "details";
-  if (bareDetails && request && !wantsHtml(request)) return detailsText(env, parts[0] as "recipes" | "components", parts[1], url);
-  const bare = parts.length <= 2 && catalogue && !/\.(txt|json)$/.test(parts[parts.length - 1] ?? "");
-  if (bare && request && !wantsHtml(request)) return variant(env, parts[0] as "recipes" | "components", parts[1] ?? null, "txt", url);
-  const top = /^(recipes|components)\.(txt|json)$/.exec(parts[0] ?? "");
-  const nested = parts.length === 2 && (parts[0] === "recipes" || parts[0] === "components") ? /^(.+)\.(txt|json)$/.exec(parts[1]) : null;
-  if (parts.length === 1 && top) return variant(env, top[1] as "recipes" | "components", null, top[2] as "txt" | "json", url);
-  if (nested) return variant(env, parts[0] as "recipes" | "components", nested[1], nested[2] as "txt" | "json", url);
-  if (catalogue && parts.length === 3 && parts[2] === "details.txt") return detailsText(env, parts[0] as "recipes" | "components", parts[1], url);
+  const head = /^(recipes|components|classes|categories)(?:\.(txt|json))?$/.exec(parts[0] ?? "");
+  if (!head) return null;
+  const section = head[1] as Section;
+  const plainWanted = request ? !wantsHtml(request) : false;
+  if (parts.length === 1) {
+    const format = (head[2] as "txt" | "json" | undefined) ?? (plainWanted ? "txt" : null);
+    return format ? sectionVariant(env, section, format, url) : null;
+  }
+  if (head[2] || section === "categories") return null;
+  const nested = /^(.+?)(?:\.(txt|json))?$/.exec(parts[1] ?? "")!;
+  if (parts.length === 2) {
+    const format = (nested[2] as "txt" | "json" | undefined) ?? (plainWanted ? "txt" : null);
+    return format ? entryVariant(env, section, nested[1]!, format, url) : null;
+  }
+  if (parts.length === 3 && section !== "classes" && (parts[2] === "details.txt" || (parts[2] === "details" && plainWanted))) return detailsText(env, section, parts[1]!, url);
   return null;
 }
 
+async function sectionVariant(env: Env, section: Section, format: "txt" | "json", url: URL): Promise<Response> {
+  const d = db(env);
+  const origin = env.PUBLIC_ORIGIN;
+  if (section === "recipes") {
+    const l = await recipeList(env, d, url);
+    return timed(d, format === "json" ? json(l) : plain(recipeListText(l, origin)));
+  }
+  if (section === "components") {
+    const l = await componentList(env, d, url);
+    return timed(d, format === "json" ? json(l) : plain(componentListText(l, origin)));
+  }
+  if (section === "classes") {
+    const l = await classList(env, d, url);
+    return format === "json" ? json(l) : plain(classListText(l, origin));
+  }
+  const tree = { categories: await d.categories() };
+  return format === "json" ? json(tree) : plain(categoriesText(tree, origin));
+}
+
+async function entryVariant(env: Env, section: Section, name: string, format: "txt" | "json", url: URL): Promise<Response> {
+  const d = db(env);
+  const version = url.searchParams.get("version") ?? "latest";
+  const origin = env.PUBLIC_ORIGIN;
+  if (section === "recipes") {
+    const v = (await recipeFull(env, d, name, version)).view;
+    return format === "json" ? json(v) : plain(recipeText(v, origin));
+  }
+  if (section === "components") {
+    const v = (await componentFull(env, d, name, version)).view;
+    return format === "json" ? json(v) : plain(componentText(v, origin));
+  }
+  const v = await classView(env, d, name, version);
+  return format === "json" ? json(v) : plain(classText(v, origin));
+}
+
 async function detailsText(env: Env, what: "recipes" | "components", name: string, url: URL): Promise<Response> {
+  const d = db(env);
   const version = url.searchParams.get("version") ?? "latest";
   if (what === "recipes") {
-    const { view, details } = await recipeFull(env, name, version);
+    const { view, details } = await recipeFull(env, d, name, version);
     return plain(recipeDetailsText(view, details, env.PUBLIC_ORIGIN));
   }
-  const { view, details } = await componentFull(env, name, version);
+  const { view, details } = await componentFull(env, d, name, version);
   return plain(componentDetailsText(view, details, env.PUBLIC_ORIGIN));
 }
 
-async function variant(env: Env, what: "recipes" | "components", name: string | null, format: "txt" | "json", url: URL): Promise<Response> {
-  const origin = env.PUBLIC_ORIGIN;
-  const searching = url.searchParams.has("q");
-  if (name === null && what === "recipes") {
-    if (searching) {
-      const s = await recipeSearch(env, url);
-      return format === "json" ? json(s) : plain(recipeSearchText(s, origin));
-    }
-    const l = await recipeList(env, url);
-    return format === "json" ? json(l) : plain(recipeListText(l, origin));
-  }
-  if (name === null) {
-    if (searching) {
-      const s = await componentSearch(env, url);
-      return format === "json" ? json(s) : plain(componentSearchText(s, origin));
-    }
-    const l = await componentList(env, url);
-    return format === "json" ? json(l) : plain(componentListText(l, origin));
-  }
-  const version = url.searchParams.get("version") ?? "latest";
-  if (what === "recipes") {
-    const v = await recipeDetailView(env, name, version);
-    return format === "json" ? json(v) : plain(recipeText(v, origin));
-  }
-  const v = await componentDetailView(env, name, version);
-  return format === "json" ? json(v) : plain(componentText(v, origin));
-}
-
-// GET /sitemap.xml
+// GET /sitemap.xml: the section pages and the 1,000 most downloaded recipes, components and classes.
 export async function sitemap(env: Env): Promise<Response> {
   const d = db(env);
-  const [recipes, components] = await Promise.all([d.listRecipes({ deprecated: "include", limit: 100, offset: 0 }), d.listComponents({ deprecated: "include", limit: 100, offset: 0 })]);
+  const [recipes, components] = await Promise.all([d.list("recipe", { deprecated: "include", sort: "downloads", limit: 100 }, null), d.list("component", { deprecated: "include", sort: "downloads", limit: 100 }, null)]);
+  const classes = await d.listClasses(null, null, 100);
   const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-  const urls = ["/", "/example", "/terms", "/reference", "/small", "/recipes", "/components", ...recipes.rows.map((r) => `/recipes/${r.slug}`), ...components.rows.map((c) => `/components/${c.slug}`)];
+  const urls = ["/", "/example", "/terms", "/reference", "/small", "/recipes", "/components", "/classes", "/categories", ...recipes.rows.map((r) => `/recipes/${r.slug}`), ...components.rows.map((c) => `/components/${c.slug}`), ...classes.rows.map((c) => `/classes/${c.slug}`)];
   const body = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `<url><loc>${escape(env.PUBLIC_ORIGIN + u)}</loc></url>`).join("\n")}\n</urlset>\n`;
   return new Response(body, { headers: { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "no-store" } });
+}
+
+// ---------------------------------------------------------------- classes and categories
+
+function classSummary(env: Env, r: Record<string, unknown>): ClassSummary {
+  return {
+    name: r.name as string,
+    slug: r.slug as string,
+    version: r.latest_version as string,
+    title: r.title as string,
+    summary: r.summary as string,
+    category: r.category as string,
+    presentation: r.presentation as "visual" | "none",
+    implementations: r.implementations as number,
+    publisher: r.publisher_slug ? { slug: r.publisher_slug as string, displayName: (r.publisher_name as string | null) ?? (r.publisher_slug as string) } : null,
+    url: `${env.PUBLIC_ORIGIN}/classes/${r.slug}`,
+  };
+}
+
+export async function classList(env: Env, d: CatalogueDb, url: URL): Promise<ClassList> {
+  const category = word(url, "category", CATEGORY_PATH) ?? null;
+  const cursor = word(url, "cursor", /^[A-Za-z0-9_-]{1,400}$/) ?? null;
+  const [page, categories] = await Promise.all([d.listClasses(category, cursor, intParam(url, "limit", PAGE_SIZE, 1, 100)), d.categoryChildren(category)]);
+  return { classes: page.rows.map((r) => classSummary(env, r)), total: page.total, next: page.next, previous: null, categories };
+}
+
+export async function classView(env: Env, d: CatalogueDb, name: string, version: string): Promise<ClassVersionView> {
+  const row = await d.classBySlug(slugOf(name));
+  if (!row) throw new HttpError(404, "no such class");
+  const wanted = version === "latest" ? (row.latest_version as string) : versionOf(version);
+  const v = await d.classVersion(row.id as string, wanted);
+  if (!v) throw new HttpError(404, "no such class version");
+  const [versions, implementations] = await Promise.all([d.classVersions(row.id as string), d.implementations(row.name as string, v.version, 100)]);
+  const c = v.descriptor;
+  return {
+    ...classSummary(env, row),
+    version: v.version,
+    title: c.title,
+    summary: c.summary,
+    category: c.category,
+    presentation: c.presentation,
+    digest: v.digest,
+    provides: c.provides,
+    requires: c.requires,
+    settings: c.settings,
+    suites: c.verification.map((s) => ({ id: s.id, argv: s.argv, network: s.network, timeoutSeconds: s.timeoutSeconds })),
+    versions,
+    implementationList: implementations.map((e) => ({ name: e.name, slug: e.slug, version: e.latestVersion!, description: e.description, thumbnail: thumbnailUrl(env, e.thumbnail), quality: e.quality, platforms: e.platforms, downloads: e.downloads, vulnerabilities: e.vulnerabilities, url: `${env.PUBLIC_ORIGIN}/components/${e.slug}` })),
+  };
+}
+
+// GET /api/classes
+export async function listClasses(env: Env, url: URL): Promise<Response> {
+  return json(await classList(env, db(env), url));
+}
+
+// GET /api/classes/:name/:version
+export async function classDetail(env: Env, name: string, version: string): Promise<Response> {
+  return json(await classView(env, db(env), name, version));
+}
+
+// GET /api/categories
+export async function categories(env: Env): Promise<Response> {
+  return json({ categories: await db(env).categories() });
 }
 
 // ---------------------------------------------------------------- publishing
@@ -488,6 +688,8 @@ export async function sitemap(env: Env): Promise<Response> {
 function problems(errors: string[]): HttpError {
   return new HttpError(400, `invalid entry: ${errors.slice(0, 10).join("; ")}${errors.length > 10 ? `; and ${errors.length - 10} more` : ""}`);
 }
+
+const curator = (env: Env, dev: AuthedDeveloper) => (env.CATALOGUE_CURATORS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean).includes(dev.githubLogin.toLowerCase());
 
 interface Candidate {
   kind: Kind;
@@ -499,10 +701,9 @@ interface Candidate {
 }
 
 // Checks the name against the repository and the publisher, finds or makes the entry, and decides what to do with the version.
-async function prepare(env: Env, deps: Deps, dev: AuthedDeveloper, c: Candidate): Promise<{ entry: EntryRow | null; fresh: EntryRow; existing: "none" | "same" }> {
-  const d = db(env);
+async function prepare(env: Env, d: CatalogueDb, deps: Deps, dev: AuthedDeveloper, c: Candidate): Promise<{ entry: EntryRow | null; fresh: EntryRow; existing: "none" | "same"; unlisted: boolean }> {
   const { scope, slug } = splitName(c.name)!;
-  const owner = c.source.repository.split("/")[0].toLowerCase();
+  const owner = c.source.repository.split("/")[0]!.toLowerCase();
   if (scope !== owner) throw new HttpError(400, `the name's scope ${scope} must be the owner of ${c.source.repository}`);
   const entry = await d.entryBySlug(c.kind, slug);
   if (entry && entry.developerId === null) throw new HttpError(409, "that name belongs to a developer who deleted their account; it cannot be published to");
@@ -510,19 +711,19 @@ async function prepare(env: Env, deps: Deps, dev: AuthedDeveloper, c: Candidate)
   if (entry && entry.name !== c.name) throw new HttpError(409, `the name ${slug} is already published as ${entry.name}`);
   if (entry && entry.repo.toLowerCase() !== c.source.repository.toLowerCase()) throw new HttpError(409, `${entry.name} is published from ${entry.repo}; every version comes from that repository`);
   const now = deps.now().toISOString();
-  const fresh: EntryRow = { id: entry?.id ?? randomId(8), name: c.name, scope, slug, developerId: dev.id, repo: c.source.repository, latestVersion: null, flag: null, createdAt: now, updatedAt: now };
+  const fresh: EntryRow = { seq: 0, id: entry?.id ?? randomId(8), name: c.name, scope, slug, developerId: dev.id, repo: c.source.repository, latestVersion: null, flag: null, createdAt: now, updatedAt: now };
   if (!entry) {
     const cap = c.kind === "recipe" ? MAX_RECIPES_PER_DEVELOPER : MAX_COMPONENTS_PER_DEVELOPER;
-    if ((await d.countByDeveloper(c.kind, dev.id)) >= cap) throw new HttpError(409, `a developer can publish at most ${cap} ${c.kind === "recipe" ? "recipes" : "components"}`);
-    return { entry: null, fresh, existing: "none" };
+    if (!curator(env, dev) && (await d.countByDeveloper(c.kind, dev.id)) >= cap) throw new HttpError(409, `a developer can publish at most ${cap} ${plural(c.kind)}`);
+    return { entry: null, fresh, existing: "none", unlisted: false };
   }
   const known = (await d.versions(c.kind, entry.id, true)).find((v) => v.version === c.version);
   if (known) {
     if (known.digest !== c.digest) throw new HttpError(409, `version ${c.version} is already published with a different digest; publish a new version`);
-    return { entry, fresh, existing: "same" };
+    return { entry, fresh, existing: "same", unlisted: known.unlistedAt !== null };
   }
   if ((await d.countVersions(c.kind, entry.id)) >= MAX_VERSIONS_PER_ENTRY) throw new HttpError(409, `at most ${MAX_VERSIONS_PER_ENTRY} versions can be published under one name`);
-  return { entry, fresh, existing: "none" };
+  return { entry, fresh, existing: "none", unlisted: false };
 }
 
 // The publisher must be able to push to the repository, and the release must hold the bundle.
@@ -552,50 +753,87 @@ function refuseSecrets(body: unknown): void {
 }
 
 function published(env: Env, kind: Kind, status: "published" | "unchanged", name: string, slug: string, version: string): Response {
-  const base = kind === "recipe" ? "recipes" : "components";
+  const base = plural(kind);
   return json({ status, name, version, url: `${env.PUBLIC_ORIGIN}/${base}/${slug}`, api: `${env.PUBLIC_ORIGIN}/api/${base}/${slug}/${version}` }, status === "published" ? 201 : 200);
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 
-// The catalogue's stored entries for every component version a recipe body prefers or names as a job candidate, so
-// the recipe check applies the fit rule to them.
-async function catalogueContext(d: CatalogueDb, body: unknown): Promise<RecipeContext> {
+// The catalogue's documents for every component version a recipe body prefers or names as a job candidate, so the
+// recipe check applies the fit rule to them.
+async function catalogueContext(env: Env, d: CatalogueDb, body: unknown): Promise<RecipeContext> {
   const recipe = isObject(body) && isObject(body.recipe) ? body.recipe : {};
   const refs: { name: string; version: string }[] = [];
   const add = (name: unknown, version: unknown) => {
-    if (isCatalogueName(name) && isVersion(version) && refs.length < 200 && !refs.some((r) => r.name === name && r.version === version)) refs.push({ name, version });
+    if (isCatalogueName(name) && isPackageVersion(version) && refs.length < 200 && !refs.some((r) => r.name === name && r.version === version)) refs.push({ name, version });
   };
   for (const s of Array.isArray(recipe.components) ? recipe.components : []) if (isObject(s) && isObject(s.preferred)) add(s.preferred.name, s.preferred.version);
   for (const j of Array.isArray(recipe.jobs) ? recipe.jobs : []) for (const c of isObject(j) && Array.isArray(j.candidates) ? j.candidates : []) if (isObject(c)) add(c.component, c.version);
-  const facts = await d.componentFacts(refs);
-  const found = new Map(refs.map((r, i) => [`${r.name} ${r.version}`, facts[i] ?? null]));
+  const docs = await readDocuments<ComponentEntry>(env, await d.documentKeys(refs));
+  const found = new Map<string, ComponentFacts | null>(refs.map((r, i) => [`${r.name} ${r.version}`, docs[i] ? componentFacts(docs[i]!) : null]));
   return { components: { source: "the catalogue", find: (name, version) => found.get(`${name} ${version}`) ?? null } };
+}
+
+const purlsOf = (f: Foundations): string[] => [...new Set(f.upstream.map((u) => u.purl))].slice(0, 5000);
+
+function listingOf(kind: Kind, e: ComponentEntry | RecipeEntry, category: string): Listing {
+  const thumbnail = e.images[0]?.thumbnail ?? null;
+  if (kind === "component") {
+    const c = e as ComponentEntry;
+    const cls = c.foundations.classes.find((x) => x.reference.digest === c.foundations.implements[0]!.digest)!.descriptor;
+    return { description: c.description, title: "", summary: "", category, className: cls.name, classVersion: cls.version, classTitle: cls.title, platforms: c.foundations.platforms, targets: c.targets, tags: c.tags, licence: c.foundations.licence, thumbnail };
+  }
+  const r = (e as RecipeEntry).recipe;
+  return { description: "", title: r.title, summary: r.summary, category, className: null, classVersion: null, classTitle: null, platforms: e.foundations.platforms, targets: r.targets, tags: r.tags, licence: e.foundations.licence, thumbnail };
+}
+
+async function publishEntry(request: Request, env: Env, deps: Deps, dev: AuthedDeveloper, kind: Kind, e: ComponentEntry | RecipeEntry, body: unknown): Promise<Response> {
+  const d = db(env);
+  refuseSecrets(body);
+  if (e.quality && !curator(env, dev)) throw new HttpError(403, "quality is set by the catalogue's publish tool; leave it out");
+  const name = kind === "component" ? (e as ComponentEntry).name : (e as RecipeEntry).recipe.name;
+  const version = kind === "component" ? (e as ComponentEntry).version : (e as RecipeEntry).recipe.version;
+  let category: string;
+  if (kind === "component") {
+    const c = e as ComponentEntry;
+    const cls = c.foundations.classes.find((x) => x.reference.digest === c.foundations.implements[0]!.digest)?.descriptor;
+    if (!cls) throw problems(["foundations.implements: the implemented class must be in foundations.classes"]);
+    category = cls.category;
+    if (cls.presentation === "visual" && c.images.length === 0) throw problems([`images: ${cls.name} is a visual class, so at least one image of the component as built is required`]);
+  } else category = (e as RecipeEntry).recipe.category;
+  if (!(await d.categoryExists(category))) throw problems([`category ${category} is not in the category tree (classes/categories.json, POST /api/dev/categories)`]);
+  await checkImages(d, e.images);
+  const c: Candidate = { kind, name, version, digest: e.digest, source: e.source, bundle: e.bundle };
+  const plan = await prepare(env, d, deps, dev, c);
+  const slug = splitName(name)!.slug;
+  const now = deps.now().toISOString();
+  if (plan.existing === "same") {
+    if (!plan.unlisted) return published(env, kind, "unchanged", name, slug, version);
+    await verifyRelease(env, deps, dev, c);
+    await d.relist(kind, plan.entry!, version, now);
+  } else {
+    await verifyRelease(env, deps, dev, c);
+    const key = await putDocument(env, kind, slug, version, e);
+    const listing = listingOf(kind, e, category);
+    const base = { version, digest: e.digest, channel: e.release.channel, fixes: e.release.fixes, images: e.images, waivers: e.vulnerabilityWaivers, quality: e.quality, source: e.source, bundle: e.bundle, document: key, listing, purls: purlsOf(e.foundations) };
+    if (kind === "component") {
+      const x = e as ComponentEntry;
+      await d.publish("component", plan.entry, plan.fresh, { ...base, description: x.description, guardians: x.guardians, suitability: x.suitability, classDigest: x.foundations.implements[0]!.digest, provides: x.provides, requires: x.requires, dependencies: x.dependencies }, now);
+    } else {
+      const x = e as RecipeEntry;
+      await d.publish("recipe", plan.entry, plan.fresh, { ...base, recipe: x.recipe, hasDiagram: Boolean(x.page.diagram) }, now);
+    }
+  }
+  await audit(request, env, deps, dev.id, `${kind}-published`, `${name} ${version}`);
+  return published(env, kind, "published", name, slug, version);
 }
 
 // POST /api/dev/recipes
 export async function publishRecipe(request: Request, env: Env, deps: Deps, dev: AuthedDeveloper): Promise<Response> {
   const body = await readJson<unknown>(request);
-  const d = db(env);
-  const result = validateRecipeEntry(body, await catalogueContext(d, body));
+  const result = validateRecipeEntry(body, await catalogueContext(env, db(env), body));
   if (!result.ok) throw problems(result.errors);
-  refuseSecrets(body);
-  const e = result.entry;
-  const c: Candidate = { kind: "recipe", name: e.recipe.name, version: e.recipe.version, digest: e.digest, source: e.source, bundle: e.bundle };
-  const plan = await prepare(env, deps, dev, c);
-  const slug = splitName(c.name)!.slug;
-  const now = deps.now().toISOString();
-  if (plan.existing === "same") {
-    const wasUnlisted = (await d.versions("recipe", plan.entry!.id, true)).find((v) => v.version === c.version)?.unlistedAt;
-    if (!wasUnlisted) return published(env, "recipe", "unchanged", c.name, slug, c.version);
-    await verifyRelease(env, deps, dev, c);
-    await d.relist("recipe", plan.entry!.id, c.version, now);
-  } else {
-    await verifyRelease(env, deps, dev, c);
-    await d.publishRecipe(plan.entry, plan.fresh, e, now);
-  }
-  await audit(request, env, deps, dev.id, "recipe-published", `${c.name} ${c.version}`);
-  return published(env, "recipe", "published", c.name, slug, c.version);
+  return publishEntry(request, env, deps, dev, "recipe", result.entry, body);
 }
 
 // POST /api/dev/components
@@ -603,24 +841,66 @@ export async function publishComponent(request: Request, env: Env, deps: Deps, d
   const body = await readJson<unknown>(request);
   const result = validateComponentEntry(body);
   if (!result.ok) throw problems(result.errors);
-  refuseSecrets(body);
-  const e = result.entry;
-  const c: Candidate = { kind: "component", name: e.name, version: e.version, digest: e.digest, source: e.source, bundle: e.bundle };
-  const plan = await prepare(env, deps, dev, c);
-  const slug = splitName(c.name)!.slug;
+  return publishEntry(request, env, deps, dev, "component", result.entry, body);
+}
+
+// POST /api/dev/{recipes,components}/:name/:version/quality: a curator records a level reached after publishing.
+export async function setQuality(request: Request, env: Env, deps: Deps, dev: AuthedDeveloper, kind: Kind, name: string, version: string): Promise<Response> {
+  if (!curator(env, dev)) throw new HttpError(403, "only the catalogue's publish tool sets quality");
+  const result = validateQuality(await readJson<unknown>(request));
+  if (!result.ok) throw problems(result.errors);
   const d = db(env);
-  const now = deps.now().toISOString();
-  if (plan.existing === "same") {
-    const wasUnlisted = (await d.versions("component", plan.entry!.id, true)).find((v) => v.version === c.version)?.unlistedAt;
-    if (!wasUnlisted) return published(env, "component", "unchanged", c.name, slug, c.version);
-    await verifyRelease(env, deps, dev, c);
-    await d.relist("component", plan.entry!.id, c.version, now);
-  } else {
-    await verifyRelease(env, deps, dev, c);
-    await d.publishComponent(plan.entry, plan.fresh, e, now);
+  const f = await found(env, d, kind, name, versionOf(version));
+  await d.setQuality(kind, f.entry, f.row.version, result.quality);
+  await audit(request, env, deps, dev.id, `${kind}-quality`, `${f.entry.name} ${f.row.version} ${result.quality.level}${result.quality.certified ? " certified" : ""}`);
+  return json({ name: f.entry.name, version: f.row.version, quality: result.quality satisfies Quality });
+}
+
+// POST /api/dev/classes with { format: 2, class: <class.json> }
+export async function publishClass(request: Request, env: Env, deps: Deps, dev: AuthedDeveloper): Promise<Response> {
+  const body = await readJson<unknown>(request);
+  const result = validateClassEntry(body);
+  if (!result.ok) throw problems(result.errors);
+  refuseSecrets(body);
+  const c = result.entry.class;
+  const d = db(env);
+  if (!(await d.categoryExists(c.category))) throw problems([`class.category ${c.category} is not in the category tree (classes/categories.json, POST /api/dev/categories)`]);
+  const { scope, slug } = splitName(c.name)!;
+  const existing = await d.classByName(c.name);
+  const bySlug = existing ?? (await d.classBySlug(slug));
+  if (bySlug && bySlug.name !== c.name) throw new HttpError(409, `the name ${slug} is already published as ${bySlug.name}`);
+  if (existing && existing.developer_id !== dev.id) throw new HttpError(409, "that class belongs to another developer");
+  const url = { status: "published", name: c.name, version: c.version, digest: `sha256:${result.entry.digest}`, url: `${env.PUBLIC_ORIGIN}/classes/${slug}`, api: `${env.PUBLIC_ORIGIN}/api/classes/${slug}/${c.version}` };
+  if (existing) {
+    const known = await d.classVersion(existing.id as string, c.version);
+    if (known) {
+      if (known.digest !== result.entry.digest) throw new HttpError(409, `class version ${c.version} is already published with a different digest; publish a new version`);
+      return json({ ...url, status: "unchanged" });
+    }
+  } else if (!curator(env, dev) && ((await env.DB.prepare("SELECT COUNT(*) AS n FROM classes WHERE developer_id = ?").bind(dev.id).first<{ n: number }>())?.n ?? 0) >= MAX_CLASSES_PER_DEVELOPER) {
+    throw new HttpError(409, `a developer can publish at most ${MAX_CLASSES_PER_DEVELOPER} classes`);
   }
-  await audit(request, env, deps, dev.id, "component-published", `${c.name} ${c.version}`);
-  return published(env, "component", "published", c.name, slug, c.version);
+  await d.publishClass(existing, { id: randomId(8), name: c.name, scope, slug, developerId: dev.id }, c, result.entry.digest, deps.now().toISOString());
+  await audit(request, env, deps, dev.id, "class-published", `${c.name} ${c.version}`);
+  return json(url, 201);
+}
+
+// POST /api/dev/categories with classes/categories.json. A curator adds categories; existing ones keep their place and
+// take the new title. A category is never removed.
+export async function publishCategories(request: Request, env: Env, deps: Deps, dev: AuthedDeveloper): Promise<Response> {
+  if (!curator(env, dev)) throw new HttpError(403, "only the catalogue's curators publish the category tree");
+  const result = validateCategories(await readJson<unknown>(request));
+  if (!result.ok) throw problems(result.errors);
+  const ids = new Set(result.categories.map((c) => c.id));
+  const d = db(env);
+  const existing = await d.categoriesByIds([...ids]);
+  for (const c of result.categories) if (c.parent && !ids.has(c.parent) && !(await d.categoryExists(c.parent))) throw problems([`category ${c.id}: its parent ${c.parent} is not in the tree`]);
+  const added = result.categories.filter((c) => !existing.has(c.id));
+  await d.addCategories(added);
+  const renamed = result.categories.filter((c) => existing.has(c.id) && existing.get(c.id)!.title !== c.title);
+  for (const c of renamed) await env.DB.prepare("UPDATE categories SET title = ? WHERE id = ?").bind(c.title, c.id).run();
+  await audit(request, env, deps, dev.id, "categories-published", `${added.length} added, ${renamed.length} renamed`);
+  return json({ status: "published", added: added.map((c) => c.id), renamed: renamed.map((c) => c.id), total: (await d.categories()).length });
 }
 
 // GET /api/dev/recipes and /api/dev/components: the developer's own, unlisted versions included.
@@ -634,7 +914,7 @@ export async function listMine(env: Env, dev: AuthedDeveloper, kind: Kind): Prom
       latestVersion: e.latestVersion,
       status: entryStatus(e.developerId, e.flag),
       deprecated: e.flag ? { since: e.flag.at, reason: e.flag.reason, replacement: e.flag.replacement } : null,
-      versions: (await d.versions(kind, e.id, true)).map((v) => ({ version: v.version, digest: v.digest, publishedAt: v.publishedAt, listed: v.unlistedAt === null })),
+      versions: (await d.versions(kind, e.id, true)).map((v) => ({ version: v.version, digest: v.digest, publishedAt: v.publishedAt, channel: v.channel, fixes: v.fixes, listed: v.unlistedAt === null })),
     })),
   );
   return json(kind === "recipe" ? { recipes: entries } : { components: entries });
@@ -643,12 +923,12 @@ export async function listMine(env: Env, dev: AuthedDeveloper, kind: Kind): Prom
 // DELETE /api/dev/recipes/:name[/:version] and /api/dev/components/:name[/:version]
 export async function unlist(request: Request, env: Env, deps: Deps, dev: AuthedDeveloper, kind: Kind, name: string, version: string | null): Promise<Response> {
   const d = db(env);
-  if (!isCatalogueSlug(name) || (version !== null && !isVersion(version))) throw new HttpError(404, "not found");
+  if (!isCatalogueSlug(name) || (version !== null && !isPackageVersion(version))) throw new HttpError(404, "not found");
   const entry = await d.entryBySlug(kind, name);
   if (!entry || entry.developerId !== dev.id) throw new HttpError(404, "not found");
   if (version !== null && !(await d.versions(kind, entry.id, true)).some((v) => v.version === version)) throw new HttpError(404, "not found");
-  const unlisted = await d.unlist(kind, entry.id, version, deps.now().toISOString());
-  await audit(request, env, deps, dev.id, kind === "recipe" ? "recipe-unlisted" : "component-unlisted", `${entry.name}${version ? ` ${version}` : ""}`);
+  const unlisted = await d.unlist(kind, entry, version, deps.now().toISOString());
+  await audit(request, env, deps, dev.id, `${kind}-unlisted`, `${entry.name}${version ? ` ${version}` : ""}`);
   return json({ ok: true, unlisted });
 }
 

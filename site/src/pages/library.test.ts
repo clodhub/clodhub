@@ -1,16 +1,35 @@
 import { describe, expect, it } from "vitest";
 import { SIGNATURES_NOTE, classDescriptor, exampleComponentEntry, exampleRecipeEntry, slotClass, summariseFoundations, type ComponentSummary, type PackageDetails, type ComponentVersionView, type Deprecation, type RecipeSummary, type RecipeVersionView } from "@my/store-shared";
 import { escapeHtml } from "../html.js";
-import { componentBody, componentCard, deprecationBanner, detailsBody, recipeBody, recipeCard, splitDescription } from "./library.js";
+import { classBody, componentBody, componentCard, deprecationBanner, detailsBody, recipeBody, recipeCard, splitDescription } from "./library.js";
 
 const origin = "https://ourapps.app";
 const publisher = { slug: "dana", displayName: "Dana" };
+
+const image = { url: `${origin}/images/${"e".repeat(64)}.png`, thumbnail: `${origin}/images/${"f".repeat(64)}.webp`, caption: "The table during a hand", platform: "web", width: 1280, height: 800 };
+const versionCommon = {
+  platforms: ["web", "server", "ios", "macos", "android"],
+  licence: "Apache-2.0",
+  quality: null,
+  channel: "features" as const,
+  vulnerabilities: 0,
+  thumbnail: image.thumbnail,
+  downloads: 12,
+  updatedAt: "2026-10-16T10:00:00.000Z",
+  release: { channel: "features" as const, fixes: [] },
+  line: { line: "0.1", securityReleases: [] },
+  images: [image],
+  vulnerabilitySummary: { count: 0, checkedAt: "2026-10-17T10:00:00.000Z", url: `${origin}/api/components/card-deck/0.1.0/vulnerabilities` },
+  vulnerabilityWaivers: [],
+  versionDownloads: 4,
+};
 
 function recipeView(patch: Partial<RecipeVersionView> = {}): RecipeVersionView {
   const e = exampleRecipeEntry();
   const r = e.recipe;
   const suitability = exampleComponentEntry().suitability;
   return {
+    ...versionCommon,
     foundations: summariseFoundations(e.foundations, `${origin}/api/recipes/poker-night/0.1.0/details`), foundationEvidence: "publisher-declared",
     name: r.name,
     slug: "poker-night",
@@ -31,14 +50,13 @@ function recipeView(patch: Partial<RecipeVersionView> = {}): RecipeVersionView {
     bundle: { ...e.bundle, url: `${origin}/api/recipes/poker-night/0.1.0/bundle` },
     description: e.page.description,
     diagram: `${origin}/api/recipes/poker-night/0.1.0/diagram.svg`,
-    screenshots: [],
     components: r.components.map((c) => ({
       ...c,
       declaration: slotClass(classDescriptor(c.class, e.foundations)!),
       preferred: { ...c.preferred, url: c.id === "deck" ? `${origin}/components/card-deck` : null },
-      catalogue: c.id === "deck" ? { description: "A shuffled deck.", suitability, guardians: ["Example Guardian Ltd"] } : null,
+      catalogue: c.id === "deck" ? { description: "A shuffled deck.", suitability, guardians: ["Example Guardian Ltd"], quality: null, thumbnail: null } : null,
       deprecation: null,
-      alternatives: { count: c.id === "seats" ? 1 : 0, url: `${origin}/components?provides=${encodeURIComponent(classDescriptor(c.class, e.foundations)!.provides[0].type)}` },
+      alternatives: { count: c.id === "seats" ? 1 : 0, url: `${origin}/components?class=${encodeURIComponent(c.class.name)}` },
     })),
     jobs: r.jobs,
     scale: r.scale,
@@ -46,7 +64,7 @@ function recipeView(patch: Partial<RecipeVersionView> = {}): RecipeVersionView {
     connections: r.connections,
     tests: r.tests,
     instructions: r.instructions,
-    versions: [{ version: r.version, digest: e.digest, publishedAt: "2026-10-16T10:00:00.000Z" }],
+    versions: [{ version: r.version, digest: e.digest, publishedAt: "2026-10-16T10:00:00.000Z", channel: "features", fixes: [] }],
     ...patch,
   };
 }
@@ -54,12 +72,14 @@ function recipeView(patch: Partial<RecipeVersionView> = {}): RecipeVersionView {
 function componentView(patch: Partial<ComponentVersionView> = {}): ComponentVersionView {
   const e = exampleComponentEntry();
   return {
+    ...versionCommon,
     foundations: summariseFoundations(e.foundations, `${origin}/api/components/card-deck/0.1.0/details`), foundationEvidence: "publisher-declared",
     name: e.name,
     slug: "card-deck",
     version: e.version,
     description: e.description,
-    category: e.category,
+    category: "games/cards",
+    class: { name: "ourapps-ae/card-deck-class", version: "1.0.0", title: "Card deck" },
     tags: e.tags,
     targets: e.targets,
     provides: e.provides,
@@ -80,7 +100,7 @@ function componentView(patch: Partial<ComponentVersionView> = {}): ComponentVers
     migration: null,
     source: e.source,
     bundle: { ...e.bundle, url: `${origin}/api/components/card-deck/0.1.0/bundle` },
-    versions: [{ version: e.version, digest: e.digest, publishedAt: "2026-10-16T10:00:00.000Z" }],
+    versions: [{ version: e.version, digest: e.digest, publishedAt: "2026-10-16T10:00:00.000Z", channel: "features", fixes: [] }],
     usedBy: [{ name: "acme/poker-night", slug: "poker-night", title: "Poker Night", version: "0.1.0", url: `${origin}/recipes/poker-night`, slots: [{ id: "deck", preferred: true }, { id: "spare", preferred: false }] }],
     ...patch,
   };
@@ -111,8 +131,8 @@ describe("recipe page", () => {
     expect(html).toContain("<code>seats</code>");
     expect(html).toContain("<p>Provides <code>ae/seating</code> 1.0.0</p><p>Requires <code>ae/card-deck</code> 1.0.0</p>");
     expect(html).toContain('<a href="/components/card-deck">acme/card-deck</a>');
-    expect(html).toContain('<a href="/components?provides=ae%2Fseating">1 other</a>');
-    expect(html).toContain('<a href="/components?provides=ae%2Fcard-deck">0 others</a>');
+    expect(html).toContain('<a href="/components?class=ourapps-ae%2Fseating-class">1 other</a>');
+    expect(html).toContain('<a href="/components?class=ourapps-ae%2Fcard-deck-class">0 others</a>');
   });
 
   it("shows description, diagram, questions, components with suitability and guardians, targets, answer sets and versions", () => {
@@ -284,7 +304,9 @@ describe("cards", () => {
     const c: ComponentSummary = { ...componentView() };
     const html = componentCard(c).html;
     expect(html).toContain('href="/components/card-deck"');
-    expect(html).toContain("Provides card-deck. Requires random-source (optional).");
+    expect(html).toContain('Class <a href="/classes/card-deck-class">Card deck</a>');
+    expect(html).toContain(`<img class="thumb" src="${image.thumbnail}"`);
+    expect(html).toContain("12 downloads");
   });
 });
 
@@ -303,5 +325,39 @@ describe("sources and dependencies", () => {
     expect(html).toContain(escapeHtml(SIGNATURES_NOTE));
     expect(html).not.toContain("<details open");
     expect(html).toContain('href="/api/components/card-deck/0.1.0/details"');
+  });
+});
+
+describe("the format round on pages", () => {
+  it("puts the gallery before What you download, and the release card with channel, line and vulnerabilities", () => {
+    const html = componentBody(componentView({ images: [image, { ...image, url: `${origin}/images/${"1".repeat(64)}.png`, caption: "Second" }], quality: { level: "reviewed", certified: true, liveTested: null }, release: { channel: "security", fixes: ["GHSA-aaaa-bbbb-cccc"] }, line: { line: "0.1", securityReleases: [{ version: "0.1.1", fixes: ["GHSA-aaaa-bbbb-cccc"], publishedAt: "2026-11-01T00:00:00.000Z" }] }, vulnerabilitySummary: { count: 2, checkedAt: "2026-11-02T00:00:00.000Z", url: `${origin}/api/components/card-deck/0.1.1/vulnerabilities` } }), "latest").html;
+    expect(html.indexOf('id="gallery"')).toBeGreaterThan(0);
+    expect(html.indexOf('id="gallery"')).toBeLessThan(html.indexOf('id="what-you-download"'));
+    expect(html).toContain(`<img class="main-image" src="${image.url}"`);
+    expect(html).toContain('data-image="1"');
+    expect(html).toContain('<span class="pill badge-quality" title="Quality level from verified evidence">Reviewed</span>');
+    expect(html).toContain("Certified");
+    expect(html).toContain("<b>security</b>: fixes GHSA-aaaa-bbbb-cccc");
+    expect(html).toContain('<a href="/components/card-deck?version=0.1.1">0.1.1</a> fixes GHSA-aaaa-bbbb-cccc');
+    expect(html).toContain('<span class="pill badge-vulnerable">2</span>');
+    expect(html).toContain("<th>Channel</th>");
+  });
+
+  it("groups the questions by ask and shows follow-ups with the answer that asks them", () => {
+    const html = recipeBody(recipeView(), "latest").html;
+    const at = ["Ask the person (2)", "Ask unless the request settles it (2)", "Defaults (3)"].map((h) => html.indexOf(h));
+    expect(at.every((x, i) => x > 0 && (i === 0 || x > at[i - 1]!))).toBe(true);
+    expect(html).toContain("Follow-up: asked when lessons is yes");
+    expect(html).toContain("Follow-up: asked when server is paid");
+  });
+
+  it("compares a class's implementations side by side", () => {
+    const html = classBody({ name: "ourapps-ae/card-deck-class", slug: "card-deck-class", version: "1.0.0", title: "Card deck", summary: "A deck", category: "games/cards", presentation: "visual", implementations: 2, publisher: null, url: "", digest: "c".repeat(64), provides: [], requires: [], settings: { type: "object", properties: {}, required: [], additionalProperties: false }, suites: [{ id: "behaviour", argv: ["node", "check.mjs"], network: false, timeoutSeconds: 30 }], versions: [{ version: "1.0.0", digest: "c".repeat(64), publishedAt: "2026-11-01T00:00:00.000Z" }], implementationList: [{ name: "acme/card-deck", slug: "card-deck", version: "0.1.0", description: "A deck", thumbnail: image.thumbnail, quality: { level: "integration-tested", certified: false, liveTested: null }, platforms: ["web", "ios"], downloads: 40, vulnerabilities: 0, url: "" }, { name: "acme/fancy-deck", slug: "fancy-deck", version: "1.0.0", description: "Fancy", thumbnail: null, quality: null, platforms: ["web"], downloads: 3, vulnerabilities: null, url: "" }] }).html;
+    expect(html).toContain("Implementations (2)");
+    expect(html).toContain('<a href="/components/card-deck">acme/card-deck</a> 0.1.0');
+    expect(html).toContain("Integration-tested");
+    expect(html).toContain("not assessed");
+    expect(html).toContain("not checked");
+    expect(html).toContain("<code>node check.mjs</code>");
   });
 });

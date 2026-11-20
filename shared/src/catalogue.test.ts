@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classDescriptor, canonical, descriptorDigest, graphProblems, selectedTargets, validLicence, validateFoundations, validateDescriptor, GRAMMAR_PATTERNS, componentFacts, fit, exampleComponentEntries, exampleComponentEntry, exampleAlternativeEntry, exampleRecipeEntry, exampleRecipeContext, isCatalogueName, isCatalogueSlug, isDigest, isPackagePath, isRepository, isSafeSvg, isVersion, compareVersions, newestVersion, propertyKind, settingSchema, validateRecipe, validateRecipeEntry, validateComponentEntry, validateSuitability, summariseMigration } from "./index.js";
+import { classDescriptor, canonical, descriptorDigest, graphProblems, selectedTargets, validLicence, validateFoundations, validateDescriptor, GRAMMAR_PATTERNS, componentFacts, fit, exampleComponentEntries, exampleComponentEntry, exampleAlternativeEntry, exampleRecipeEntry, exampleRecipeContext, isCatalogueName, isCatalogueSlug, isDigest, isPackagePath, isRepository, isSafeSvg, isVersion, compareVersions, newestVersion, propertyKind, settingSchema, validateRecipe, validateRecipeEntry, validateComponentEntry, validateSuitability, summariseMigration, exampleCategories, isPackageVersion, questionGroups, readReleaseChannel, validateCategories, validateClassEntry, validateQuality, versionLine } from "./index.js";
 
 const patterns = Object.values(GRAMMAR_PATTERNS);
 const errors = (r: { ok: boolean; errors?: string[] }) => r.ok ? "" : r.errors!.join(" | ");
@@ -201,4 +201,75 @@ describe("recipe structural validation", () => {
   it("refuses incompatible simultaneous setting effects", () => { expect(changedRecipe(e => e.recipe.questions[3].effects = [{ sets: { "host.expectedPeople": 9 } }]).ok).toBe(false); });
   it("keeps recipe class declarations independent of preferred publication", () => { const e = exampleRecipeEntry(); const d = classDescriptor(e.recipe.components[0].class, e.foundations); expect(d?.verification[0].id).toBe("behaviour"); expect(errors(validateRecipeEntry(e))).toBe(""); });
   it("validates suitability and migration", () => { expect(validateSuitability(exampleComponentEntry().suitability).ok).toBe(true); expect(validateSuitability({ format: 1, jobs: [], profiles: [] }).ok).toBe(false); expect(summariseMigration(null).ok).toBe(false); });
+});
+
+describe("the format round: channels, images, waivers, quality, classes, questions", () => {
+  it("orders pre-releases before their release and reads a version's line", () => {
+    expect(compareVersions("0.9.0-preview.1", "0.9.0")).toBe(-1);
+    expect(compareVersions("0.9.0-preview.2", "0.9.0-preview.10")).toBe(-1);
+    expect(newestVersion(["0.9.0-preview.1", "0.8.3"])).toBe("0.9.0-preview.1");
+    expect(versionLine("1.4.2")).toBe("1.4");
+    expect(isPackageVersion("0.9.0-preview.1")).toBe(true);
+    expect(isPackageVersion("0.9.0-")).toBe(false);
+  });
+  it("matches the channel to the version", () => {
+    const channel = (version: string, release: unknown) => { const e: string[] = []; readReleaseChannel(release, version, e); return e.join(" | "); };
+    expect(channel("1.2.0", { channel: "features", fixes: [] })).toBe("");
+    expect(channel("1.2.3", { channel: "security", fixes: ["GHSA-jfh8-c2jp-5v3q", "CVE-2026-12345"] })).toBe("");
+    expect(channel("1.3.0-preview.1", { channel: "preview", fixes: [] })).toBe("");
+    expect(channel("1.2.3", { channel: "features", fixes: [] })).toContain("needs patch 0");
+    expect(channel("1.2.0", { channel: "security", fixes: ["CVE-2026-12345"] })).toContain("patch above 0");
+    expect(channel("1.2.1", { channel: "security", fixes: ["not an id"] })).toContain("release.fixes has an invalid entry");
+    expect(channel("1.2.0", { channel: "features", fixes: ["CVE-2026-12345"] })).toContain("must be empty");
+    expect(channel("1.2.0", { channel: "nightly", fixes: [] })).toContain("one of security, features, preview");
+    expect(channel("1.2.0", undefined)).toContain("release must be an object");
+  });
+  it("checks images, waivers and quality", () => {
+    expect(errors(changedComponent((e) => (e.images = Array.from({ length: 13 }, () => e.images[0]))))).toContain("at most 12 images");
+    expect(errors(changedComponent((e) => (e.images[0].platform = "tvos")))).toContain("one of the package's platforms");
+    expect(errors(changedComponent((e) => (e.images[0].caption = "x".repeat(141))))).toContain("at most 140 characters");
+    expect(errors(changedComponent((e) => (e.vulnerabilityWaivers = [{ id: "GHSA-jfh8-c2jp-5v3q", reason: "" }])))).toContain("reason must be text");
+    expect(errors(changedComponent((e) => (e.quality = { level: "excellent", certified: true })))).toContain("quality.level must be one of");
+    expect(validateQuality({ level: "live-tested", certified: false, liveTested: { at: "2026-11-19", platform: "web" } }).ok).toBe(true);
+    expect(errors(validateQuality({ level: "live-tested", certified: false }))).toContain("needs liveTested");
+    expect(errors(changedComponent((e) => (e.format = 1)))).toContain("format-refused");
+  });
+  it("requires the catalogue fields of every class descriptor", () => {
+    for (const field of ["title", "summary", "category", "presentation"]) {
+      const d = structuredClone(exampleComponentEntry().foundations.classes[0]!.descriptor) as Mutable;
+      delete d[field];
+      expect(validateDescriptor(d, patterns), field).toEqual(["class-fields"]);
+    }
+    const d = structuredClone(exampleComponentEntry().foundations.classes[0]!.descriptor) as Mutable;
+    d.category = "Games/Cards";
+    expect(validateDescriptor(d, patterns)).toContain("class-category");
+    d.category = "games/cards";
+    d.presentation = "sometimes";
+    expect(validateDescriptor(d, patterns)).toContain("class-presentation");
+    expect(errors(validateClassEntry({ format: 2, class: exampleComponentEntry().foundations.classes[0]!.descriptor }))).toBe("");
+    expect(errors(validateClassEntry({ format: 2, class: exampleComponentEntry().foundations.classes[0]!.descriptor, digest: "x" }))).toContain("unknown field digest");
+  });
+  it("checks categories.json", () => {
+    expect(errors(validateCategories(exampleCategories()))).toBe("");
+    expect(errors(validateCategories({ format: 1, categories: [{ id: "games/cards", title: "Cards", parent: "toys" }] }))).toContain("parent must be games");
+    expect(errors(validateCategories({ categories: [] }))).toContain("format-refused");
+  });
+  it("reads ask and question, and groups the questions", () => {
+    expect(errors(changedRecipe((e) => (e.recipe.questions[0].ask = "Which devices?")))).toContain("questions[0].ask must be one of required, unless-settled, default");
+    expect(errors(changedRecipe((e) => delete e.recipe.questions[0].question))).toContain("questions[0].question must be text");
+    expect(errors(changedRecipe((e) => (e.recipe.questions[5].default = "free")))).toContain("a required question has no default");
+    expect(errors(changedRecipe((e) => delete e.recipe.questions[2].default))).toContain("a question with ask default needs a default");
+    expect(errors(changedRecipe((e) => (e.recipe.format = 1)))).toContain("format-refused: recipe.json format is 2");
+    const groups = questionGroups(exampleRecipeEntry().recipe.questions);
+    expect(groups.map((g) => [g.heading, g.questions.map((q) => q.id)])).toEqual([["Ask the person", ["server", "serverKey"]], ["Ask unless the request settles it", ["targets", "scale"]], ["Defaults", ["chips", "lessons", "tourStyle"]]]);
+  });
+});
+
+describe("class descriptor format", () => {
+  it("refuses a format 1 descriptor", () => {
+    const d = structuredClone(exampleComponentEntry().foundations.classes[0]!.descriptor) as Mutable;
+    expect(d.format).toBe(2);
+    d.format = 1;
+    expect(validateDescriptor(d, patterns)).toEqual(["class-format-refused"]);
+  });
 });

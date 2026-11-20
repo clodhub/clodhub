@@ -22,6 +22,9 @@ export type Route =
   | { page: "components" }
   | { page: "component"; slug: string }
   | { page: "details"; kind: "recipes" | "components"; slug: string }
+  | { page: "classes" }
+  | { page: "class"; slug: string }
+  | { page: "categories" }
   | { page: "example" }
   | { page: "example-app" }
   | { page: "not-found" };
@@ -52,6 +55,12 @@ export function matchRoute(pathname: string): Route {
   if (parts.length === 1 && parts[0] === "terms") return { page: "terms" };
   if (parts.length === 1 && parts[0] === "reference") return { page: "reference" };
   if (parts.length === 1 && parts[0] === "small") return { page: "small" };
+  if (parts[0] === "classes") {
+    if (parts.length === 1) return { page: "classes" };
+    if (parts.length === 2 && isCatalogueSlug(parts[1])) return { page: "class", slug: parts[1] };
+    return { page: "not-found" };
+  }
+  if (parts.length === 1 && parts[0] === "categories") return { page: "categories" };
   if (parts[0] === "recipes" || parts[0] === "components") {
     const kind = parts[0] === "recipes" ? "recipe" : "component";
     if (parts.length === 1) return { page: parts[0] };

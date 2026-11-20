@@ -1,6 +1,6 @@
 // Plain-text pages of the recipe library and component catalogue, for agents that read without a browser.
-import { COMPONENT_PACKAGE, RECIPE_PACKAGE, SIGNATURES_NOTE, classSettings, deprecationLine, describeCondition, kindText, type ClassInterface, type Condition, type PackageSummary, type Deprecation, type ComponentList, ComponentSearch, ComponentSummary, ComponentVersionView, Port, RecipeList, RecipeQuestion, RecipeSearch, RecipeSlotView, RecipeSummary, RecipeVersionView, SettingDeclaration, Suitability, Targets } from "@my/store-shared";
-import type { FoundationSummary, Foundations, PackageDetails } from "@my/store-shared";
+import { ASK_HEADINGS, COMPONENT_PACKAGE, QUALITY_TEXT, RECIPE_PACKAGE, SIGNATURES_NOTE, classSettings, deprecationLine, describeCondition, kindText, questionGroups } from "@my/store-shared";
+import type { CategoryCount, ClassList, ClassVersionView, ClassInterface, ComponentList, ComponentSummary, ComponentVersionView, Condition, Deprecation, FoundationSummary, Foundations, ListQuery, PackageDetails, PackageSummary, Port, Quality, RecipeList, RecipeQuestion, RecipeSlotView, RecipeSummary, RecipeVersionView, SettingDeclaration, Suitability, Targets } from "@my/store-shared";
 
 const COPYRIGHT = "Copyright Level N Ltd 2026";
 
@@ -17,7 +17,7 @@ const buildSteps = (v: { slug: string; version: string; instructions?: string | 
   "Build it (aepm, Python 3.12, Node.js, Graphviz)",
   "1. git clone https://github.com/ourapps-ae/aepm && export PYTHONPATH=$PWD/aepm",
   `2. python3 -m aepm fetch ${v.slug}@${v.version} --with-dependencies --store store   (downloads the recipe and the component it prefers for each slot, checks each sha256 digest and the signatures)`,
-  `3. python3 -m aepm questions ${v.slug}@${v.version} --store store   (the questions as JSON; answer from the person's description, ask the rest)`,
+  `3. python3 -m aepm questions ${v.slug}@${v.version} --store store   (the questions as JSON with toAsk and followUps). Answer from the person's description. Tell the person how many questions toAsk lists, ask them in one round, include as conditional questions in that round the followUps whose condition one of those answers could meet, and add no others`,
   `4. write answers.json (question id to answer), then: python3 -m aepm design ${v.slug}@${v.version} --store store --answers answers.json --out definition.json`,
   `   another component of a slot's class instead of the preferred one: python3 -m aepm alternatives ${v.slug}@${v.version} SLOT --store store lists the components that fit, then python3 -m aepm design ${v.slug}@${v.version} --store store --answers answers.json --substitute SLOT=NAME@VERSION --out definition.json`,
   "5. python3 -m aepm resolve definition.json --catalogue store/catalogue.json --out lock.json",
@@ -31,46 +31,106 @@ function page(title: string, body: string[]): string {
   return `${[title, "", ...body, "", COPYRIGHT].join("\n")}\n`;
 }
 
+const quality = (q: Quality | null): string => (q ? `${QUALITY_TEXT[q.level]}${q.certified ? ", certified" : ", publisher-reviewed"}` : "not assessed");
+const known = (n: number | null): string => (n === null ? "not checked yet" : n === 0 ? "none known" : `${n} known`);
+
 function recipeLine(r: RecipeSummary): string[] {
-  return [`- ${r.title} (${r.name}) ${r.version}: ${r.summary}`, ...warnings(r.deprecations).map((w) => `  ${w}`), `  category ${r.category}; ${targets(r.targets)}; tags ${list(r.tags)}`, `  ${r.url}.txt`];
+  return [`- ${r.title} (${r.name}) ${r.version}: ${r.summary}`, ...warnings(r.deprecations).map((w) => `  ${w}`), `  category ${r.category}; platforms ${list(r.platforms)}; quality ${quality(r.quality)}; ${r.channel}; vulnerabilities ${known(r.vulnerabilities)}; ${r.downloads} downloads in 30 days; updated ${r.updatedAt.slice(0, 10)}`, `  ${r.url}.txt`];
 }
 
 function componentLine(c: ComponentSummary): string[] {
-  return [`- ${c.name} ${c.version}: ${c.description}`, ...warnings(c.deprecations).map((w) => `  ${w}`), `  provides ${ports(c.provides)}; requires ${ports(c.requires)}`, `  category ${c.category ?? "none"}; ${targets(c.targets)}; tags ${list(c.tags)}`, `  ${c.url}.txt`];
+  return [`- ${c.name} ${c.version}: ${c.description}`, ...warnings(c.deprecations).map((w) => `  ${w}`), `  class ${c.class.name}@${c.class.version} (${c.class.title}); category ${c.category}; platforms ${list(c.platforms)}; licence ${c.licence}`, `  quality ${quality(c.quality)}; ${c.channel}; vulnerabilities ${known(c.vulnerabilities)}; ${c.downloads} downloads in 30 days; updated ${c.updatedAt.slice(0, 10)}`, `  ${c.url}.txt`];
 }
 
-function counts(categories: { category: string; count: number }[]): string {
-  return list(categories.map((c) => `${c.category} (${c.count})`));
+function counts(categories: CategoryCount[], kind: "recipes" | "components"): string {
+  return list(categories.map((c) => `${c.id} (${c[kind]})`));
+}
+
+// The query string of a listing with one value changed; empty values are left out.
+function listUrl(origin: string, path: string, q: ListQuery, change: Partial<Record<keyof ListQuery, string | null>>): string {
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries({ ...q, ...change })) {
+    if (v === undefined || v === null || k === "limit" || (k === "deprecated" && v === "include")) continue;
+    for (const one of Array.isArray(v) ? v : [v]) params.append(k, String(one));
+  }
+  const s = params.toString();
+  return `${origin}${path}${s ? `?${s}` : ""}`;
+}
+
+const totalText = (t: { count: number; approximate: boolean }): string => (t.approximate ? `more than ${t.count.toLocaleString("en-GB")}` : t.count.toLocaleString("en-GB"));
+
+const LIST_HELP = "Parameters: q (search), category, platform, licence, quality (packaged|reviewed|integration-tested|live-tested, that level or above), certified=true|false, channel (security|features|preview), secure=true (no known vulnerabilities), publisher, deprecated=exclude|include|only, sort (relevance with q, downloads, trending, updated, name), cursor (from Next or Previous), limit (1 to 100, default 30).";
+
+function pageLinks(origin: string, path: string, l: { query: ListQuery; next: string | null; previous: string | null }): string[] {
+  return [...(l.previous ? [`Previous: ${listUrl(origin, path, l.query, { cursor: l.previous })}`] : []), ...(l.next ? [`Next: ${listUrl(origin, path, l.query, { cursor: l.next })}`] : [])];
 }
 
 export function recipeListText(l: RecipeList, origin: string): string {
-  const shown = l.recipes.length === 0 ? 0 : `${l.offset + 1}-${l.offset + l.recipes.length}`;
   return page("ourapps recipe library", [
-    `${l.total} recipes; showing ${shown}.`,
-    `Categories: ${counts(l.categories)}`,
-    `Filter with ?category=, ?target=, ?tag=, ?deprecated=exclude|include|only, search with ?q=. JSON: ${origin}/api/recipes. Components: ${origin}/components.txt`,
+    `${totalText(l.total)} recipes match; this page shows ${l.recipes.length}, sorted by ${l.query.sort}.`,
+    `Categories here: ${counts(l.categories, "recipes")}`,
+    LIST_HELP,
+    `JSON: ${listUrl(origin, "/api/recipes", l.query, {})}. Components: ${origin}/components.txt. Classes: ${origin}/classes.txt`,
     "",
     ...(l.recipes.length === 0 ? ["No recipes match."] : l.recipes.flatMap(recipeLine)),
+    "",
+    ...pageLinks(origin, "/recipes.txt", l),
   ]);
-}
-
-export function recipeSearchText(s: RecipeSearch, origin: string): string {
-  return page(`ourapps recipe search: ${s.query}`, [`${s.recipes.length} results. JSON: ${origin}/api/recipes/search?q=${encodeURIComponent(s.query)}`, "", ...(s.recipes.length === 0 ? ["No recipes match."] : s.recipes.flatMap(recipeLine))]);
 }
 
 export function componentListText(l: ComponentList, origin: string): string {
-  const shown = l.components.length === 0 ? 0 : `${l.offset + 1}-${l.offset + l.components.length}`;
   return page("ourapps component catalogue", [
-    `${l.total} components; showing ${shown}.`,
-    `Categories: ${counts(l.categories)}`,
-    `Filter with ?category=, ?target=, ?tag=, ?provides=, ?requires= (each may repeat; a component matches every one), ?deprecated=exclude|include|only, search with ?q=. JSON: ${origin}/api/components. Recipes: ${origin}/recipes.txt`,
+    `${totalText(l.total)} components match; this page shows ${l.components.length}, sorted by ${l.query.sort}.`,
+    `Categories here: ${counts(l.categories, "components")}`,
+    `${LIST_HELP} Components also take class (scope/name), provides and requires (each may repeat; a component matches every one).`,
+    `JSON: ${listUrl(origin, "/api/components", l.query, {})}. Recipes: ${origin}/recipes.txt. Classes: ${origin}/classes.txt`,
     "",
     ...(l.components.length === 0 ? ["No components match."] : l.components.flatMap(componentLine)),
+    "",
+    ...pageLinks(origin, "/components.txt", l),
   ]);
 }
 
-export function componentSearchText(s: ComponentSearch, origin: string): string {
-  return page(`ourapps component search: ${s.query}`, [`${s.components.length} results. JSON: ${origin}/api/components/search?q=${encodeURIComponent(s.query)}`, "", ...(s.components.length === 0 ? ["No components match."] : s.components.flatMap(componentLine))]);
+export function classListText(l: ClassList, origin: string): string {
+  return page("ourapps component classes", [
+    `${totalText(l.total)} classes; this page shows ${l.classes.length}, by category. Filter with ?category=. JSON: ${origin}/api/classes. Category tree: ${origin}/categories.txt`,
+    `Categories here: ${list(l.categories.map((c) => `${c.id} (${c.classes})`))}`,
+    "",
+    ...(l.classes.length === 0 ? ["No classes match."] : l.classes.flatMap((c) => [`- ${c.title} (${c.name}) ${c.version}: ${c.summary}`, `  category ${c.category}; ${c.presentation === "visual" ? "visual" : "no visual output"}; ${c.implementations} implementations`, `  ${c.url}.txt`])),
+    ...(l.next ? ["", `Next: ${origin}/classes.txt?cursor=${l.next}`] : []),
+  ]);
+}
+
+export function classText(c: ClassVersionView, origin: string): string {
+  const settings = classSettings(c.settings).map((p) => `${p.id} ${p.kind ? kindText(p.kind) : "unknown"}${p.required ? ", always written" : ""}`);
+  return page(`${c.title} (${c.name}) ${c.version}`, [
+    c.summary,
+    "",
+    `Category: ${c.category}; ${c.presentation === "visual" ? "implementations render something people see (each shows images)" : "no visual output"}`,
+    `Digest: sha256:${c.digest}`,
+    `Provides: ${list(c.provides.map((p) => `${p.type} ${p.version} (entry modules ${list(Object.entries(p.modules).map(([k, v]) => `${k} ${v.join(" ")}`))})`))}`,
+    `Requires: ${interfaces(c.requires)}`,
+    `Settings: ${list(settings)}`,
+    `Shared checks: ${list(c.suites.map((s) => `${s.id} (${s.argv.join(" ")}; ${s.timeoutSeconds} s${s.network ? "; network" : ""})`))}`,
+    "",
+    `Implementations (${c.implementations}; the ${c.implementationList.length} most downloaded of this version)`,
+    ...(c.implementationList.length === 0 ? ["none listed"] : c.implementationList.map((i) => `- ${i.name} ${i.version}: ${i.description}; quality ${quality(i.quality)}; platforms ${list(i.platforms)}; ${i.downloads} downloads; vulnerabilities ${known(i.vulnerabilities)}; ${i.url}.txt`)),
+    `All implementations: ${origin}/components.txt?class=${encodeURIComponent(c.name)}`,
+    "",
+    "Versions",
+    ...c.versions.map((v) => `- ${v.version} (${v.publishedAt}) sha256:${v.digest}`),
+    "",
+    `Page: ${origin}/classes/${c.slug}; JSON: ${origin}/api/classes/${c.slug}/${c.version}`,
+  ]);
+}
+
+export function categoriesText(t: { categories: CategoryCount[] }, origin: string): string {
+  const depth = (id: string) => id.split("/").length - 1;
+  return page("ourapps categories", [
+    `The category tree with the classes, components and recipes listed in each (a category counts its descendants). JSON: ${origin}/api/categories`,
+    "",
+    ...t.categories.map((c) => `${"  ".repeat(depth(c.id))}- ${c.title} (${c.id}): ${c.classes} classes, ${c.components} components, ${c.recipes} recipes`),
+  ]);
 }
 
 function answer(value: unknown): string {
@@ -86,11 +146,11 @@ function setValue(v: unknown): string {
 }
 
 function question(q: RecipeQuestion): string[] {
-  const out = [`- ${q.id} (${q.type}): ${q.ask}`];
+  const out = [`- ${q.id} (${q.type}): ${q.question}`];
+  if (q.askWhen) out.push(`  follow-up: asked when ${when(q.askWhen)}`);
   if (q.options) out.push(`  options: ${q.options.join(", ")}`);
   if (q.min !== undefined || q.max !== undefined) out.push(`  range: ${q.min ?? "any"} to ${q.max ?? "any"}`);
-  out.push(`  default: ${answer(q.default)}`);
-  if (q.askWhen) out.push(`  asked only when ${when(q.askWhen)}; otherwise it takes its default`);
+  if (q.ask !== "required") out.push(`  default: ${answer(q.default)}`);
   if (q.askAgent) out.push(`  agent: ${q.askAgent}`);
   for (const effect of q.effects) for (const [target, value] of Object.entries(effect.sets)) out.push(`  sets ${target} to ${setValue(value)}`);
   return out;
@@ -138,8 +198,22 @@ function settingLine(s: SettingDeclaration): string {
   return `- ${s.id}: ${kindText(s)}; ${traits.join(", ")}`;
 }
 
-function versions(v: { versions: { version: string; publishedAt: string; digest: string }[] }): string[] {
-  return v.versions.map((x) => `- ${x.version} (${x.publishedAt}) ${x.digest}`);
+function versions(v: { versions: { version: string; publishedAt: string; digest: string; channel: string; fixes: string[] }[] }): string[] {
+  return v.versions.map((x) => `- ${x.version} ${x.channel}${x.fixes.length ? ` (fixes ${x.fixes.join(", ")})` : ""} (${x.publishedAt}) ${x.digest}`);
+}
+
+// Channel, fixes, the line and its security releases, quality, vulnerabilities and images.
+function releaseLines(v: RecipeVersionView | ComponentVersionView, kind: "recipes" | "components", origin: string): string[] {
+  const s = v.vulnerabilitySummary;
+  return [
+    `Release: ${v.release.channel}${v.release.fixes.length ? `, fixes ${v.release.fixes.join(", ")}` : ""}`,
+    `Line ${v.line.line}: ${v.line.securityReleases.length === 0 ? "no security releases" : `security releases ${v.line.securityReleases.map((r) => `${r.version} (fixes ${r.fixes.join(", ")})`).join("; ")}`}`,
+    `Quality: ${quality(v.quality)}${v.quality?.liveTested ? `; live-tested ${v.quality.liveTested.at} on ${v.quality.liveTested.platform}` : ""}`,
+    `Known vulnerabilities: ${known(s.count)}${s.checkedAt ? ` (checked ${s.checkedAt.slice(0, 10)} at OSV)` : ""}${v.vulnerabilityWaivers.length ? `; waived ${v.vulnerabilityWaivers.map((w) => w.id).join(", ")}` : ""}; ${s.url}`,
+    `Downloads: ${v.downloads} in 30 days; ${v.versionDownloads} of this version`,
+    ...(v.images.length ? [`Images (${v.images.length}): ${v.images.map((i) => `${i.url} (${i.platform}, ${i.caption})`).join("; ")}`] : []),
+    `Classes: ${origin}/classes.txt; this ${kind === "recipes" ? "recipe" : "component"} as JSON: ${origin}/api/${kind}/${v.slug}/${v.version}`,
+  ];
 }
 
 function foundationLines(f: Foundations): string[] {
@@ -174,11 +248,12 @@ export function recipeText(v: RecipeVersionView, origin: string): string {
     `Category: ${v.category}; tags ${list(v.tags)}`,
     publisherLine(v.publisher),
     `Source: ${v.source.repository} release ${v.source.tag}; digest ${v.digest}`,
+    ...releaseLines(v, "recipes", origin),
     `Bundle download: GET ${v.bundle.url} returns a link valid for one hour${v.status === "orphaned" ? "; with no publisher the link exists only while the release is public, otherwise the status is bundle-unavailable" : ""}`,
     ...buildSteps(v),
     "",
     `Questions (${v.questions.length})`,
-    ...v.questions.flatMap(question),
+    ...questionGroups(v.questions).flatMap((g) => ["", `${g.heading} (${g.questions.length})`, ...g.questions.flatMap(question)]),
     "",
     `Slots (${v.components.length}): each needs a component of its class; the preferred component fills it unless another component that fits the class is substituted (python3 -m aepm alternatives ${v.slug}@${v.version} SLOT --store store)`,
     ...v.components.flatMap(slotLine),
@@ -258,11 +333,13 @@ export function componentText(v: ComponentVersionView, origin: string): string {
     ...(v.deprecations.length > 0 ? [...warnings(v.deprecations), `Deprecation tree: ${origin}/api/components/${v.slug}/${v.version}/deprecations`, ""] : []),
     v.description,
     "",
-    `Category: ${v.category ?? "none"}; tags ${list(v.tags)}`,
+    `Tags: ${list(v.tags)}`,
     `Targets: ${targets(v.targets)}`,
     publisherLine(v.publisher),
     `Guardians: ${list(v.guardians)}`,
     `Source: ${v.source.repository} release ${v.source.tag}; digest ${v.digest}`,
+    `Class: ${v.class.name}@${v.class.version} (${v.class.title}); category ${v.category}; ${origin}/classes/${v.class.name.split("/")[1]}.txt`,
+    ...releaseLines(v, "components", origin),
     `Bundle download: GET ${v.bundle.url} returns a link valid for one hour${v.status === "orphaned" ? "; with no publisher the link exists only while the release is public, otherwise the status is bundle-unavailable" : ""}`,
     "",
     ...classLines(f),

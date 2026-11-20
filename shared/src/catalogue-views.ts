@@ -1,6 +1,6 @@
 // What the public recipe and component routes return. Never carries tokens or credentials.
-import type { BundlePointer, ClassInterface, ComponentDependency, MigrationSummary, Port, Recipe, RecipeSlot, ReleasePointer, EntryModule, SettingDeclaration, Suitability, Targets } from "./catalogue.js";
-import type { ClassDescriptor, ClassReference, Compatibility, Foundations } from "./foundations.js";
+import type { BundlePointer, Channel, ClassInterface, ComponentDependency, MigrationSummary, Port, Quality, QualityLevel, Recipe, RecipeSlot, ReleaseChannel, ReleasePointer, EntryModule, SettingDeclaration, Suitability, Targets, VulnerabilityWaiver } from "./catalogue.js";
+import type { ClassDescriptor, ClassReference, Compatibility, Foundations, Presentation } from "./foundations.js";
 
 export const DEPRECATED_FILTERS = ["exclude", "include", "only"] as const;
 export type DeprecatedFilter = typeof DEPRECATED_FILTERS[number];
@@ -48,43 +48,84 @@ export interface VersionRef {
   version: string;
   digest: string;
   publishedAt: string;
+  channel: Channel;
+  fixes: string[];
 }
 
-export interface RecipeSummary {
+// The listing sorts: relevance (with q only), downloads in the last 30 days, trending (see agents.md), newest version
+// first, name.
+export const SORTS = ["relevance", "downloads", "trending", "updated", "name"] as const;
+export type Sort = typeof SORTS[number];
+export const PAGE_SIZE = 30;
+// Above this, a listing gives its total as "more than".
+export const COUNT_CAP = 10_000;
+
+// What every listing card shows, read from the entry's summary row.
+interface SummaryCommon {
   name: string;
   slug: string;
   version: string;
+  category: string;
+  platforms: string[];
+  licence: string;
+  quality: Quality | null;
+  channel: Channel;
+  // Known advisories affecting the version, waived ones excluded; null until the first check.
+  vulnerabilities: number | null;
+  // The main image's thumbnail, or null.
+  thumbnail: string | null;
+  downloads: number;
+  updatedAt: string;
+  publishedAt: string;
+  tags: string[];
+  // Null when the publisher deleted their account.
+  publisher: Publisher | null;
+  repository: string;
+  url: string;
+  status: EntryStatus;
+  deprecations: Deprecation[];
+}
+
+export interface RecipeSummary extends SummaryCommon {
   title: string;
   summary: string;
-  category: string;
-  tags: string[];
   targets: Targets;
-  publishedAt: string;
-  // Null when the publisher deleted their account.
-  publisher: Publisher | null;
-  repository: string;
-  url: string;
-  status: EntryStatus;
-  deprecations: Deprecation[];
 }
 
-export interface ComponentSummary {
-  name: string;
-  slug: string;
-  version: string;
+export interface ComponentSummary extends SummaryCommon {
   description: string;
-  category: string | null;
-  tags: string[];
+  class: { name: string; version: string; title: string };
   targets: Targets;
-  provides: Port[];
-  requires: Port[];
-  publishedAt: string;
-  // Null when the publisher deleted their account.
-  publisher: Publisher | null;
-  repository: string;
+}
+
+export interface ImageView {
   url: string;
-  status: EntryStatus;
-  deprecations: Deprecation[];
+  thumbnail: string;
+  caption: string;
+  platform: string;
+  width: number;
+  height: number;
+}
+
+// The line of the shown version (MAJOR.MINOR) and the security releases on it.
+export interface LineView {
+  line: string;
+  securityReleases: { version: string; fixes: string[]; publishedAt: string }[];
+}
+
+export interface VulnerabilitySummary {
+  count: number | null;
+  checkedAt: string | null;
+  url: string;
+}
+
+interface VersionCommon {
+  release: ReleaseChannel;
+  line: LineView;
+  images: ImageView[];
+  vulnerabilitySummary: VulnerabilitySummary;
+  vulnerabilityWaivers: VulnerabilityWaiver[];
+  versionDownloads: number;
 }
 
 // A recipe's slot with its preferred component (`url` is its catalogue page, null when that version is not listed),
@@ -94,12 +135,13 @@ export interface ComponentSummary {
 export interface RecipeSlotView extends Omit<RecipeSlot, "preferred"> {
   declaration: SlotClass;
   preferred: { name: string; version: string; url: string | null };
-  catalogue: { description: string; suitability: Suitability; guardians: string[] } | null;
+  catalogue: { description: string; suitability: Suitability; guardians: string[]; quality: Quality | null; thumbnail: string | null } | null;
   deprecation: Deprecation | null;
+  // Other listed components implementing the slot's class.
   alternatives: { count: number; url: string };
 }
 
-export interface RecipeVersionView extends RecipeSummary {
+export interface RecipeVersionView extends RecipeSummary, VersionCommon {
   foundations: FoundationSummary;
   foundationEvidence: "publisher-declared";
   digest: string;
@@ -107,7 +149,6 @@ export interface RecipeVersionView extends RecipeSummary {
   bundle: BundlePointer & { url: string };
   description: string;
   diagram: string | null;
-  screenshots: string[];
   components: RecipeSlotView[];
   jobs: Recipe["jobs"];
   scale: Recipe["scale"];
@@ -120,7 +161,9 @@ export interface RecipeVersionView extends RecipeSummary {
 
 // `usedBy` lists the listed recipes whose newest version names this component in a slot, with each slot and whether the
 // component is the slot's preferred one or a job candidate.
-export interface ComponentVersionView extends ComponentSummary {
+export interface ComponentVersionView extends ComponentSummary, VersionCommon {
+  provides: Port[];
+  requires: Port[];
   foundations: FoundationSummary;
   foundationEvidence: "publisher-declared";
   digest: string;
@@ -203,35 +246,125 @@ export function providersPath(types: string[]): string {
   return `/components${query ? `?${query}` : ""}`;
 }
 
+// One category with how many listed entries it and its descendants hold.
 export interface CategoryCount {
+  id: string;
+  title: string;
+  parent: string | null;
+  classes: number;
+  components: number;
+  recipes: number;
+}
+
+// GET /api/categories
+export interface CategoryTree {
+  categories: CategoryCount[];
+}
+
+// The listing parameters, the same for the page, its plain text and its JSON.
+export interface ListQuery {
+  q?: string;
+  category?: string;
+  class?: string;
+  platform?: string;
+  licence?: string;
+  quality?: QualityLevel;
+  certified?: boolean;
+  channel?: Channel;
+  // true: only entries whose newest version has no known vulnerability.
+  secure?: boolean;
+  publisher?: string;
+  provides?: string[];
+  requires?: string[];
+  deprecated: DeprecatedFilter;
+  sort: Sort;
+  cursor?: string;
+  limit: number;
+}
+
+interface ListCommon {
+  query: ListQuery;
+  // Exact up to COUNT_CAP; above it `approximate` is true and `count` is COUNT_CAP.
+  total: { count: number; approximate: boolean };
+  // Cursors for the next and previous pages, null at either end.
+  next: string | null;
+  previous: string | null;
+  // The children of the chosen category (or the top categories), with counts.
+  categories: CategoryCount[];
+}
+
+export interface RecipeList extends ListCommon {
+  recipes: RecipeSummary[];
+}
+
+export interface ComponentList extends ListCommon {
+  components: ComponentSummary[];
+}
+
+// A class entry: the class.json fields shown on its page, and how many listed components implement it.
+export interface ClassSummary {
+  name: string;
+  slug: string;
+  version: string;
+  title: string;
+  summary: string;
   category: string;
-  count: number;
+  presentation: Presentation;
+  implementations: number;
+  publisher: Publisher | null;
+  url: string;
 }
 
-export interface RecipeList {
-  recipes: RecipeSummary[];
-  total: number;
-  limit: number;
-  offset: number;
+export interface ClassList {
+  classes: ClassSummary[];
+  total: { count: number; approximate: boolean };
+  next: string | null;
+  previous: string | null;
   categories: CategoryCount[];
 }
 
-export interface ComponentList {
-  components: ComponentSummary[];
-  total: number;
-  limit: number;
-  offset: number;
-  categories: CategoryCount[];
+// A component that implements a class, as the class page compares them.
+export interface Implementation {
+  name: string;
+  slug: string;
+  version: string;
+  description: string;
+  thumbnail: string | null;
+  quality: Quality | null;
+  platforms: string[];
+  downloads: number;
+  vulnerabilities: number | null;
+  url: string;
 }
 
-export interface RecipeSearch {
-  query: string;
-  recipes: RecipeSummary[];
+export interface ClassVersionView extends ClassSummary {
+  digest: string;
+  provides: ClassDescriptor["provides"];
+  requires: ClassDescriptor["requires"];
+  settings: ClassDescriptor["settings"];
+  suites: { id: string; argv: string[]; network: boolean; timeoutSeconds: number }[];
+  versions: { version: string; digest: string; publishedAt: string }[];
+  // The most downloaded implementations of this class version, at most 100.
+  implementationList: Implementation[];
 }
 
-export interface ComponentSearch {
-  query: string;
-  components: ComponentSummary[];
+export interface Advisory {
+  id: string;
+  summary: string;
+  severity: string | null;
+  affected: string[];
+  fixedIn: string[];
+  // The publisher's reason when the version waives it.
+  waived: string | null;
+}
+
+// GET /api/{recipes,components}/:name/:version/vulnerabilities
+export interface VulnerabilityReport {
+  name: string;
+  version: string;
+  checkedAt: string | null;
+  count: number | null;
+  advisories: Advisory[];
 }
 
 // bundle-unavailable: the publisher's account is deleted and the release is not public, so no download link exists.
@@ -279,3 +412,12 @@ export const RECIPE_PACKAGE: PackageSummary = {
   where: "The archive is a release file on the publisher's public GitHub repository. ourapps keeps this page's details and a pointer to the release; it does not hold or run the code.",
   check: "The digest is the sha256 fingerprint of the archive. aepm checks it before anything is copied. Installing copies the listed files into your application and runs none of the package's code.",
 };
+
+// The recipe's questions in the three groups of their `ask`, in recipe order within each.
+export const ASK_HEADINGS = { required: "Ask the person", "unless-settled": "Ask unless the request settles it", default: "Defaults" } as const;
+
+export function questionGroups<Q extends { ask: keyof typeof ASK_HEADINGS }>(questions: Q[]): { ask: keyof typeof ASK_HEADINGS; heading: string; questions: Q[] }[] {
+  return (Object.keys(ASK_HEADINGS) as (keyof typeof ASK_HEADINGS)[]).map((ask) => ({ ask, heading: ASK_HEADINGS[ask], questions: questions.filter((q) => q.ask === ask) })).filter((g) => g.questions.length > 0);
+}
+
+export const QUALITY_TEXT = { packaged: "Packaged", reviewed: "Reviewed", "integration-tested": "Integration-tested", "live-tested": "Live-tested" } as const;

@@ -21,40 +21,45 @@ export function targetLabel(target: string): string {
   return CLIENT_TARGET_LABEL[target] ?? SERVER_TARGET_LABEL[target] ?? target;
 }
 
+// The listing's state, all of it in the address. The same parameters work on /api/<kind>, .txt and .json.
 // `provides` and `requires` may repeat: a component matches every interface listed.
 export interface LibraryQuery {
   q?: string;
   category?: string;
-  target?: string;
-  tag?: string;
+  class?: string;
+  platform?: string;
+  licence?: string;
+  quality?: string;
+  certified?: "true" | "false";
+  channel?: string;
+  secure?: "true";
+  publisher?: string;
   provides?: string[];
   requires?: string[];
   deprecated?: "exclude" | "only";
-  offset?: number;
+  sort?: string;
+  cursor?: string;
 }
 
-export const FILTER_KEYS = ["q", "category", "target", "tag", "provides", "requires", "deprecated"] as const;
+export const FILTER_KEYS = ["q", "category", "class", "platform", "licence", "quality", "certified", "channel", "secure", "publisher", "provides", "requires", "deprecated", "sort", "cursor"] as const;
 export type FilterKey = (typeof FILTER_KEYS)[number];
 const LIST_KEYS: readonly FilterKey[] = ["provides", "requires"];
+const ALLOWED: Partial<Record<FilterKey, readonly string[]>> = { certified: ["true", "false"], secure: ["true"], deprecated: ["exclude", "only"] };
 
 export function readQuery(search: string): LibraryQuery {
   const params = new URLSearchParams(search);
-  const query: LibraryQuery = {};
+  const query: Record<string, string | string[]> = {};
   for (const key of FILTER_KEYS) {
-    if (key === "provides" || key === "requires") {
+    if (LIST_KEYS.includes(key)) {
       const values = [...new Set(params.getAll(key).map((v) => v.trim()).filter(Boolean))];
       if (values.length > 0) query[key] = values;
       continue;
     }
     const value = params.get(key)?.trim();
-    if (!value) continue;
-    if (key === "deprecated") {
-      if (value === "exclude" || value === "only") query.deprecated = value;
-    } else query[key] = value;
+    if (!value || (ALLOWED[key] && !ALLOWED[key]!.includes(value))) continue;
+    query[key] = value;
   }
-  const offset = Number(params.get("offset"));
-  if (Number.isInteger(offset) && offset > 0) query.offset = offset;
-  return query;
+  return query as LibraryQuery;
 }
 
 export function queryString(query: LibraryQuery): string {
@@ -64,14 +69,14 @@ export function queryString(query: LibraryQuery): string {
     if (Array.isArray(value)) for (const v of value) params.append(key, v);
     else if (value) params.set(key, value);
   }
-  if (query.offset && query.offset > 0) params.set("offset", String(query.offset));
   const text = params.toString();
   return text === "" ? "" : `?${text}`;
 }
 
 // The same filters with one changed; paging restarts. A repeated filter gains or loses the one value; undefined clears it.
 export function withFilter(query: LibraryQuery, key: FilterKey, value: string | undefined): LibraryQuery {
-  const next: LibraryQuery = { ...query, offset: undefined };
+  const next: LibraryQuery = { ...query };
+  delete next.cursor;
   if (key === "provides" || key === "requires") {
     const current = query[key] ?? [];
     const values = value === undefined || value === "" ? [] : current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
@@ -80,13 +85,13 @@ export function withFilter(query: LibraryQuery, key: FilterKey, value: string | 
     return next;
   }
   if (value === undefined || value === "" || query[key] === value) delete next[key];
-  else (next as Record<string, string | number | undefined>)[key] = value;
+  else (next as Record<string, string>)[key] = value;
   return next;
 }
 
 // Each active filter value, for the pills that clear it.
 export function activeValues(query: LibraryQuery): { key: FilterKey; value: string }[] {
-  return FILTER_KEYS.flatMap((key) => {
+  return FILTER_KEYS.filter((k) => k !== "sort" && k !== "cursor").flatMap((key) => {
     const value = query[key];
     if (LIST_KEYS.includes(key) && Array.isArray(value)) return value.map((v) => ({ key, value: v }));
     return typeof value === "string" && value !== "" ? [{ key, value }] : [];
@@ -133,7 +138,7 @@ export function includedWhenHtml(c: Pick<RecipeSlot, "includedWhen">): Raw {
 // The version a page shows: ?version=, else the newest.
 export function versionFromSearch(search: string): string {
   const value = new URLSearchParams(search).get("version")?.trim() ?? "";
-  return /^\d+\.\d+\.\d+$/.test(value) ? value : "latest";
+  return /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(value) ? value : "latest";
 }
 
 export function releaseUrl(repository: string, tag: string): string {

@@ -1,11 +1,11 @@
 // The recipe library and the component catalogue: browse, search, and read one entry.
-import type { FoundationSummary, Foundations, PackageDetails } from "@my/store-shared";
-import { COMPONENT_PACKAGE, RECIPE_PACKAGE, SIGNATURES_NOTE, classSettings, kindText, type BundleLink, type ClassInterface, type PackageSummary, type ComponentList, type ComponentSearch, type ComponentSummary, type ComponentVersionView, type Deprecation, type EntryStatus, type Profile, type RecipeList, type RecipeSearch, type RecipeSlotView, type RecipeSummary, type RecipeVersionView, type SettingDeclaration } from "@my/store-shared";
+import type { CategoryCount, ClassList, ClassVersionView, FoundationSummary, Foundations, ImageView, LineView, PackageDetails, Quality, VersionRef, VulnerabilityReport, VulnerabilitySummary } from "@my/store-shared";
+import { COMPONENT_PACKAGE, QUALITY_LEVELS, QUALITY_TEXT, RECIPE_PACKAGE, SIGNATURES_NOTE, classSettings, kindText, questionGroups, type BundleLink, type ClassInterface, type PackageSummary, type ComponentList, type ComponentSummary, type ComponentVersionView, type Deprecation, type EntryStatus, type Profile, type RecipeList, type RecipeSlotView, type RecipeSummary, type RecipeVersionView, type SettingDeclaration } from "@my/store-shared";
 import { ApiError, api, whoAmI } from "../api.js";
 import { html, mount, raw, type Raw } from "../html.js";
 import { svgFigure } from "../figures.js";
 import { renderMarkdown } from "../markdown.js";
-import { CLIENT_TARGET_LABEL, activeValues, answerText, conditionHtml, costLabel, deprecationAdvice, deprecationSentence, includedWhenHtml, loadText, queryString, readQuery, releaseUrl, statusLabel, targetLabel, versionFromSearch, withFilter, type LibraryQuery } from "../library.js";
+import { CLIENT_TARGET_LABEL, type FilterKey, activeValues, answerText, conditionHtml, costLabel, deprecationAdvice, deprecationSentence, includedWhenHtml, loadText, queryString, readQuery, releaseUrl, statusLabel, targetLabel, versionFromSearch, withFilter, type LibraryQuery } from "../library.js";
 import { navigate } from "../nav.js";
 import { setTheme } from "../theme.js";
 import { callout, copyRow, emptyState, errorBox, fmtDate, icon, toast, wireCopy } from "../ui.js";
@@ -15,7 +15,6 @@ import { termsPending } from "./terms.js";
 
 type Kind = "recipes" | "components";
 
-const PAGE_SIZE = 24;
 const none = html``;
 const FOOTNOTE = "The recipe library and component catalogue are public. Share links stay private. No tracking.";
 
@@ -67,18 +66,11 @@ export function deprecationBanner(v: { name: string; version: string; status: En
   `;
 }
 
-function deprecatedRow(kind: Kind, query: LibraryQuery): Raw {
-  const options = [{ value: "exclude" as const, label: "Hide deprecated" }, { value: "only" as const, label: "Only deprecated" }];
-  return html`
-    <div class="row wrap" style="gap:6px;margin-top:10px">
-      <span class="small muted" style="min-width:76px">Status</span>
-      ${options.map((o) => html`<a class="pill ${query.deprecated === o.value ? "accent" : ""}" href="/${kind}${queryString(withFilter(query, "deprecated", o.value))}" aria-current="${query.deprecated === o.value ? "true" : "false"}">${o.label}</a>`)}
-    </div>
-  `;
-}
+const QUALITY_OPTIONS = QUALITY_LEVELS.map((l) => ({ value: l, label: `${QUALITY_TEXT[l]} or above` }));
+const SORT_LABEL: Record<string, string> = { relevance: "Best match", downloads: "Most downloads", trending: "Trending", updated: "Recently updated", name: "Name" };
 
 function searchBox(kind: Kind, query: LibraryQuery): Raw {
-  const label = kind === "recipes" ? "Search recipes by what the application does" : "Search components by what they do or the interfaces they offer";
+  const label = kind === "recipes" ? "Search recipes by what the application does" : "Search components by name, class or what they do";
   return html`
     <form class="row" id="library-search" role="search" style="gap:8px">
       <input type="search" name="q" value="${query.q ?? ""}" placeholder="${label}" aria-label="${label}" maxlength="200" />
@@ -87,69 +79,113 @@ function searchBox(kind: Kind, query: LibraryQuery): Raw {
   `;
 }
 
-function filterRow(kind: Kind, query: LibraryQuery, key: "category" | "target", title: string, options: { value: string; label: string; count?: number }[]): Raw {
+const fmtCount = (n: number): string => n.toLocaleString("en-GB");
+const totalText = (t: { count: number; approximate: boolean }): string => (t.approximate ? `More than ${fmtCount(t.count)}` : fmtCount(t.count));
+
+function facetLinks(kind: Kind, query: LibraryQuery, key: FilterKey, title: string, options: { value: string; label: string; count?: number }[]): Raw {
   if (options.length === 0) return none;
-  return html`
-    <div class="row wrap" style="gap:6px;margin-top:10px">
-      <span class="small muted" style="min-width:76px">${title}</span>
-      ${options.map((o) => html`<a class="pill ${query[key] === o.value ? "accent" : ""}" href="/${kind}${queryString(withFilter(query, key, o.value))}" aria-current="${query[key] === o.value ? "true" : "false"}">${o.label}${o.count === undefined ? "" : ` (${o.count})`}</a>`)}
-    </div>
-  `;
+  return html`<div><h3>${title}</h3>${options.map((o) => html`<a href="/${kind}${queryString(withFilter(query, key, o.value))}" aria-current="${query[key] === o.value ? "true" : "false"}"><span>${o.label}</span>${o.count === undefined ? "" : html`<span class="count">${fmtCount(o.count)}</span>`}</a>`)}</div>`;
+}
+
+// Categories: the path to the chosen one, then its children with how many entries each holds.
+function categoryFacet(kind: Kind, query: LibraryQuery, children: CategoryCount[]): Raw {
+  const path = query.category ? query.category.split("/").map((_, i, all) => all.slice(0, i + 1).join("/")) : [];
+  const key = kind === "recipes" ? "recipes" : "components";
+  return html`<div><h3>Category</h3>
+    <a href="/${kind}${queryString(withFilter(query, "category", undefined))}" aria-current="${query.category ? "false" : "true"}"><span>All</span></a>
+    ${path.map((c) => html`<a href="/${kind}${queryString({ ...withFilter(query, "category", undefined), category: c })}" aria-current="${c === query.category ? "true" : "false"}"><span>${c.split("/").pop()}</span></a>`)}
+    ${children.filter((c) => c[key] > 0).map((c) => html`<a href="/${kind}${queryString({ ...withFilter(query, "category", undefined), category: c.id })}" aria-current="false" style="padding-left:${8 + 10 * (path.length + 1)}px"><span>${c.title}</span><span class="count">${fmtCount(c[key])}</span></a>`)}
+  </div>`;
+}
+
+function facets(kind: Kind, query: LibraryQuery, children: CategoryCount[]): Raw {
+  const platforms = Object.entries({ ...CLIENT_TARGET_LABEL, server: "Server" }).map(([value, label]) => ({ value, label }));
+  return html`<nav class="facets" aria-label="Filters">
+    ${categoryFacet(kind, query, children)}
+    ${facetLinks(kind, query, "platform", "Platform", platforms)}
+    ${facetLinks(kind, query, "quality", "Quality", QUALITY_OPTIONS)}
+    ${facetLinks(kind, query, "certified", "Reviewed by", [{ value: "true", label: "Level N (certified)" }, { value: "false", label: "Publisher's guardian" }])}
+    ${facetLinks(kind, query, "channel", "Release channel", [{ value: "features", label: "Features" }, { value: "security", label: "Security" }, { value: "preview", label: "Preview" }])}
+    ${facetLinks(kind, query, "secure", "Vulnerabilities", [{ value: "true", label: "None known" }])}
+    ${facetLinks(kind, query, "licence", "Licence", ["Apache-2.0", "MIT", "BSD-3-Clause", "MPL-2.0"].map((l) => ({ value: l, label: l })))}
+    ${facetLinks(kind, query, "deprecated", "Status", [{ value: "exclude", label: "Hide deprecated" }, { value: "only", label: "Only deprecated" }])}
+  </nav>`;
+}
+
+function sortControl(kind: Kind, query: LibraryQuery): Raw {
+  const sorts = (query.q ? ["relevance"] : []).concat(["downloads", "trending", "updated", "name"]);
+  const current = query.sort ?? (query.q ? "relevance" : "downloads");
+  return html`<label class="row small" style="gap:6px">Sort <select id="library-sort" aria-label="Sort">${sorts.map((s) => html`<option value="${s}" ${s === current ? raw("selected") : ""}>${SORT_LABEL[s]}</option>`)}</select></label>`;
 }
 
 function activeFilters(kind: Kind, query: LibraryQuery): Raw {
-  const active = activeValues(query).filter((a) => a.key !== "q");
+  const active = activeValues(query).filter((a) => a.key !== "q" && a.key !== "category");
   if (active.length === 0) return none;
-  return html`<p class="small muted mt-s">Showing ${active.map((a) => html`<a class="pill accent" href="/${kind}${queryString(withFilter(query, a.key, a.key === "provides" || a.key === "requires" ? a.value : undefined))}">${a.key} ${a.value} &times;</a> `)}</p>`;
+  return html`<p class="small muted mt-s">${active.map((a) => html`<a class="pill accent" href="/${kind}${queryString(withFilter(query, a.key, a.key === "provides" || a.key === "requires" ? a.value : undefined))}">${a.key} ${a.value} &times;</a> `)}</p>`;
 }
 
-function pager(kind: Kind, query: LibraryQuery, total: number, shown: number): Raw {
-  const offset = query.offset ?? 0;
-  if (total <= PAGE_SIZE) return none;
-  const prev = offset > 0 ? html`<a class="btn secondary sm" href="/${kind}${queryString({ ...query, offset: Math.max(0, offset - PAGE_SIZE) })}">Previous</a>` : "";
-  const next = offset + shown < total ? html`<a class="btn secondary sm" href="/${kind}${queryString({ ...query, offset: offset + PAGE_SIZE })}">Next</a>` : "";
-  return html`<div class="row mt" style="justify-content:space-between"><span>${prev}</span><span class="small muted">${offset + 1} to ${offset + shown} of ${total}</span><span>${next}</span></div>`;
+function pager(kind: Kind, query: LibraryQuery, list: { next: string | null; previous: string | null }): Raw {
+  if (!list.next && !list.previous) return none;
+  const page = (cursor: string) => `/${kind}${queryString({ ...query, cursor })}`;
+  return html`<div class="row mt" style="justify-content:space-between"><span>${list.previous ? html`<a class="btn secondary sm" href="${page(list.previous)}">Previous</a>` : ""}</span><span>${list.next ? html`<a class="btn secondary sm" href="${page(list.next)}">Next</a>` : ""}</span></div>`;
+}
+
+export function qualityBadge(q: Quality | null): Raw {
+  if (!q) return none;
+  return html`<span class="pill badge-quality" title="Quality level from verified evidence">${QUALITY_TEXT[q.level]}</span>${q.certified ? html` <span class="pill badge-certified" title="Reviewed by a Level N guardian">Certified</span>` : ""}`;
+}
+
+function vulnerabilityBadge(n: number | null): Raw {
+  return n !== null && n > 0 ? html`<span class="pill badge-vulnerable">${n} known ${n === 1 ? "vulnerability" : "vulnerabilities"}</span>` : none;
+}
+
+function thumb(url: string | null, alt: string): Raw {
+  return url ? html`<img class="thumb" src="${url}" alt="${alt}" loading="lazy" width="480" height="300" />` : html`<div class="thumb none">No image</div>`;
+}
+
+function cardMeta(e: { downloads: number; updatedAt: string; platforms: string[]; channel: string }): Raw {
+  return html`<div class="meta"><span>${e.platforms.filter((p) => p !== "server").map(targetLabel).join(", ") || "Server"}</span><span>${fmtCount(e.downloads)} downloads</span><span>updated ${fmtDate(e.updatedAt)}</span>${e.channel === "preview" ? html`<span>preview</span>` : ""}</div>`;
 }
 
 export function recipeCard(r: RecipeSummary): Raw {
   return html`
-    <div class="card">
-      <div class="row wrap top" style="justify-content:space-between">
-        <div class="grow">
-          <h3 style="margin:0"><a href="/recipes/${r.slug}">${r.title}</a></h3>
-          <p class="muted" style="margin:4px 0 8px">${r.summary}</p>
-        </div>
-        <span class="pill">${r.version}</span>
+    <article class="entry-card">
+      <a href="/recipes/${r.slug}" tabindex="-1" aria-hidden="true">${thumb(r.thumbnail, "")}</a>
+      <div class="body">
+        <h3><a href="/recipes/${r.slug}">${r.title}</a></h3>
+        <p class="muted small" style="margin:0">${r.summary}</p>
+        <div class="row wrap" style="gap:6px">${statusPill(r.status, r.deprecations)}${qualityBadge(r.quality)}${vulnerabilityBadge(r.vulnerabilities)}<a class="pill" href="/recipes?category=${encodeURIComponent(r.category)}">${r.category}</a></div>
+        ${cardMeta(r)}
       </div>
-      <div class="row wrap" style="gap:8px">${statusPill(r.status, r.deprecations)}<a class="pill accent" href="/recipes?category=${encodeURIComponent(r.category)}">${r.category}</a>${targetPills(r.targets)}</div>
-      <p class="small faint mt-s">${publisherText(r.publisher)}</p>
-    </div>
+    </article>
   `;
 }
 
 export function componentCard(c: ComponentSummary): Raw {
-  const ports = (list: { id: string; type: string; optional?: boolean }[]) => (list.length === 0 ? "none" : list.map((p) => (p.optional ? `${p.id} (optional)` : p.id)).join(", "));
   return html`
-    <div class="card">
-      <div class="row wrap top" style="justify-content:space-between">
-        <div class="grow">
-          <h3 style="margin:0"><a href="/components/${c.slug}">${c.name}</a></h3>
-          <p class="muted" style="margin:4px 0 8px">${c.description}</p>
-        </div>
-        <span class="pill">${c.version}</span>
+    <article class="entry-card">
+      <a href="/components/${c.slug}" tabindex="-1" aria-hidden="true">${thumb(c.thumbnail, "")}</a>
+      <div class="body">
+        <h3><a href="/components/${c.slug}">${c.name}</a></h3>
+        <p class="muted small" style="margin:0">${c.description}</p>
+        <p class="small" style="margin:0">Class <a href="/classes/${c.class.name.split("/")[1]}">${c.class.title}</a></p>
+        <div class="row wrap" style="gap:6px">${statusPill(c.status, c.deprecations)}${qualityBadge(c.quality)}${vulnerabilityBadge(c.vulnerabilities)}</div>
+        ${cardMeta(c)}
       </div>
-      <p class="small muted" style="margin:0 0 8px">Provides ${ports(c.provides)}. Requires ${ports(c.requires)}.</p>
-      <div class="row wrap" style="gap:8px">${statusPill(c.status, c.deprecations)}${c.category ? html`<a class="pill accent" href="/components?category=${encodeURIComponent(c.category)}">${c.category}</a>` : ""}${targetPills(c.targets)}</div>
-      <p class="small faint mt-s">${publisherText(c.publisher)}</p>
-    </div>
+    </article>
   `;
 }
 
-function wireSearch(root: HTMLElement, kind: Kind, query: LibraryQuery): void {
+function wireListing(root: HTMLElement, kind: Kind | "classes", query: LibraryQuery): void {
   root.querySelector<HTMLFormElement>("#library-search")?.addEventListener("submit", (event) => {
     event.preventDefault();
     const q = root.querySelector<HTMLInputElement>("#library-search input")!.value.trim();
-    navigate(`/${kind}${queryString({ ...query, q: q || undefined, offset: undefined })}`);
+    const next = { ...withFilter(query, "q", q || undefined) };
+    if (!q && next.sort === "relevance") delete next.sort;
+    navigate(`/${kind}${queryString(next)}`);
+  });
+  root.querySelector<HTMLSelectElement>("#library-sort")?.addEventListener("change", (event) => {
+    navigate(`/${kind}${queryString({ ...withFilter(query, "sort", undefined), sort: (event.target as HTMLSelectElement).value })}`);
   });
 }
 
@@ -159,99 +195,94 @@ function showInFrame(root: HTMLElement, me: Awaited<ReturnType<typeof whoAmI>>, 
   else mount(root, storeFrame(publicBody, { me, footnote: FOOTNOTE }));
 }
 
-function listFrame(root: HTMLElement, kind: Kind, query: LibraryQuery, filters: Raw, body: Raw, me: Awaited<ReturnType<typeof whoAmI>>): void {
-  const recipes = kind === "recipes";
-  const title = recipes ? "Recipes: applications you can build from questions" : "Components: the reviewed parts recipes are made from";
-  const lead = recipes ? "A recipe asks a few questions, then an agent assembles the application from reviewed components for the devices you choose. Browse by category and device, or search by what an application does." : "Each component is a reviewed part with a contract: the interfaces it provides and requires, who it suits, and how its data moves. Recipes name the components they use.";
-  const controls = html`
-        ${searchBox(kind, query)}
-        ${filters}
-        ${activeFilters(kind, query)}
-        <p class="mt-s">${variants(`/${kind}`)} ${recipes ? html`<a class="small" href="/components">Components</a>` : html`<a class="small" href="/recipes">Recipes</a>`}</p>`;
+const LEAD: Record<Kind | "classes", [string, string]> = {
+  recipes: ["Recipes: applications you can build from questions", "A recipe asks a few questions, then an agent assembles the application from reviewed components for the devices you choose."],
+  components: ["Components: the reviewed parts recipes are made from", "Each component implements a class: the interfaces it provides and requires and the settings a recipe writes. Components of one class can stand in for each other."],
+  classes: ["Classes: what a component must do to fill a slot", "A class names the interfaces, settings and shared checks of one kind of part. Compare the components that implement it side by side."],
+};
+
+function listFrame(root: HTMLElement, kind: Kind | "classes", query: LibraryQuery, controls: Raw, body: Raw, me: Awaited<ReturnType<typeof whoAmI>>): void {
+  const [title, lead] = LEAD[kind];
+  const links = html`<p class="small mt-s">${variants(`/${kind}`)} ${(["recipes", "components", "classes"] as const).filter((k) => k !== kind).map((k) => html`<a href="/${k}">${k[0]!.toUpperCase()}${k.slice(1)}</a> `)}<a href="/categories">Categories</a></p>`;
   const publicBody = html`
       <section style="padding:26px 0 6px">
-        <span class="pill accent">${recipes ? "Recipe library" : "Component catalogue"}</span>
+        <span class="pill accent">${kind === "recipes" ? "Recipe library" : kind === "components" ? "Component catalogue" : "Classes"}</span>
         <h1 style="margin-top:10px">${title}</h1>
         <p class="lead muted">${lead}</p>
-        ${controls}
+        ${controls}${links}
       </section>
       ${body}
     `;
-  showInFrame(root, me, recipes ? "Recipes" : "Components", html`<section style="padding:0 0 6px">${controls}</section>${body}`, { sub: lead }, publicBody);
+  showInFrame(root, me, kind[0]!.toUpperCase() + kind.slice(1), html`<section style="padding:0 0 6px">${controls}${links}</section>${body}`, { sub: lead }, publicBody);
 }
 
-export async function recipesPage(root: HTMLElement): Promise<void> {
-  setTheme("store", "Recipes on ourapps", true);
+async function listingPage(root: HTMLElement, kind: Kind): Promise<void> {
+  setTheme("store", kind === "recipes" ? "Recipes on ourapps" : "Components on ourapps", true);
   const query = readQuery(location.search);
   const me = await whoAmI();
+  const controls = html`${searchBox(kind, query)}`;
   try {
-    const searching = Boolean(query.q);
-    const filterParams = queryString({ ...query, q: undefined, offset: undefined }).slice(1);
-    const [list, found] = await Promise.all([
-      api<RecipeList>("GET", `/api/recipes?${filterParams}${filterParams ? "&" : ""}limit=${PAGE_SIZE}&offset=${query.offset ?? 0}`),
-      searching ? api<RecipeSearch>("GET", `/api/recipes/search?q=${encodeURIComponent(query.q!)}${query.deprecated ? `&deprecated=${query.deprecated}` : ""}`) : Promise.resolve(null),
-    ]);
-    const shown = found ? found.recipes.filter((r) => matches(r, query)) : list.recipes;
-    const targetOptions = Object.entries(CLIENT_TARGET_LABEL).map(([value, label]) => ({ value, label }));
-    const filters = html`${filterRow("recipes", query, "category", "Category", list.categories.map((c) => ({ value: c.category, label: c.category, count: c.count })))}${filterRow("recipes", query, "target", "Device", targetOptions)}${deprecatedRow("recipes", query)}`;
-    const body = shown.length === 0
-      ? emptyState("apps", searching ? "No recipes match" : "No recipes yet", searching ? "Try fewer words, or browse by category and device." : "Recipes appear here when developers publish them. An example looks like Poker Night, a card game for a club's league night.")
-      : html`<div class="grid-2">${shown.map(recipeCard)}</div>${found ? "" : pager("recipes", query, list.total, shown.length)}`;
-    listFrame(root, "recipes", query, filters, body, me);
-    wireSearch(root, "recipes", query);
+    const list = await api<RecipeList | ComponentList>("GET", `/api/${kind}${queryString(query)}`);
+    const entries = kind === "recipes" ? (list as RecipeList).recipes : (list as ComponentList).components;
+    const heading = html`<div class="row wrap" style="justify-content:space-between"><p class="muted" style="margin:0">${totalText(list.total)} ${kind}${query.category ? html` in <b>${query.category}</b>` : ""}${query.q ? html` matching <b>${query.q}</b>` : ""}</p>${sortControl(kind, query)}</div>${activeFilters(kind, query)}`;
+    const cards = entries.length === 0
+      ? emptyState("apps", `No ${kind} match`, "Try fewer words, or remove a filter.")
+      : html`<div class="entry-grid mt-s">${kind === "recipes" ? (entries as RecipeSummary[]).map(recipeCard) : (entries as ComponentSummary[]).map(componentCard)}</div>`;
+    const body = html`<div class="catalogue">${facets(kind, query, list.categories)}<div>${heading}${cards}${pager(kind, query, list)}</div></div>`;
+    listFrame(root, kind, query, controls, body, me);
   } catch (err) {
-    listFrame(root, "recipes", query, none, errorBox(err), me);
-    wireSearch(root, "recipes", query);
+    listFrame(root, kind, query, controls, errorBox(err), me);
   }
+  wireListing(root, kind, query);
 }
 
-// Search ranks by text only; the page's filters narrow its results.
-function matches(r: RecipeSummary, q: LibraryQuery): boolean {
-  return (!q.category || r.category === q.category) && (!q.target || [...r.targets.client, ...r.targets.server].includes(q.target)) && (!q.tag || r.tags.includes(q.tag));
-}
+export const recipesPage = (root: HTMLElement): Promise<void> => listingPage(root, "recipes");
+export const componentsPage = (root: HTMLElement): Promise<void> => listingPage(root, "components");
 
-function componentMatches(c: ComponentSummary, q: LibraryQuery): boolean {
-  return (
-    (!q.category || c.category === q.category) &&
-    (!q.target || [...c.targets.client, ...c.targets.server].includes(q.target)) &&
-    (!q.tag || c.tags.includes(q.tag)) &&
-    (q.provides ?? []).every((t) => c.provides.some((p) => p.type === t || p.id === t)) &&
-    (q.requires ?? []).every((t) => c.requires.some((p) => p.type === t || p.id === t))
-  );
-}
-
-export async function componentsPage(root: HTMLElement): Promise<void> {
-  setTheme("store", "Components on ourapps", true);
-  const query = readQuery(location.search);
-  const me = await whoAmI();
-  try {
-    const searching = Boolean(query.q);
-    const filterParams = queryString({ ...query, q: undefined, offset: undefined }).slice(1);
-    const [list, found] = await Promise.all([
-      api<ComponentList>("GET", `/api/components?${filterParams}${filterParams ? "&" : ""}limit=${PAGE_SIZE}&offset=${query.offset ?? 0}`),
-      searching ? api<ComponentSearch>("GET", `/api/components/search?q=${encodeURIComponent(query.q!)}${query.deprecated ? `&deprecated=${query.deprecated}` : ""}`) : Promise.resolve(null),
-    ]);
-    const shown = found ? found.components.filter((c) => componentMatches(c, query)) : list.components;
-    const targetOptions = Object.entries(CLIENT_TARGET_LABEL).map(([value, label]) => ({ value, label }));
-    const filters = html`${filterRow("components", query, "category", "Category", list.categories.map((c) => ({ value: c.category, label: c.category, count: c.count })))}${filterRow("components", query, "target", "Device", targetOptions)}${deprecatedRow("components", query)}`;
-    const body = shown.length === 0
-      ? emptyState("apps", searching ? "No components match" : "No components yet", searching ? "Try fewer words, or browse by category and device." : "Components appear here when developers publish them.")
-      : html`<div class="grid-2">${shown.map(componentCard)}</div>${found ? "" : pager("components", query, list.total, shown.length)}`;
-    listFrame(root, "components", query, filters, body, me);
-    wireSearch(root, "components", query);
-  } catch (err) {
-    listFrame(root, "components", query, none, errorBox(err), me);
-    wireSearch(root, "components", query);
-  }
-}
-
-function versionList(kind: Kind, slug: string, current: string, versions: { version: string; publishedAt: string; digest: string }[]): Raw {
+function versionList(kind: Kind, slug: string, current: string, versions: VersionRef[]): Raw {
   return html`
     <table class="table">
-      <tr><th>Version</th><th>Published</th><th>Digest</th></tr>
-      ${versions.map((v) => html`<tr><td>${v.version === current ? html`<b>${v.version}</b>` : html`<a href="/${kind}/${slug}?version=${v.version}">${v.version}</a>`}</td><td>${fmtDate(v.publishedAt)}</td><td><code class="small">${v.digest.slice(0, 19)}</code></td></tr>`)}
+      <tr><th>Version</th><th>Channel</th><th>Published</th><th>Digest</th></tr>
+      ${versions.map((v) => html`<tr><td>${v.version === current ? html`<b>${v.version}</b>` : html`<a href="/${kind}/${slug}?version=${v.version}">${v.version}</a>`}</td><td>${v.channel}${v.fixes.length > 0 ? html`<br /><span class="small muted">fixes ${v.fixes.join(", ")}</span>` : ""}</td><td>${fmtDate(v.publishedAt)}</td><td><code class="small">${v.digest.slice(0, 19)}</code></td></tr>`)}
     </table>
   `;
+}
+
+// The images of the package as built: the main one large, the others below it; a click shows one large.
+export function gallery(images: ImageView[]): Raw {
+  if (images.length === 0) return none;
+  const first = images[0]!;
+  return html`<figure class="gallery" id="gallery" style="margin:14px 0 0">
+    <img class="main-image" src="${first.url}" alt="${first.caption}" width="${first.width}" height="${first.height}" />
+    <figcaption>${first.caption} <span class="faint">(${targetLabel(first.platform)})</span></figcaption>
+    ${images.length > 1 ? html`<div class="strip">${images.map((i, n) => html`<img src="${i.thumbnail}" alt="${i.caption}" data-image="${n}" loading="lazy" />`)}</div>` : ""}
+  </figure>`;
+}
+
+function wireGallery(root: HTMLElement, images: ImageView[]): void {
+  const main = root.querySelector<HTMLImageElement>("#gallery .main-image");
+  const caption = root.querySelector<HTMLElement>("#gallery figcaption");
+  root.querySelectorAll<HTMLImageElement>("#gallery [data-image]").forEach((img) => (img.onclick = () => {
+    const i = images[Number(img.dataset.image)]!;
+    main!.src = i.url;
+    main!.alt = i.caption;
+    caption!.textContent = `${i.caption} (${targetLabel(i.platform)})`;
+  }));
+}
+
+// Channel, quality, vulnerabilities and the security releases on this version's line.
+export function releaseCard(kind: Kind, slug: string, v: { version: string; release: { channel: string; fixes: string[] }; line: LineView; quality: Quality | null; vulnerabilitySummary: VulnerabilitySummary; vulnerabilityWaivers: { id: string; reason: string }[]; downloads: number; versionDownloads: number }): Raw {
+  const s = v.vulnerabilitySummary;
+  return html`<div class="card mt" id="release">
+    <h2>This release</h2>
+    <table class="table small">
+      <tr><td>Channel</td><td><b>${v.release.channel}</b>${v.release.fixes.length > 0 ? html`: fixes ${v.release.fixes.join(", ")}` : v.release.channel === "preview" ? ": not for production" : ""}</td></tr>
+      <tr><td>Line ${v.line.line}</td><td>${v.line.securityReleases.length === 0 ? "No security releases on this line." : html`Security releases: ${v.line.securityReleases.map((r, i) => html`${i > 0 ? "; " : ""}<a href="/${kind}/${slug}?version=${r.version}">${r.version}</a> fixes ${r.fixes.join(", ")}`)}`}</td></tr>
+      <tr><td>Quality</td><td>${v.quality ? html`${qualityBadge(v.quality)}${v.quality.liveTested ? html` <span class="muted">on ${targetLabel(v.quality.liveTested.platform)}, ${fmtDate(v.quality.liveTested.at)}</span>` : ""}` : html`<span class="muted">Not assessed by the catalogue's publish tool.</span>`}</td></tr>
+      <tr><td>Known vulnerabilities</td><td>${s.count === null ? html`<span class="muted">Not checked yet.</span>` : s.count === 0 ? "None known" : html`<span class="pill badge-vulnerable">${s.count}</span> <a href="${new URL(s.url).pathname}">the advisories</a>`}${s.checkedAt ? html` <span class="muted">(checked at OSV ${fmtDate(s.checkedAt)})</span>` : ""}${v.vulnerabilityWaivers.length > 0 ? html`<br /><span class="small muted">Waived by the publisher: ${v.vulnerabilityWaivers.map((w) => `${w.id} (${w.reason})`).join("; ")}</span>` : ""}</td></tr>
+      <tr><td>Downloads</td><td>${fmtCount(v.downloads)} in the last 30 days; ${fmtCount(v.versionDownloads)} of this version</td></tr>
+    </table>
+  </div>`;
 }
 
 function profileRows(profiles: Profile[]): Raw {
@@ -377,8 +408,9 @@ export function recipeBody(v: RecipeVersionView, requested: string): Raw {
             </div>
           </div>
           ${deprecationBanner(v, "recipes")}
-          <div class="row wrap" style="gap:8px">${targetPills(v.targets)}${tagPills(v.tags, "recipes")}</div>
+          <div class="row wrap" style="gap:8px">${qualityBadge(v.quality)}${vulnerabilityBadge(v.vulnerabilities)}${targetPills(v.targets)}${tagPills(v.tags, "recipes")}</div>
           <p class="small muted mt-s">${publisherText(v.publisher)}. Source <a href="${releaseUrl(v.source.repository, v.source.tag)}" target="_blank" rel="noopener">${v.source.repository} ${v.source.tag}</a>.</p>
+          ${gallery(v.images)}
 
           ${packageCard(RECIPE_PACKAGE, v)}
 
@@ -393,16 +425,16 @@ export function recipeBody(v: RecipeVersionView, requested: string): Raw {
             <h2>About</h2>
             <div class="markdown">${raw(renderMarkdown(intro))}</div>
             ${rest ? html`<details class="mt-s"><summary>The full description</summary><div class="markdown">${raw(renderMarkdown(rest))}</div></details>` : ""}
-            ${v.screenshots.length > 0 ? html`<h3 class="mt">Screenshots</h3><div class="row wrap" style="gap:10px;align-items:flex-start">${v.screenshots.map((s) => html`<img src="${s}" alt="" loading="lazy" style="max-height:320px;border-radius:12px;border:1px solid var(--line)" />`)}</div>` : ""}
           </div>
 
           <div class="card mt" id="questions">
             <h2>Questions it asks (${v.questions.length})</h2>
-            ${v.questions.length === 0 ? html`<p class="muted">This recipe asks no questions.</p>` : html`
+            ${v.questions.length === 0 ? html`<p class="muted">This recipe asks no questions.</p>` : questionGroups(v.questions).map((g) => html`
+              <h3 class="mt">${g.heading} (${g.questions.length})</h3>
               <table class="table">
-                <tr><th>Question</th><th>Answer</th><th>Default</th></tr>
-                ${v.questions.map((q) => html`<tr><td>${q.ask}<br /><code class="small">${q.id}</code></td><td>${q.type}${q.options ? html`<br /><span class="small muted">${q.options.join(", ")}</span>` : ""}${q.askWhen ? html`<br /><span class="small muted">asked when ${conditionHtml(q.askWhen)}</span>` : ""}</td><td>${q.type === "secretRef" ? "a reference, never a value" : answerText(q.default)}</td></tr>`)}
-              </table>`}
+                <tr><th>Question</th><th>Answer</th><th>${g.ask === "required" ? "" : "Default"}</th></tr>
+                ${g.questions.map((q) => html`<tr><td>${q.question}<br /><code class="small">${q.id}</code>${q.askWhen ? html`<br /><span class="small muted">Follow-up: asked when ${conditionHtml(q.askWhen)}</span>` : ""}</td><td>${q.type}${q.options ? html`<br /><span class="small muted">${q.options.join(", ")}</span>` : ""}</td><td>${q.type === "secretRef" ? "a reference, never a value" : g.ask === "required" ? "" : answerText(q.default)}</td></tr>`)}
+              </table>`)}
           </div>
 
           <div class="card mt" id="slots">
@@ -441,6 +473,7 @@ export function recipeBody(v: RecipeVersionView, requested: string): Raw {
             ${v.tests.answerSets.length === 0 ? "" : html`<details><summary>The answers of each set</summary><ul class="bullets">${v.tests.answerSets.map((s) => html`<li><b>${s.id}</b>: ${Object.keys(s.answers).length === 0 ? "defaults" : Object.entries(s.answers).map(([k, a]) => `${k} ${answerText(a)}`).join("; ")}</li>`)}</ul></details>`}
           </div>
 
+          ${releaseCard("recipes", v.slug, v)}
           ${factsCard(v.foundations, "recipes", v.slug, v.version)}
 
           <div class="card mt">
@@ -466,6 +499,7 @@ export async function recipePage(root: HTMLElement, slug: string): Promise<void>
   showInFrame(root, me, v.title, recipeBody(v, requested), { bare: true });
   wireCopy(root);
   wireBundle(root, v.bundle.url);
+  wireGallery(root, v.images);
 }
 
 // The recipe.json slot entry that names a component, from the class it implements.
@@ -485,13 +519,14 @@ export function componentBody(v: ComponentVersionView, requested: string): Raw {
         <article style="max-width:900px;margin:0 auto">
           <p class="small"><a href="/components">All components</a></p>
           <div>
-            ${v.category ? html`<span class="pill accent">${v.category}</span>` : ""} <span class="pill">${v.version}</span>
+            <span class="pill accent">${v.category}</span> <span class="pill">${v.version}</span>
             <h1 style="margin-top:10px">${v.name}</h1>
             <p class="lead muted">${v.description}</p>
           </div>
           ${deprecationBanner(v, "components")}
-          <div class="row wrap" style="gap:8px">${targetPills(v.targets)}${tagPills(v.tags, "components")}</div>
-          <p class="small muted mt-s">${publisherText(v.publisher)}. Source <a href="${releaseUrl(v.source.repository, v.source.tag)}" target="_blank" rel="noopener">${v.source.repository} ${v.source.tag}</a>.</p>
+          <div class="row wrap" style="gap:8px">${qualityBadge(v.quality)}${vulnerabilityBadge(v.vulnerabilities)}${targetPills(v.targets)}${tagPills(v.tags, "components")}</div>
+          <p class="small muted mt-s">${publisherText(v.publisher)}. Class <a href="/classes/${v.class.name.split("/")[1]}">${v.class.title}</a> in <a href="/components?category=${encodeURIComponent(v.category)}">${v.category}</a>. Source <a href="${releaseUrl(v.source.repository, v.source.tag)}" target="_blank" rel="noopener">${v.source.repository} ${v.source.tag}</a>.</p>
+          ${gallery(v.images)}
 
           ${packageCard(COMPONENT_PACKAGE, v)}
 
@@ -559,6 +594,7 @@ export function componentBody(v: ComponentVersionView, requested: string): Raw {
             ${v.usedBy.length === 0 ? html`<p class="muted">No listed recipe names it yet.</p>` : html`<ul class="bullets">${v.usedBy.map((r) => html`<li><a href="/recipes/${r.slug}">${r.title}</a> ${r.version}: ${r.slots.map((s, i) => html`${i > 0 ? ", " : ""}slot <code>${s.id}</code>${s.preferred ? "" : " as a job candidate"}`)}</li>`)}</ul>`}
           </div>
 
+          ${releaseCard("components", v.slug, v)}
           ${factsCard(f, "components", v.slug, v.version)}
 
           <div class="card mt">
@@ -584,6 +620,7 @@ export async function componentPage(root: HTMLElement, slug: string): Promise<vo
   showInFrame(root, me, v.name, componentBody(v, requested), { bare: true });
   wireCopy(root);
   wireBundle(root, v.bundle.url);
+  wireGallery(root, v.images);
 }
 
 const section = (title: string, count: number, body: Raw): Raw => html`<details class="card mt"><summary><b>${title} (${count})</b></summary>${count === 0 ? html`<p class="muted">None.</p>` : body}</details>`;
@@ -626,4 +663,111 @@ export async function detailsPage(root: HTMLElement, kind: Kind, slug: string): 
   }
   setTheme("store", `${d.name} ${d.version}: sources and dependencies`, true);
   showInFrame(root, me, `${d.name}: sources and dependencies`, detailsBody(d, kind, slug), { bare: true });
+}
+
+// ---------------------------------------------------------------- classes and categories
+
+function classCard(c: ClassList["classes"][number]): Raw {
+  return html`<article class="card">
+    <h3 style="margin:0"><a href="/classes/${c.slug}">${c.title}</a></h3>
+    <p class="muted small" style="margin:4px 0">${c.summary}</p>
+    <div class="row wrap small" style="gap:6px"><a class="pill" href="/classes?category=${encodeURIComponent(c.category)}">${c.category}</a><span class="pill">${c.presentation === "visual" ? "visual" : "no visual output"}</span><a href="/components?class=${encodeURIComponent(c.name)}">${fmtCount(c.implementations)} implementations</a></div>
+    <p class="small faint" style="margin:6px 0 0"><code>${c.name}</code> ${c.version}</p>
+  </article>`;
+}
+
+export async function classesPage(root: HTMLElement): Promise<void> {
+  setTheme("store", "Classes on ourapps", true);
+  const query = readQuery(location.search);
+  const me = await whoAmI();
+  try {
+    const list = await api<ClassList>("GET", `/api/classes${queryString({ category: query.category, cursor: query.cursor })}`);
+    const children = html`<nav class="facets" aria-label="Categories"><div><h3>Category</h3><a href="/classes" aria-current="${query.category ? "false" : "true"}"><span>All</span></a>${query.category ? html`<a href="/classes?category=${encodeURIComponent(query.category)}" aria-current="true"><span>${query.category}</span></a>` : ""}${list.categories.filter((c) => c.classes > 0).map((c) => html`<a href="/classes?category=${encodeURIComponent(c.id)}" aria-current="false"><span>${c.title}</span><span class="count">${fmtCount(c.classes)}</span></a>`)}</div></nav>`;
+    const body = html`<div class="catalogue">${children}<div><p class="muted" style="margin:0">${totalText(list.total)} classes</p>${list.classes.length === 0 ? emptyState("apps", "No classes here", "Choose another category.") : html`<div class="entry-grid mt-s">${list.classes.map(classCard)}</div>`}${pager("classes" as Kind, { category: query.category }, list)}</div></div>`;
+    listFrame(root, "classes", query, none, body, me);
+  } catch (err) {
+    listFrame(root, "classes", query, none, errorBox(err), me);
+  }
+}
+
+// One class: what it asks of a component, and the components that implement it, side by side.
+export function classBody(c: ClassVersionView): Raw {
+  const settings = classSettings(c.settings);
+  return html`
+    <article style="max-width:980px;margin:0 auto">
+      <p class="small"><a href="/classes">All classes</a> · <a href="/categories">Categories</a></p>
+      <span class="pill accent">${c.category}</span> <span class="pill">${c.version}</span> <span class="pill">${c.presentation === "visual" ? "visual" : "no visual output"}</span>
+      <h1 style="margin-top:10px">${c.title}</h1>
+      <p class="lead muted">${c.summary}</p>
+      <p class="small faint"><code>${c.name}</code> sha256 <code>${c.digest.slice(0, 16)}</code></p>
+
+      <div class="card mt" id="implementations">
+        <h2>Implementations (${fmtCount(c.implementations)})</h2>
+        <p class="muted small">Every listed component whose newest version implements this class version, most downloaded first. Any of them can fill a recipe slot of this class.</p>
+        ${c.implementationList.length === 0 ? html`<p class="muted">No listed component implements it yet.</p>` : html`<div style="overflow-x:auto"><table class="table compare-table">
+          <tr><th></th><th>Component</th><th>Quality</th><th>Platforms</th><th>Downloads</th><th>Vulnerabilities</th></tr>
+          ${c.implementationList.map((i) => html`<tr><td>${i.thumbnail ? html`<img src="${i.thumbnail}" alt="" loading="lazy" />` : html`<span class="faint small">No image</span>`}</td><td><a href="/components/${i.slug}">${i.name}</a> ${i.version}<br /><span class="small muted">${i.description}</span></td><td>${qualityBadge(i.quality)}${i.quality ? "" : html`<span class="small muted">not assessed</span>`}</td><td class="small">${i.platforms.map(targetLabel).join(", ")}</td><td>${fmtCount(i.downloads)}</td><td>${i.vulnerabilities === null ? html`<span class="small muted">not checked</span>` : i.vulnerabilities === 0 ? "none known" : html`<span class="pill badge-vulnerable">${i.vulnerabilities}</span>`}</td></tr>`)}
+        </table></div>`}
+        ${c.implementations > c.implementationList.length ? html`<p class="small mt-s"><a href="/components?class=${encodeURIComponent(c.name)}">All ${fmtCount(c.implementations)} implementations</a></p>` : ""}
+      </div>
+
+      <div class="grid-2 mt">
+        <div class="card"><h2>Provides</h2>${c.provides.length === 0 ? html`<p class="muted">None.</p>` : html`<ul class="bullets small">${c.provides.map((p) => html`<li><code>${p.type}</code> ${p.version}<br /><span class="muted">${Object.entries(p.modules).map(([k, v]) => `${targetLabel(k)}: ${v.join(", ")}`).join("; ")}</span></li>`)}</ul>`}</div>
+        <div class="card"><h2>Requires</h2>${c.requires.length === 0 ? html`<p class="muted">None.</p>` : html`<ul class="bullets small">${c.requires.map((p) => html`<li><code>${p.type}</code> ${p.version}</li>`)}</ul>`}</div>
+      </div>
+
+      <div class="card mt">
+        <h2>Settings a recipe writes</h2>
+        ${settings.length === 0 ? html`<p class="muted">None.</p>` : html`<table class="table small"><tr><th>Setting</th><th>Type</th><th></th></tr>${settings.map((p) => html`<tr><td><code>${p.id}</code></td><td>${p.kind ? kindText(p.kind) : "unknown"}</td><td>${p.required ? "always written" : "optional"}</td></tr>`)}</table>`}
+      </div>
+
+      <div class="card mt">
+        <h2>Shared checks</h2>
+        <p class="muted small">Every implementation passes these checks; aepm runs them when a component is substituted.</p>
+        <table class="table small"><tr><th>Check</th><th>Command</th><th>Limit</th></tr>${c.suites.map((s) => html`<tr><td>${s.id}</td><td><code>${s.argv.join(" ")}</code></td><td>${s.timeoutSeconds} s${s.network ? ", network" : ""}</td></tr>`)}</table>
+      </div>
+
+      <div class="card mt">
+        <h2>Versions</h2>
+        <table class="table small"><tr><th>Version</th><th>Published</th><th>Digest</th></tr>${c.versions.map((v) => html`<tr><td>${v.version === c.version ? html`<b>${v.version}</b>` : html`<a href="/classes/${c.slug}?version=${v.version}">${v.version}</a>`}</td><td>${fmtDate(v.publishedAt)}</td><td><code>${v.digest.slice(0, 16)}</code></td></tr>`)}</table>
+      </div>
+      <p class="mt">${variants(`/classes/${c.slug}`)}</p>
+    </article>`;
+}
+
+export async function classPage(root: HTMLElement, slug: string): Promise<void> {
+  setTheme("store", "Class on ourapps", true);
+  const me = await whoAmI();
+  let c: ClassVersionView;
+  try {
+    c = await api<ClassVersionView>("GET", `/api/classes/${encodeURIComponent(slug)}/${versionFromSearch(location.search)}`);
+  } catch (err) {
+    return notFound(root, err instanceof ApiError && err.status === 404 ? "No such class or version." : String(err));
+  }
+  setTheme("store", `${c.title}: a class on ourapps`, true);
+  showInFrame(root, me, c.title, classBody(c), { bare: true });
+}
+
+export function categoriesBody(categories: CategoryCount[]): Raw {
+  const depth = (id: string) => id.split("/").length - 1;
+  return html`<article style="max-width:900px;margin:0 auto">
+    <h1>Categories</h1>
+    <p class="lead muted">The category tree of classes. A component's category is its class's category; a category counts everything below it.</p>
+    <table class="table mt">
+      <tr><th>Category</th><th>Classes</th><th>Components</th><th>Recipes</th></tr>
+      ${categories.map((c) => html`<tr><td style="padding-left:${10 + 18 * depth(c.id)}px">${c.title} <span class="small faint">${c.id}</span></td><td><a href="/classes?category=${encodeURIComponent(c.id)}">${fmtCount(c.classes)}</a></td><td><a href="/components?category=${encodeURIComponent(c.id)}">${fmtCount(c.components)}</a></td><td><a href="/recipes?category=${encodeURIComponent(c.id)}">${fmtCount(c.recipes)}</a></td></tr>`)}
+    </table>
+    <p class="mt">${variants("/categories")}</p>
+  </article>`;
+}
+
+export async function categoriesPage(root: HTMLElement): Promise<void> {
+  setTheme("store", "Categories on ourapps", true);
+  const me = await whoAmI();
+  try {
+    const tree = await api<{ categories: CategoryCount[] }>("GET", "/api/categories");
+    showInFrame(root, me, "Categories", categoriesBody(tree.categories), { bare: true });
+  } catch (err) {
+    showInFrame(root, me, "Categories", errorBox(err), { bare: true });
+  }
 }

@@ -58,9 +58,9 @@ function sections(origin: string, slug: string): Section[] {
         <p>A recipe page shows its description and design diagram, the questions it asks (with the condition that asks each one and its default), the components it uses (with the condition that includes each one, their suitability and guardians), the load bands and jobs that choose between components, the devices it targets, the answer sets that were tested, and every version. The <b>Build it</b> box gives the command your agent runs and a link to download the recipe bundle; the link works for one hour.</p>
         <p>To use a recipe, answer its questions, or hand the page to your agent and let it ask you. A recipe never asks for a secret value, only for a reference to one.</p>
         <h3 id="find-recipe-agent">Text, JSON and the agent API</h3>
-        <p>Every public page has the same address ending in <code>.txt</code> (plain text) or <code>.json</code> (JSON, the plain data format agents read): <code>/recipes.txt</code>, <code>/recipes/poker-night.txt</code>, <code>/recipes/poker-night.json?version=0.1.0</code>. Lists take the same query parameters as the API, and <code>?q=</code> searches. A recipe's text page holds what an agent needs first (the build steps, questions, slots and components); <code>/recipes/poker-night/details.txt</code> holds the rest, including each package's upstream sources. A component's text page leads with its class, interfaces, platforms, toolchains, settings and the recipe slot that names it; <code>/components/card-deck/details.txt</code> holds its upstream sources, dependency pins and file lists. <a href="/sitemap.xml">/sitemap.xml</a> lists the public pages.</p>
-        <pre><code>GET /api/recipes?category=&amp;target=&amp;tag=&amp;deprecated=&amp;limit=&amp;offset=
-GET /api/recipes/search?q=card+game&amp;deprecated=exclude
+        <p>Every public page has the same address ending in <code>.txt</code> (plain text) or <code>.json</code> (JSON, the plain data format agents read): <code>/recipes.txt</code>, <code>/recipes/poker-night.txt</code>, <code>/recipes/poker-night.json?version=0.1.0</code>, <code>/classes.txt</code>, <code>/categories.txt</code>. Lists take the same query parameters as the API: <code>q</code> searches, <code>category</code>, <code>platform</code>, <code>quality</code>, <code>certified</code>, <code>channel</code> and <code>secure=true</code> filter, <code>sort</code> orders by downloads, trending, update or name, and <code>cursor</code> turns the page. A recipe's text page holds what an agent needs first (the build steps, questions, slots and components); <code>/recipes/poker-night/details.txt</code> holds the rest, including each package's upstream sources. A component's text page leads with its class, interfaces, platforms, toolchains, settings and the recipe slot that names it; <code>/components/card-deck/details.txt</code> holds its upstream sources, dependency pins and file lists. <a href="/sitemap.xml">/sitemap.xml</a> lists the public pages.</p>
+        <pre><code>GET /api/recipes?category=games&amp;platform=ios&amp;sort=trending
+GET /api/recipes?q=card+game&amp;deprecated=exclude
 GET /api/recipes/poker-night/latest
 GET /api/recipes/poker-night/0.1.0/bundle
 GET /api/recipes/poker-night/0.1.0/deprecations</code></pre>
@@ -78,12 +78,13 @@ GET /api/recipes/poker-night/0.1.0/deprecations</code></pre>
         { id: "compose-facts", title: "What a package declares" },
       ],
       body: html`
-        <p>Open <a href="/components">/components</a>. Every component is a reviewed part with a contract. Filter by category and device, search by name, title, summary, tags and description, and read a part's page for its versions and the recipes that use it.</p>
+        <p>Open <a href="/components">/components</a>. Every component is a reviewed part with a contract and implements a <a href="/classes">class</a>, whose category is the component's. Filter by category, platform, quality, review, release channel and known vulnerabilities, search by name, title, summary, class and tags, and read a part's page for its images, versions, security releases and the recipes that use it. A class page compares every component that implements it side by side.</p>
         <h3 id="compose-search">Search by interface</h3>
         <p>A component <b>provides</b> interfaces and <b>requires</b> others. An interface has an id (<code>card-deck</code>) and a type (<code>ae/card-deck</code>). Two parts fit together when one provides a type the other requires. On a component page, the type in the Provides and Requires tables links to the components that need or offer it. In the API use <code>provides</code> and <code>requires</code>:</p>
         <pre><code>GET /api/components?provides=ae/card-deck
-GET /api/components?requires=ae/card-deck&amp;target=web
-GET /api/components/search?q=seating&amp;deprecated=exclude</code></pre>
+GET /api/components?requires=ae/card-deck&amp;platform=web
+GET /api/components?class=ourapps-ae/seating-class&amp;quality=reviewed
+GET /api/components?q=seating&amp;deprecated=exclude</code></pre>
         <p>A requirement marked <b>optional</b> may stay unconnected in a recipe.</p>
         <h3 id="compose-suitability">Check suitability</h3>
         <p>Each component page lists the jobs the part can do and its suitability profiles: the load it carries, its cost, the regions it runs in, compliance notes and the provider. Choose the profile that fits how many people use the application and how often. The page also says how the part's data moves: the stores it keeps, the formats it exports, whether it must stop while data moves, and how many days data is kept after removal. Guardians are the parties whose signatures a part can carry; you choose which ones to trust.</p>

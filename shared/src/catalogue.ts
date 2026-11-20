@@ -4,13 +4,20 @@
 import { isAppTarget, type AppTarget } from "./targets.js";
 import { checkCondition, confinements, type Condition, type ConditionExpr } from "./conditions.js";
 import { valueProblem } from "./json-schema.js";
-import { canonical, classDescriptor, graphProblems, isClassReference, selectedTargets, validateFoundations, type ClassReference, type Foundations } from "./foundations.js";
+import { CATEGORY_PATH, canonical, classDescriptor, descriptorDigest, graphProblems, isClassReference, selectedTargets, validateDescriptor, validateFoundations, type ClassDescriptor, type ClassReference, type Foundations } from "./foundations.js";
 
+// suitability.json and migration.json.
 export const CATALOGUE_FORMAT = 1;
+// The bodies of the publish routes: component, recipe and class entries.
+export const ENTRY_FORMAT = 2;
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
 const VERSION = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})$/;
+// A package version: three integers, and for a preview release a pre-release such as -preview.1.
+const PACKAGE_VERSION = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+){0,4})?$/;
+// OSV, GitHub and CVE advisory identifiers.
+const ADVISORY = /^(GHSA(-[23456789cfghjmpqrvwx]{4}){3}|CVE-\d{4}-\d{4,7}|[A-Z][A-Z0-9]{1,15}-[A-Za-z0-9._:-]{1,60})$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const REPOSITORY = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
 const TAG = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$/;
@@ -67,11 +74,47 @@ export function isVersion(value: unknown): value is string {
   return typeof value === "string" && VERSION.test(value);
 }
 
+export function isPackageVersion(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 64 && PACKAGE_VERSION.test(value);
+}
+
+export function isAdvisoryId(value: unknown): value is string {
+  return typeof value === "string" && ADVISORY.test(value);
+}
+
+// Semantic version order: a pre-release comes before its release; pre-release parts compare as numbers or text.
 export function compareVersions(a: string, b: string): number {
-  const x = a.split(".").map(Number);
-  const y = b.split(".").map(Number);
+  const [coreA, preA] = splitPre(a);
+  const [coreB, preB] = splitPre(b);
+  const x = coreA.split(".").map(Number);
+  const y = coreB.split(".").map(Number);
   for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
+  if (preA === preB) return 0;
+  if (preA === null) return 1;
+  if (preB === null) return -1;
+  const p = preA.split(".");
+  const q = preB.split(".");
+  for (let i = 0; i < Math.max(p.length, q.length); i++) {
+    if (p[i] === undefined) return -1;
+    if (q[i] === undefined) return 1;
+    if (p[i] === q[i]) continue;
+    const m = /^\d+$/.test(p[i]);
+    const n = /^\d+$/.test(q[i]);
+    if (m && n) return Number(p[i]) < Number(q[i]) ? -1 : 1;
+    if (m !== n) return m ? -1 : 1;
+    return p[i] < q[i] ? -1 : 1;
+  }
   return 0;
+}
+
+function splitPre(v: string): [string, string | null] {
+  const at = v.indexOf("-");
+  return at < 0 ? [v, null] : [v.slice(0, at), v.slice(at + 1)];
+}
+
+// MAJOR.MINOR of a version: the line its security releases share.
+export function versionLine(v: string): string {
+  return splitPre(v)[0].split(".").slice(0, 2).join(".");
 }
 
 export function newestVersion(versions: string[]): string | null {
@@ -196,6 +239,186 @@ function readRelease(source: unknown, bundle: unknown, errors: string[]): { sour
   return out;
 }
 
+// ---------------------------------------------------------------- release channel, images, waivers, quality
+
+export const CHANNELS = ["security", "features", "preview"] as const;
+export type Channel = typeof CHANNELS[number];
+
+// security: a patch above 0 that only fixes the listed advisories; features: patch 0; preview: a pre-release.
+export interface ReleaseChannel {
+  channel: Channel;
+  fixes: string[];
+}
+
+export function readReleaseChannel(value: unknown, version: unknown, errors: string[]): ReleaseChannel {
+  const out: ReleaseChannel = { channel: "features", fixes: [] };
+  if (!isRecord(value)) {
+    errors.push("release must be an object with channel and fixes");
+    return out;
+  }
+  unknownKeys(value, ["channel", "fixes"], "release", errors);
+  if (!(CHANNELS as readonly unknown[]).includes(value.channel)) {
+    errors.push(`release.channel must be one of ${CHANNELS.join(", ")}`);
+    return out;
+  }
+  out.channel = value.channel as Channel;
+  out.fixes = stringList(value.fixes, "release.fixes", errors, { max: 50, item: isAdvisoryId, what: "advisory ids (OSV, GHSA or CVE)" });
+  if (typeof version !== "string" || !isPackageVersion(version)) return out;
+  const [core, pre] = splitPre(version);
+  const patch = Number(core.split(".")[2]);
+  if (out.channel === "preview" && pre === null) errors.push("release.channel preview needs a pre-release version such as 0.9.0-preview.1");
+  if (out.channel !== "preview" && pre !== null) errors.push(`release.channel ${out.channel} cannot have a pre-release version; a pre-release is a preview`);
+  if (out.channel === "features" && patch !== 0) errors.push("release.channel features needs patch 0: a security release is the only release with a patch above 0");
+  if (out.channel === "security" && patch === 0) errors.push("release.channel security needs a patch above 0 on an existing line");
+  if (out.channel === "security" && out.fixes.length === 0) errors.push("release.fixes must list the advisories a security release fixes");
+  if (out.channel !== "security" && out.fixes.length > 0) errors.push(`release.fixes must be empty for ${out.channel}`);
+  return out;
+}
+
+// An image of the package as built: the full image and its 480-pixel-wide WebP thumbnail, both uploaded by sha256.
+export interface PackageImage {
+  digest: string;
+  thumbnail: string;
+  caption: string;
+  platform: string;
+  width: number;
+  height: number;
+}
+
+export const IMAGE_LIMITS = { images: 12, bytes: 2 * 1024 * 1024, caption: 140, thumbnailWidth: 480, side: 16384 } as const;
+
+export function readImages(value: unknown, platforms: string[], errors: string[]): PackageImage[] {
+  if (!Array.isArray(value) || value.length > IMAGE_LIMITS.images) {
+    errors.push(`images must be a list of at most ${IMAGE_LIMITS.images} images`);
+    return [];
+  }
+  const out: PackageImage[] = [];
+  value.forEach((raw, i) => {
+    const at = `images[${i}]`;
+    if (!isRecord(raw)) return void errors.push(`${at} must be an object`);
+    unknownKeys(raw, ["digest", "thumbnail", "caption", "platform", "width", "height"], at, errors);
+    if (!isDigest(raw.digest)) errors.push(`${at}.digest must be sha256:<64 lowercase hex> of the image`);
+    if (!isDigest(raw.thumbnail)) errors.push(`${at}.thumbnail must be sha256:<64 lowercase hex> of its WebP thumbnail`);
+    if (!text(raw.caption, IMAGE_LIMITS.caption)) errors.push(`${at}.caption must be text of at most ${IMAGE_LIMITS.caption} characters`);
+    if (typeof raw.platform !== "string" || !platforms.includes(raw.platform)) errors.push(`${at}.platform must be one of the package's platforms: ${platforms.join(", ")}`);
+    for (const key of ["width", "height"] as const) if (!Number.isSafeInteger(raw[key]) || (raw[key] as number) < 1 || (raw[key] as number) > IMAGE_LIMITS.side) errors.push(`${at}.${key} must be a whole number of pixels from 1 to ${IMAGE_LIMITS.side}`);
+    if (out.some((o) => o.digest === raw.digest)) errors.push(`${at}.digest is listed twice`);
+    out.push({ digest: String(raw.digest), thumbnail: String(raw.thumbnail), caption: String(raw.caption), platform: String(raw.platform), width: Number(raw.width), height: Number(raw.height) });
+  });
+  return out;
+}
+
+export interface VulnerabilityWaiver {
+  id: string;
+  reason: string;
+}
+
+export function readWaivers(value: unknown, errors: string[]): VulnerabilityWaiver[] {
+  if (!Array.isArray(value) || value.length > 50) {
+    errors.push("vulnerabilityWaivers must be a list of at most 50 waivers");
+    return [];
+  }
+  const out: VulnerabilityWaiver[] = [];
+  value.forEach((w, i) => {
+    const at = `vulnerabilityWaivers[${i}]`;
+    if (!isRecord(w)) return void errors.push(`${at} must be an object`);
+    unknownKeys(w, ["id", "reason"], at, errors);
+    if (!isAdvisoryId(w.id)) errors.push(`${at}.id must be an advisory id (OSV, GHSA or CVE)`);
+    else if (out.some((o) => o.id === w.id)) errors.push(`${at}.id ${w.id} is waived twice`);
+    if (!text(w.reason, 500)) errors.push(`${at}.reason must be text of at most 500 characters`);
+    out.push({ id: String(w.id), reason: String(w.reason) });
+  });
+  return out;
+}
+
+// Quality levels, each including the ones before it. Set by the publish tool from verified evidence.
+export const QUALITY_LEVELS = ["packaged", "reviewed", "integration-tested", "live-tested"] as const;
+export type QualityLevel = typeof QUALITY_LEVELS[number];
+
+export interface Quality {
+  level: QualityLevel;
+  // true when the guardian signature is Level N's.
+  certified: boolean;
+  liveTested: { at: string; platform: string } | null;
+}
+
+export function validateQuality(value: unknown, where = "quality"): Result<"quality", Quality> {
+  const errors: string[] = [];
+  if (!isRecord(value)) return { ok: false, errors: [`${where} must be an object with level, certified and liveTested`] };
+  unknownKeys(value, ["level", "certified", "liveTested"], where, errors);
+  if (!(QUALITY_LEVELS as readonly unknown[]).includes(value.level)) errors.push(`${where}.level must be one of ${QUALITY_LEVELS.join(", ")}`);
+  if (typeof value.certified !== "boolean") errors.push(`${where}.certified must be true or false`);
+  let liveTested: Quality["liveTested"] = null;
+  if (value.liveTested !== undefined && value.liveTested !== null) {
+    const l = value.liveTested;
+    if (!isRecord(l) || typeof l.at !== "string" || !/^\d{4}-\d{2}-\d{2}(T[\d:.]+Z)?$/.test(l.at) || Number.isNaN(Date.parse(l.at)) || typeof l.platform !== "string" || !SLUG.test(l.platform)) errors.push(`${where}.liveTested must be { at: an ISO date, platform }`);
+    else {
+      unknownKeys(l, ["at", "platform"], `${where}.liveTested`, errors);
+      liveTested = { at: l.at, platform: l.platform };
+    }
+  }
+  if (value.level === "live-tested" && !liveTested) errors.push(`${where}: live-tested needs liveTested with the date and platform`);
+  if (value.level !== "live-tested" && liveTested) errors.push(`${where}.liveTested is set only for live-tested`);
+  if (errors.length > 0) return { ok: false, errors };
+  return { ok: true, quality: { level: value.level as QualityLevel, certified: value.certified as boolean, liveTested } };
+}
+
+function readEntryFormat(value: unknown, errors: string[]): void {
+  if (value !== ENTRY_FORMAT) errors.push(`format-refused: the entry format is ${ENTRY_FORMAT}${value === 1 ? "; a format 1 entry is refused, publish the version again with the current publish tool" : ""}`);
+}
+
+// ---------------------------------------------------------------- classes and categories
+
+export interface CategoryNode {
+  id: string;
+  title: string;
+  parent: string | null;
+}
+
+// classes/categories.json.
+export function validateCategories(input: unknown): Result<"categories", CategoryNode[]> {
+  const errors: string[] = [];
+  if (!isRecord(input)) return { ok: false, errors: ["the body must be categories.json: { format, categories }"] };
+  unknownKeys(input, ["format", "categories"], "body", errors);
+  if (input.format !== 1) errors.push("format-refused: categories.json format is 1");
+  const out: CategoryNode[] = [];
+  if (!Array.isArray(input.categories) || input.categories.length === 0 || input.categories.length > 2000) errors.push("categories must be a list of 1 to 2000 categories");
+  else
+    input.categories.forEach((c, i) => {
+      const at = `categories[${i}]`;
+      if (!isRecord(c)) return void errors.push(`${at} must be an object`);
+      unknownKeys(c, ["id", "title", "parent"], at, errors);
+      if (typeof c.id !== "string" || c.id.length > 100 || !CATEGORY_PATH.test(c.id)) return void errors.push(`${at}.id must be a category path: lowercase segments joined by /`);
+      const parent = c.id.includes("/") ? c.id.slice(0, c.id.lastIndexOf("/")) : null;
+      if (c.parent !== parent) errors.push(`${at}.parent must be ${parent === null ? "null" : parent}`);
+      if (!text(c.title, 60)) errors.push(`${at}.title must be text of at most 60 characters`);
+      if (out.some((o) => o.id === c.id)) errors.push(`${at}.id ${c.id} is listed twice`);
+      out.push({ id: c.id, title: String(c.title), parent });
+    });
+  if (errors.length > 0) return { ok: false, errors };
+  return { ok: true, categories: out };
+}
+
+export interface ClassEntry {
+  format: 2;
+  class: ClassDescriptor;
+  digest: string;
+}
+
+// The publish body for a class: { format: 2, class: <class.json> }. The digest is computed, never sent.
+export function validateClassEntry(input: unknown): Result<"entry", ClassEntry> {
+  const errors: string[] = [];
+  if (!isRecord(input)) return { ok: false, errors: ["the body must be a JSON object"] };
+  unknownKeys(input, ["format", "class"], "body", errors);
+  readEntryFormat(input.format, errors);
+  const problems = validateDescriptor(input.class, Object.values(GRAMMAR_PATTERNS));
+  errors.push(...problems.map((p) => `class: ${p}`));
+  if (problems.length === 0 && !isCatalogueName((input.class as Rec).name)) errors.push("class.name must be <scope>/<name>");
+  if (errors.length > 0) return { ok: false, errors };
+  const c = input.class as ClassDescriptor;
+  return { ok: true, entry: { format: 2, class: c, digest: descriptorDigest(c) } };
+}
+
 // ---------------------------------------------------------------- recipe.json
 
 // The instance id of the recipe's own application-specific component. No component may use it.
@@ -240,9 +463,15 @@ export function portId(type: string): string {
   return type.slice(type.lastIndexOf("/") + 1);
 }
 
+// required: no default, always put to the person when its condition holds; unless-settled: has a default, asked when
+// the request does not settle it; default: the default is taken unless the request says otherwise.
+export const ASK = ["required", "unless-settled", "default"] as const;
+export type Asking = typeof ASK[number];
+
 export interface RecipeQuestion {
   id: string;
-  ask: string;
+  question: string;
+  ask: Asking;
   askAgent?: string;
   askWhen?: Condition;
   type: QuestionType;
@@ -333,8 +562,11 @@ export function matchesGrammar(grammar: string, value: string): boolean {
   }
 }
 
+// recipe.json format 2.
+export const RECIPE_FORMAT = 2;
+
 export interface Recipe {
-  format: 1;
+  format: 2;
   name: string;
   version: string;
   title: string;
@@ -606,16 +838,18 @@ function readQuestion(raw: unknown, index: number, errors: string[]): { question
     errors.push(`${where} must be an object`);
     return null;
   }
-  unknownKeys(raw, ["id", "ask", "askAgent", "askWhen", "type", "options", "default", "min", "max", "effects"], where, errors);
+  unknownKeys(raw, ["id", "question", "ask", "askAgent", "askWhen", "type", "options", "default", "min", "max", "effects"], where, errors);
+  const asking = (ASK as readonly unknown[]).includes(raw.ask) ? (raw.ask as Asking) : null;
+  if (!asking) errors.push(`${where}.ask must be one of ${ASK.join(", ")}`);
   if (typeof raw.id !== "string" || !IDENTIFIER.test(raw.id)) errors.push(`${where}.id must be an identifier`);
-  if (!text(raw.ask, 300)) errors.push(`${where}.ask must be text of at most 300 characters`);
+  if (!text(raw.question, 300)) errors.push(`${where}.question must be text of at most 300 characters`);
   if (raw.askAgent !== undefined && !text(raw.askAgent, 300)) errors.push(`${where}.askAgent must be text of at most 300 characters`);
   const type = (QUESTION_TYPES as readonly unknown[]).includes(raw.type) ? (raw.type as QuestionType) : null;
   if (!type) {
     errors.push(`${where}.type must be one of ${QUESTION_TYPES.join(", ")}`);
     return null;
   }
-  const q: RecipeQuestion = { id: String(raw.id), ask: String(raw.ask), type, effects: [] };
+  const q: RecipeQuestion = { id: String(raw.id), question: String(raw.question), ask: asking ?? "default", type, effects: [] };
   if (raw.askAgent !== undefined && typeof raw.askAgent === "string") q.askAgent = raw.askAgent;
   if (raw.options !== undefined) {
     if (!Array.isArray(raw.options) || raw.options.length > 100 || !raw.options.every((o) => (typeof o === "string" && o.length <= 100) || (typeof o === "number" && Number.isFinite(o)))) errors.push(`${where}.options must be a list of at most 100 strings or numbers`);
@@ -634,7 +868,9 @@ function readQuestion(raw: unknown, index: number, errors: string[]): { question
     else if (type !== "secretRef") checkAnswer(q, raw.default, `${where}.default`, errors);
     q.default = raw.default;
   }
-  if (raw.askWhen !== undefined && raw.askWhen !== null && type !== "secretRef" && (raw.default === undefined || raw.default === null)) errors.push(`${where}: a question with askWhen needs a default, which it takes when it is not asked`);
+  const hasDefault = raw.default !== undefined && raw.default !== null;
+  if (asking === "required" && hasDefault) errors.push(`${where}: a required question has no default`);
+  if (asking && asking !== "required" && !hasDefault) errors.push(`${where}: a question with ask ${asking} needs a default`);
   if (raw.effects !== undefined) {
     if (!Array.isArray(raw.effects) || raw.effects.length > 20) errors.push(`${where}.effects must be a list of at most 20 effects`);
     else {
@@ -690,12 +926,12 @@ export function validateRecipe(input: unknown, context: RecipeContext = {}): Res
   if (!isRecord(input)) return { ok: false, errors: ["recipe.json must be a JSON object"] };
   if (JSON.stringify(input).length > LIMITS.recipeJson) return { ok: false, errors: [`recipe.json is larger than ${LIMITS.recipeJson} characters`] };
   unknownKeys(input, RECIPE_FIELDS, "recipe", errors);
-  if (input.format !== CATALOGUE_FORMAT) errors.push(`format must be ${CATALOGUE_FORMAT}`);
+  if (input.format !== RECIPE_FORMAT) errors.push(`format-refused: recipe.json format is ${RECIPE_FORMAT}${input.format === 1 ? "; a format 1 recipe.json (question text in ask) is refused, write it again in format 2" : ""}`);
   if (!isCatalogueName(input.name)) errors.push("name must be <scope>/<name>: lowercase letters, digits and single hyphens");
-  if (!isVersion(input.version)) errors.push("version must be three integers, for example 0.2.0");
+  if (!isPackageVersion(input.version)) errors.push("version must be three integers, for example 0.2.0");
   if (!text(input.title, LIMITS.title)) errors.push(`title must be text of at most ${LIMITS.title} characters`);
   if (!text(input.summary, LIMITS.summary)) errors.push(`summary must be text of at most ${LIMITS.summary} characters`);
-  if (typeof input.category !== "string" || !SLUG.test(input.category) || input.category.length > 30) errors.push("category must be a lowercase slug of at most 30 characters");
+  if (typeof input.category !== "string" || !CATEGORY_PATH.test(input.category) || input.category.length > 100) errors.push("category must be a category path such as games or games/cards");
   const tags = readTags(input.tags, "tags", errors);
   const targets = readTargets(input.targets, "targets", errors);
   if (context.authority) for (const target of [...targets.client, ...(targets.server.length ? ["server"] : [])]) if (!context.authority.platforms.includes(target)) errors.push(`targets: unsupported-platform:${target}`);
@@ -756,7 +992,7 @@ export function validateRecipe(input: unknown, context: RecipeContext = {}): Res
         if (!isCatalogueName(c.preferred.name)) errors.push(`${where}.preferred.name must be <scope>/<name>`);
         else if (c.preferred.name.split("/")[1] === APPLICATION_INSTANCE) errors.push(`${where}.preferred.name ${c.preferred.name} is not allowed: no component is named ${APPLICATION_INSTANCE}`);
         else preferred.name = c.preferred.name;
-        if (!isVersion(c.preferred.version)) errors.push(`${where}.preferred.version must be three integers`);
+        if (!isPackageVersion(c.preferred.version)) errors.push(`${where}.preferred.version must be three integers`);
         else preferred.version = c.preferred.version;
       }
       if (c.configuration !== undefined && !isRecord(c.configuration)) errors.push(`${where}.configuration must be an object`);
@@ -839,7 +1075,7 @@ export function validateRecipe(input: unknown, context: RecipeContext = {}): Res
             const at = `${where}.candidates[${n}]`;
             unknownKeys(c, ["component", "version", "profile", "includedWhen"], at, errors);
             let version: string | undefined;
-            if (c.version !== undefined && !isVersion(c.version)) errors.push(`${at}.version must be three integers`);
+            if (c.version !== undefined && !isPackageVersion(c.version)) errors.push(`${at}.version must be three integers`);
             else if (typeof c.version === "string") version = c.version;
             const preferred = slot !== undefined && c.component === slot.preferred.name && (version === undefined || version === slot.preferred.version);
             if (slot && !preferred && version === undefined) errors.push(`${at}.version is required: ${c.component} is not the preferred component of slot ${slot.id}`);
@@ -1022,7 +1258,7 @@ export function validateRecipe(input: unknown, context: RecipeContext = {}): Res
   return {
     ok: true,
     recipe: {
-      format: 1,
+      format: 2,
       name: input.name as string,
       version: input.version as string,
       title: (input.title as string).trim(),
@@ -1058,14 +1294,38 @@ function readLoad(value: unknown, where: string, errors: string[]): Record<strin
 // ---------------------------------------------------------------- recipe publication
 
 // What a developer sends to publish a recipe version: recipe.json, where the release is, and the page material.
-export interface RecipeEntry {
+// The fields every component and recipe entry carries besides its own.
+export interface EntryCommon {
+  release: ReleaseChannel;
+  images: PackageImage[];
+  vulnerabilityWaivers: VulnerabilityWaiver[];
+  // Only the catalogue's curators send it; see the publish routes.
+  quality: Quality | null;
+}
+
+function readCommon(input: Rec, version: unknown, platforms: string[], errors: string[]): EntryCommon {
+  const release = readReleaseChannel(input.release, version, errors);
+  const images = readImages(input.images, platforms, errors);
+  const vulnerabilityWaivers = readWaivers(input.vulnerabilityWaivers, errors);
+  let quality: Quality | null = null;
+  if (input.quality !== undefined && input.quality !== null) {
+    const q = validateQuality(input.quality);
+    if (q.ok) quality = q.quality;
+    else errors.push(...q.errors);
+  }
+  return { release, images, vulnerabilityWaivers, quality };
+}
+
+const COMMON_FIELDS = ["release", "images", "vulnerabilityWaivers", "quality"];
+
+export interface RecipeEntry extends EntryCommon {
   foundations: Foundations;
-  format: 1;
+  format: 2;
   recipe: Recipe;
   digest: string;
   source: ReleasePointer;
   bundle: BundlePointer;
-  page: { description: string; diagram: string | null; screenshots: string[] };
+  page: { description: string; diagram: string | null };
 }
 
 // SVG that is safe to show: no scripts, no embedded objects, no external references.
@@ -1081,28 +1341,29 @@ export function isSafeSvg(svg: unknown): svg is string {
 export function validateRecipeEntry(input: unknown, context: RecipeContext = {}): Result<"entry", RecipeEntry> {
   const errors: string[] = [];
   if (!isRecord(input)) return { ok: false, errors: ["the body must be a JSON object"] };
-  unknownKeys(input, ["format", "recipe", "digest", "source", "bundle", "page", "foundations"], "body", errors);
-  if (input.format !== CATALOGUE_FORMAT) errors.push(`format must be ${CATALOGUE_FORMAT}`);
+  unknownKeys(input, ["format", "recipe", "digest", "source", "bundle", "page", "foundations", ...COMMON_FIELDS], "body", errors);
+  readEntryFormat(input.format, errors);
   const foundationErrors = validateFoundations(input.foundations, "recipe", Object.values(GRAMMAR_PATTERNS));
   errors.push(...foundationErrors);
   const recipe = validateRecipe(input.recipe, { ...context, ...(foundationErrors.length === 0 ? { authority: input.foundations as Foundations } : {}) });
   if (!recipe.ok) errors.push(...recipe.errors.map((e) => `recipe: ${e}`));
   if (!isDigest(input.digest)) errors.push("digest must be sha256:<64 lowercase hex>");
   const release = readRelease(input.source, input.bundle, errors);
-  const page: RecipeEntry["page"] = { description: "", diagram: null, screenshots: [] };
-  if (!isRecord(input.page)) errors.push("page must be an object with description, diagram and screenshots");
+  const common = readCommon(input, isRecord(input.recipe) ? input.recipe.version : undefined, isRecord(input.foundations) && Array.isArray(input.foundations.platforms) ? (input.foundations.platforms as string[]) : [], errors);
+  if (recipe.ok && recipe.recipe.targets.client.length > 0 && common.images.length === 0) errors.push("images: a recipe with a client target needs at least one image of the application as built");
+  const page: RecipeEntry["page"] = { description: "", diagram: null };
+  if (!isRecord(input.page)) errors.push("page must be an object with description and diagram");
   else {
-    unknownKeys(input.page, ["description", "diagram", "screenshots"], "page", errors);
+    unknownKeys(input.page, ["description", "diagram"], "page", errors);
     if (!text(input.page.description, LIMITS.description)) errors.push(`page.description must be text of at most ${LIMITS.description} characters`);
     else page.description = input.page.description.replace(/\r\n/g, "\n");
     if (input.page.diagram !== undefined && input.page.diagram !== null) {
       if (!isSafeSvg(input.page.diagram)) errors.push("page.diagram must be an SVG without scripts, embedded objects or external references, of at most 200000 characters");
       else page.diagram = input.page.diagram;
     }
-    page.screenshots = stringList(input.page.screenshots ?? [], "page.screenshots", errors, { max: LIMITS.screenshots, item: isHttpsUrl, what: "https URLs" });
   }
   if (errors.length > 0 || !recipe.ok) return { ok: false, errors };
-  return { ok: true, entry: { format: 1, foundations: input.foundations as Foundations, recipe: recipe.recipe, digest: input.digest as string, ...release, page } };
+  return { ok: true, entry: { format: 2, foundations: input.foundations as Foundations, recipe: recipe.recipe, digest: input.digest as string, ...release, page, ...common } };
 }
 
 // ---------------------------------------------------------------- component catalogue entry
@@ -1149,14 +1410,13 @@ export interface ComponentDependency {
   version: string;
 }
 
-export interface ComponentEntry {
+export interface ComponentEntry extends EntryCommon {
   foundations: Foundations;
-  format: 1;
+  format: 2;
   name: string;
   version: string;
   digest: string;
   description: string;
-  category: string | null;
   tags: string[];
   targets: Targets;
   guardians: string[];
@@ -1173,7 +1433,7 @@ export interface ComponentEntry {
   bundle: BundlePointer;
 }
 
-const COMPONENT_FIELDS = ["format", "name", "version", "digest", "description", "category", "tags", "targets", "guardians", "provides", "requires", "settings", "interfaceDigests", "interfaceModules", "dependencies", "suitability", "migration", "source", "bundle", "foundations"];
+const COMPONENT_FIELDS = [...COMMON_FIELDS, "format", "name", "version", "digest", "description", "tags", "targets", "guardians", "provides", "requires", "settings", "interfaceDigests", "interfaceModules", "dependencies", "suitability", "migration", "source", "bundle", "foundations"];
 
 function readPorts(value: unknown, where: string, errors: string[], allowOptional = false): Port[] {
   if (!Array.isArray(value) || value.length > 50) {
@@ -1282,7 +1542,7 @@ function readDependencies(value: unknown, self: unknown, errors: string[]): Comp
     if (!isCatalogueName(d.name)) errors.push(`${at}.name must be <scope>/<name>`);
     else if (d.name === self) errors.push(`${at}.name cannot be the component itself`);
     else if (out.some((o) => o.name === d.name)) errors.push(`${at}.name ${d.name} is used twice`);
-    if (!isVersion(d.version)) errors.push(`${at}.version must be three integers`);
+    if (!isPackageVersion(d.version)) errors.push(`${at}.version must be three integers`);
     out.push({ name: String(d.name), version: String(d.version) });
   });
   return out;
@@ -1381,12 +1641,13 @@ export function validateComponentEntry(input: unknown): Result<"entry", Componen
   if (!isRecord(input)) return { ok: false, errors: ["the body must be a JSON object"] };
   unknownKeys(input, COMPONENT_FIELDS, "component", errors);
   errors.push(...validateFoundations(input.foundations, "component", Object.values(GRAMMAR_PATTERNS)));
-  if (input.format !== CATALOGUE_FORMAT) errors.push(`format must be ${CATALOGUE_FORMAT}`);
+  readEntryFormat(input.format, errors);
   if (!isCatalogueName(input.name)) errors.push("name must be <scope>/<name>: lowercase letters, digits and single hyphens");
-  if (!isVersion(input.version)) errors.push("version must be three integers, for example 0.1.0");
+  if (!isPackageVersion(input.version)) errors.push("version must be three integers, for example 0.1.0, with a pre-release such as -preview.1 for a preview");
+  const common = readCommon(input, input.version, isRecord(input.foundations) && Array.isArray(input.foundations.platforms) ? (input.foundations.platforms as string[]) : [], errors);
+  if (isRecord(input.foundations) && Array.isArray(input.foundations.implements) && input.foundations.implements.length !== 1) errors.push("foundations.implements must name exactly one class: the component's listing class");
   if (!isDigest(input.digest)) errors.push("digest must be sha256:<64 lowercase hex>");
   if (!text(input.description, LIMITS.componentDescription)) errors.push(`description must be text of at most ${LIMITS.componentDescription} characters`);
-  if (input.category !== undefined && input.category !== null && (typeof input.category !== "string" || !SLUG.test(input.category) || input.category.length > 30)) errors.push("category must be a lowercase slug of at most 30 characters");
   const tags = readTags(input.tags, "tags", errors);
   const targets = input.targets === undefined ? { client: [], server: [] } : readTargets(input.targets, "targets", errors);
   const guardians = stringList(input.guardians ?? [], "guardians", errors, { max: 10, item: (v) => text(v, 80), what: "guardian names" });
@@ -1406,12 +1667,12 @@ export function validateComponentEntry(input: unknown): Result<"entry", Componen
     ok: true,
     entry: {
       foundations: input.foundations as Foundations,
-      format: 1,
+      format: 2,
       name: input.name as string,
       version: input.version as string,
       digest: input.digest as string,
       description: (input.description as string).trim(),
-      category: (input.category as string | null | undefined) ?? null,
+      ...common,
       tags,
       targets,
       guardians,
