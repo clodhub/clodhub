@@ -1,6 +1,6 @@
 // The recipe library and the component catalogue: browse, search, and read one entry.
 import type { BuildReportView, CategoryCount, ClassList, ClassVersionView, FoundationSummary, Foundations, ImageView, LineView, PackageDetails, Quality, VersionRef, VulnerabilityReport, VulnerabilitySummary } from "@my/store-shared";
-import { COMPONENT_PACKAGE, QUALITY_LEVELS, QUALITY_TEXT, RECIPE_PACKAGE, SIGNATURES_NOTE, classSettings, kindText, questionGroups, type BundleLink, type ClassInterface, type PackageSummary, type ComponentList, type ComponentSummary, type ComponentVersionView, type Deprecation, type EntryStatus, type Profile, type RecipeList, type RecipeSlotView, type RecipeSummary, type RecipeVersionView, type SettingDeclaration } from "@my/store-shared";
+import { buildingItSection, recipeBuildSteps, COMPONENT_PACKAGE, QUALITY_LEVELS, QUALITY_TEXT, RECIPE_PACKAGE, SIGNATURES_NOTE, classSettings, kindText, questionGroups, type BundleLink, type ClassInterface, type PackageSummary, type ComponentList, type ComponentSummary, type ComponentVersionView, type Deprecation, type EntryStatus, type Profile, type RecipeList, type RecipeSlotView, type RecipeSummary, type RecipeVersionView, type SettingDeclaration } from "@my/store-shared";
 import { ApiError, api, whoAmI } from "../api.js";
 import { html, mount, raw, type Raw } from "../html.js";
 import { svgFigure } from "../figures.js";
@@ -320,6 +320,20 @@ function wireBundle(root: HTMLElement, url: string): void {
 }
 
 // What a download is, at a glance: the same words appear in the plain-text pages and the documents.
+// The aepm steps the agent runs, then the recipe author's own "Building it" section.
+export function buildStepsHtml(v: RecipeVersionView): Raw {
+  const own = buildingItSection(v.description);
+  return html`
+    <details class="mt-s" open>
+      <summary>The steps your agent runs</summary>
+      <ol class="steps">
+        ${recipeBuildSteps(v).map((s) => html`<li>${s.text}${s.command ? html`<br /><code class="small">${s.command}</code>` : ""}</li>`)}
+      </ol>
+      ${own ? html`<h3 class="mt">From the recipe</h3><div class="markdown">${raw(renderMarkdown(own.text))}</div>${own.cut ? html`<p class="small muted">The rest is in the description below.</p>` : ""}` : ""}
+    </details>
+  `;
+}
+
 // Agents' runs of the recipe, newest first (spec section 6b).
 export function buildReportsCard(v: { version: string; buildReports: BuildReportView[] }): Raw | string {
   if (v.buildReports.length === 0) return "";
@@ -444,6 +458,7 @@ export function recipeBody(v: RecipeVersionView, requested: string): Raw {
             <p class="muted">Give your coding agent this line. The page it reads lists the aepm steps: fetch the recipe and its components, ask you the questions below, design, install, then build and run. <a href="/dev/agents#recipes-and-components">Tools and instructions for agents</a>. With no machine of your own: <a href="/cloud-assembly.md">build it in GitHub Actions</a>.</p>
             ${copyRow(`Build an application from the ${v.title} recipe: https://ourapps.app/recipes/${v.slug}.txt`)}
             <div class="row wrap mt-s"><button class="btn secondary sm" id="bundle-link" type="button">${icon("external")} Download the archive</button><span class="small faint">The link is valid for one hour. Digest ${v.bundle.digest.slice(0, 19)}</span></div>
+            ${buildStepsHtml(v)}
           </div>
 
           ${buildReportsCard(v)}

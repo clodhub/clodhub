@@ -873,7 +873,7 @@ describe("page variants", () => {
     expect(page).toContain("Slots (5): each needs a component of its class");
     expect(page).toContain("- deck: class ourapps-ae/card-deck-class@1.0.0; preferred acme/card-deck@0.1.0");
     expect(page).toContain("- apple: class ourapps-ae/apple-shell-class@1.0.0; preferred acme/apple-host@0.1.0; only when (targets includes ios) or (targets includes macos)");
-    expect(page).toContain("python3 -m aepm design poker-night@0.1.0 --store store --answers answers.json --substitute SLOT=NAME@VERSION --out definition.json");
+    expect(page).toContain("python3 -m aepm alternatives poker-night@0.1.0 SLOT --store store lists the components that fit, then add --substitute SLOT=NAME@VERSION to design");
     expect(page).toContain("sets host.targets to the answer");
     expect(page).toContain("range: 100 to 1000000");
     expect(page).toContain("- job server fills slot host (the answer to server restricts the candidates first): acme/server-host (free), acme/server-host (paid)");
@@ -1422,5 +1422,48 @@ describe("build reports", () => {
     expect(text).toContain("Build reports (2): agents building an application from this recipe, newest first");
     expect(text).toContain("- 0.1.0, 2026-11-20: OpenCode 2.3.2, anthropic/claude-opus-5-5; 27.6 active minutes, US$1.85; built 7 of 7 targets; 6 problems; rated 7/10; ");
     expect(text).toContain("- 0.0.9 (not the current version), 2026-11-16: OpenCode, anthropic/claude-opus-5-5; 28.1 active minutes, US$3.20; built 6 of 7 targets;");
+  });
+});
+
+describe("build steps on the recipe text page", () => {
+  const generic = (page: string, digest: string) => {
+    const at = (s: string) => page.indexOf(s);
+    const steps = [
+      "python3 -m aepm fetch poker-night@0.1.0 --with-dependencies --store store",
+      `tarfile.open(sys.argv[1]).extractfile(sys.argv[2]).read().decode())' store/objects/${digest.slice(7)}.tar INSTRUCTIONS.md > INSTRUCTIONS.md`,
+      "python3 -m aepm questions poker-night@0.1.0 --store store",
+      "python3 -m aepm design poker-night@0.1.0 --store store --answers answers.json --out definition.json",
+      "python3 -m aepm doctor poker-night@0.1.0 --store store --answers answers.json",
+      "add --install to install the missing ones it can",
+      "python3 -m aepm resolve definition.json",
+      "python3 -m aepm install definition.json --lock lock.json --store store --policy policy.json --target app",
+      "python3 -m aepm verify app --policy policy.json --trusted",
+      "Build and run each target as INSTRUCTIONS.md says",
+    ].map(at);
+    expect(steps.every((x, i) => x > 0 && (i === 0 || x > steps[i - 1]!)), JSON.stringify(steps)).toBe(true);
+  };
+
+  it("gives the generic aepm steps with the shown version's digest, and the recipe's own Building it section under them", async () => {
+    await publishRecipe((e) => (e.page.description = "Poker Night.\n\n## Building it\n\nWhen the server runs on Cloudflare: deploy the server with `npm run deploy`, then the web client.\n\n```\n# not a heading\n```\n\n### Repository\n\nPush it.\n\n## Status\n\nTested."));
+    const view = (await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView;
+    const page = await (await get("/recipes/poker-night.txt")).text();
+    generic(page, view.digest);
+    const own = page.indexOf('From the recipe (its description, "Building it")');
+    expect(own).toBeGreaterThan(page.indexOf("--trusted"));
+    expect(own).toBeLessThan(page.indexOf("Questions ("));
+    expect(page).toContain("When the server runs on Cloudflare: deploy the server with `npm run deploy`, then the web client.\n\n```\n# not a heading\n```\n\n### Repository\n\nPush it.\n\nQuestions");
+    expect(page.slice(own)).not.toContain("Tested.");
+    expect(page).not.toContain("cd app/server && npm ci");
+  });
+
+  it("gives only the generic steps when the description has no Building it section, and cuts a long one", async () => {
+    await publishRecipe();
+    const view = (await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView;
+    const page = await (await get("/recipes/poker-night.txt")).text();
+    generic(page, view.digest);
+    expect(page).not.toContain("From the recipe");
+    const long = recipeText({ ...view, description: `## Building it\n\n${"step and step again ".repeat(2000)}` }, BASE);
+    expect(long).toContain(`The rest: ${BASE}/recipes/poker-night/details.txt?version=0.1.0`);
+    expect(long.length).toBeLessThan(60_000);
   });
 });

@@ -1,5 +1,5 @@
 // Plain-text pages of the recipe library and component catalogue, for agents that read without a browser.
-import { ASK_HEADINGS, COMPONENT_PACKAGE, QUALITY_TEXT, RECIPE_PACKAGE, SIGNATURES_NOTE, classSettings, deprecationLine, describeCondition, kindText, questionGroups } from "@my/store-shared";
+import { ASK_HEADINGS, buildingItSection, recipeBuildSteps, COMPONENT_PACKAGE, QUALITY_TEXT, RECIPE_PACKAGE, SIGNATURES_NOTE, classSettings, deprecationLine, describeCondition, kindText, questionGroups } from "@my/store-shared";
 import type { CategoryCount, ClassList, ClassVersionView, ClassInterface, ComponentList, ComponentSummary, ComponentVersionView, Condition, Deprecation, FoundationSummary, Foundations, ListQuery, PackageDetails, PackageSummary, Port, Quality, RecipeList, RecipeQuestion, RecipeSlotView, RecipeSummary, RecipeVersionView, SettingDeclaration, Suitability, Targets } from "@my/store-shared";
 
 const COPYRIGHT = "Copyright Level N Ltd 2026";
@@ -11,20 +11,17 @@ const interfaces = (p: ClassInterface[]): string => list(p.map((x) => `${x.type}
 
 const warnings = (deprecations: Deprecation[]): string[] => deprecations.map((d) => `DEPRECATION WARNING: ${deprecationLine(d)}`);
 const packageLines = (summary: PackageSummary): string[] => ["", "What you download", summary.headline, ...summary.parts.map(([label, text]) => `- ${label}: ${text}`), summary.where, summary.check];
-// The steps an agent runs to build an application from this recipe with aepm.
-const buildSteps = (v: { slug: string; version: string; instructions?: string | null }): string[] => [
-  "",
-  "Build it (aepm, Python 3.12, Node.js, Graphviz)",
-  "1. git clone https://github.com/ourapps-ae/aepm && export PYTHONPATH=$PWD/aepm",
-  `2. python3 -m aepm fetch ${v.slug}@${v.version} --with-dependencies --store store   (downloads the recipe and the component it prefers for each slot, checks each sha256 digest and the signatures)`,
-  `3. python3 -m aepm questions ${v.slug}@${v.version} --store store   (the questions as JSON with toAsk and followUps). Answer from the person's description. Tell the person how many questions toAsk lists, ask them in one round, include as conditional questions in that round the followUps whose condition one of those answers could meet, and add no others`,
-  `4. write answers.json (question id to answer), then: python3 -m aepm design ${v.slug}@${v.version} --store store --answers answers.json --out definition.json`,
-  `   another component of a slot's class instead of the preferred one: python3 -m aepm alternatives ${v.slug}@${v.version} SLOT --store store lists the components that fit, then python3 -m aepm design ${v.slug}@${v.version} --store store --answers answers.json --substitute SLOT=NAME@VERSION --out definition.json`,
-  "5. python3 -m aepm resolve definition.json --catalogue store/catalogue.json --out lock.json",
-  "6. make the owner policy: Level N's release and guardian keys from https://ourapps.app/policy/levelnpolicy.json plus your own owner key (python3 -m aepm.test_identities DIR makes a disposable one); INSTRUCTIONS.md in the recipe archive shows how",
-  "7. python3 -m aepm install definition.json --lock lock.json --store store --policy policy.json --target app",
-  "8. build and run: section \"Build and run\" of INSTRUCTIONS.md in the recipe archive (local: cd app/server && npm ci && npm start, then cd app/web && npm ci && npm run dev)",
-];
+// The steps an agent runs to build an application from this recipe with aepm, then the recipe's own "Building it".
+const buildSteps = (v: RecipeVersionView, origin: string): string[] => {
+  const own = buildingItSection(v.description);
+  const steps = recipeBuildSteps(v);
+  return [
+    "",
+    "Build it (aepm, Python 3.12, Node.js, Graphviz)",
+    ...steps.flatMap((s, i) => (s.command ? [`${i + 1}. ${s.command}`, `   ${s.text}`] : [`${i + 1}. ${s.text}`])),
+    ...(own ? ["", "From the recipe (its description, \"Building it\")", own.text, ...(own.cut ? [`The rest: ${detailsAddress(v, origin)}`] : [])] : []),
+  ];
+};
 // One line per build report.
 const reportLines = (v: RecipeVersionView): string[] =>
   v.buildReports.length === 0
@@ -262,7 +259,7 @@ export function recipeText(v: RecipeVersionView, origin: string): string {
     `Source: ${v.source.repository} release ${v.source.tag}; digest ${v.digest}`,
     ...releaseLines(v, "recipes", origin),
     `Bundle download: GET ${v.bundle.url} returns a link valid for one hour${v.status === "orphaned" ? "; with no publisher the link exists only while the release is public, otherwise the status is bundle-unavailable" : ""}`,
-    ...buildSteps(v),
+    ...buildSteps(v, origin),
     ...reportLines(v),
     "",
     `Questions (${v.questions.length})`,

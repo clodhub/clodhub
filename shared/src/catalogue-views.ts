@@ -426,3 +426,61 @@ export function questionGroups<Q extends { ask: keyof typeof ASK_HEADINGS }>(que
 }
 
 export const QUALITY_TEXT = { packaged: "Packaged", reviewed: "Reviewed", "integration-tested": "Integration-tested", "live-tested": "Live-tested" } as const;
+
+// One step of building an application from a recipe: what to do, the command when there is one, and why.
+export interface BuildStep {
+  text: string;
+  command: string | null;
+}
+
+// The aepm steps for any recipe version, from catalogue data: its short name, version, archive digest and the path of
+// its instructions inside the archive.
+export function recipeBuildSteps(v: { slug: string; version: string; digest: string; instructions: string }): BuildStep[] {
+  const id = `${v.slug}@${v.version}`;
+  const file = v.instructions.split("/").at(-1)!;
+  const archive = `store/objects/${v.digest.replace(/^sha256:/, "")}.tar`;
+  return [
+    { text: "Get aepm", command: "git clone https://github.com/ourapps-ae/aepm && export PYTHONPATH=$PWD/aepm" },
+    { text: "Fetch the recipe and the component it prefers for each slot; every sha256 digest and signature is checked", command: `python3 -m aepm fetch ${id} --with-dependencies --store store` },
+    { text: `Read the recipe's own instructions, ${v.instructions} in the fetched archive`, command: `python3 -c 'import sys,tarfile; sys.stdout.write(tarfile.open(sys.argv[1]).extractfile(sys.argv[2]).read().decode())' ${archive} ${v.instructions} > ${file}` },
+    { text: "The questions as JSON with toAsk and followUps. Answer from the person's description. Tell the person how many questions toAsk lists, ask them in one round, include as conditional questions in that round the followUps whose condition one of those answers could meet, and add no others", command: `python3 -m aepm questions ${id} --store store` },
+    { text: `Write answers.json (question id to answer), then design. For another component of a slot's class than the preferred one: python3 -m aepm alternatives ${id} SLOT --store store lists the components that fit, then add --substitute SLOT=NAME@VERSION to design`, command: `python3 -m aepm design ${id} --store store --answers answers.json --out definition.json` },
+    { text: "Check this machine's build tools for the chosen targets; add --install to install the missing ones it can", command: `python3 -m aepm doctor ${id} --store store --answers answers.json` },
+    { text: "Resolve the exact packages", command: "python3 -m aepm resolve definition.json --catalogue store/catalogue.json --out lock.json" },
+    { text: `Make the owner policy: Level N's release and guardian keys from https://ourapps.app/policy/levelnpolicy.json plus your own owner key (python3 -m aepm.test_identities DIR makes a disposable one); ${file} shows how`, command: null },
+    { text: "Install", command: "python3 -m aepm install definition.json --lock lock.json --store store --policy policy.json --target app" },
+    { text: "Run every package's checks on the installed application", command: "python3 -m aepm verify app --policy policy.json --trusted" },
+    { text: `Build and run each target as ${file} says`, command: null },
+  ];
+}
+
+// The most characters of a recipe's own "Building it" section a page shows.
+export const BUILDING_IT_CHARACTERS = 6_000;
+
+// The recipe author's "Building it" section of the page description (its heading through the next heading of the same
+// or a higher level), without the heading; null when there is none. A longer section is cut at BUILDING_IT_CHARACTERS.
+export function buildingItSection(description: string): { text: string; cut: boolean } | null {
+  const lines = description.split("\n");
+  let fence = false;
+  let start = -1;
+  let level = 0;
+  let end = lines.length;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (/^(```|~~~)/.test(line)) fence = !fence;
+    if (fence) continue;
+    const m = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    if (!m) continue;
+    if (start < 0 && /^building it$/i.test(m[2]!)) {
+      start = i + 1;
+      level = m[1]!.length;
+    } else if (start >= 0 && m[1]!.length <= level) {
+      end = i;
+      break;
+    }
+  }
+  if (start < 0) return null;
+  const text = lines.slice(start, end).join("\n").trim();
+  if (text === "") return null;
+  return text.length > BUILDING_IT_CHARACTERS ? { text: `${text.slice(0, BUILDING_IT_CHARACTERS).replace(/\s+\S*$/, "")} ...`, cut: true } : { text, cut: false };
+}

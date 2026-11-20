@@ -243,15 +243,18 @@ You need Python 3.12, Node.js and Graphviz. aepm is the installer: https://githu
 ```
 git clone https://github.com/ourapps-ae/aepm && export PYTHONPATH=$PWD/aepm
 python3 -m aepm fetch <recipe>@<version> --with-dependencies --store store
+# the recipe's instructions: the archive is store/objects/<recipe digest without sha256:>.tar; each recipe's .txt page gives the command with its digest
 python3 -m aepm questions <recipe>@<version> --store store
 # answer from the person's description; ask only what it leaves open; write answers.json (question id to answer)
 python3 -m aepm design <recipe>@<version> --store store --answers answers.json --out definition.json
+python3 -m aepm doctor <recipe>@<version> --store store --answers answers.json   # --install installs missing build tools it can
 python3 -m aepm resolve definition.json --catalogue store/catalogue.json --out lock.json
 # policy.json: Level N's release and guardian keys (https://ourapps.app/policy/levelnpolicy.json) plus your own owner key
 python3 -m aepm install definition.json --lock lock.json --store store --policy policy.json --target app
+python3 -m aepm verify app --policy policy.json --trusted
 ```
 
-`fetch` checks every archive's sha256 against the catalogue and downloads the release and guardian signatures. `design` applies the recipe's rules to the answers and fails with a list of what is missing. `install` checks every signature against the policy, copies the listed files and runs none of their code. The recipe archive's `INSTRUCTIONS.md` has the policy step in full and the build and run commands for each device (section "Build and run").
+A recipe's .txt page adds, under these steps, the recipe's own "Building it" notes from its description (for example a deploy in two steps). `fetch` checks every archive's sha256 against the catalogue and downloads the release and guardian signatures. `design` applies the recipe's rules to the answers and fails with a list of what is missing. `install` checks every signature against the policy, copies the listed files and runs none of their code. The recipe archive's `INSTRUCTIONS.md` has the policy step in full and the build and run commands for each device (section "Build and run").
 
 With no machine of the developer's: the same steps run in GitHub Actions, from `answers.json` committed to the developer's repository, through the workflow at https://ourapps.app/aepm-assemble.yml; the design's `ourapps-release` workflows then check, release and update the application. Steps and secrets: https://ourapps.app/cloud-assembly.md.
 

@@ -362,3 +362,46 @@ describe("the format round on pages", () => {
     expect(html).toContain("<code>node check.mjs</code>");
   });
 });
+
+describe("build reports on the recipe page", () => {
+  const report = (version: string, current: boolean, date: string) => ({
+    id: `id${version.replace(/\./g, "")}`, version, digest: `sha256:${"a".repeat(64)}`, date, publishedAt: `${date}T12:00:00Z`, current,
+    agent: { harness: "OpenCode 2.3.2", model: "anthropic/claude-opus-5-5" }, activeMinutes: 27.6, costUsd: 1.85,
+    results: [{ target: "server", built: true, tested: "37 of 37 tests", ran: "deployed" }, { target: "ios", built: false, tested: "<b>not built</b>", ran: "not launched" }],
+    problems: ["a first deploy failed"], rating: { score: 7, of: 10, by: "the building agent", mostHelpful: "make the first deploy work" }, url: "https://ourapps.app/api/recipes/poker-night/reports/x",
+  });
+
+  it("lists each report after Build it with its targets, problems and rating, and notes a report of another version", () => {
+    const html = recipeBody(recipeView({ buildReports: [report("0.1.0", true, "2026-11-20"), report("0.0.9", false, "2026-11-16")] }), "latest").html;
+    expect(html.indexOf("Build reports (2)")).toBeGreaterThan(html.indexOf("<h2>Build it</h2>"));
+    expect(html.indexOf("Build reports (2)")).toBeLessThan(html.indexOf("<h2>About</h2>"));
+    expect(html.indexOf("Version 0.1.0, 2026-11-20")).toBeLessThan(html.indexOf("Version 0.0.9, 2026-11-16"));
+    expect(html).toContain("27.6 active minutes, US$1.85. Rated 7 of 10 by the building agent.");
+    expect(html).toContain("<td>ios</td><td>no</td><td>&lt;b&gt;not built&lt;/b&gt;</td>");
+    expect(html).toContain("Problems (1)");
+    expect(html).toContain("This report is of version 0.0.9; the current version is 0.1.0.");
+    expect(html.match(/the current version is/g)).toHaveLength(1);
+  });
+
+  it("shows no section without reports", () => expect(recipeBody(recipeView(), "latest").html).not.toContain("Build reports"));
+});
+
+describe("build steps on the recipe page", () => {
+  it("lists the aepm steps with the digest, doctor and verify, and the recipe's Building it section", () => {
+    const v = recipeView({ description: "Intro.\n\n## Building it\n\nDeploy the server with `npm run deploy` first.\n\n## Status\n\nDone." });
+    const html = recipeBody(v, "latest").html;
+    const at = (s: string) => html.indexOf(s);
+    expect(at(`store/objects/${v.digest.slice(7)}.tar INSTRUCTIONS.md &gt; INSTRUCTIONS.md`)).toBeGreaterThan(at("python3 -m aepm fetch poker-night@0.1.0"));
+    expect(at("python3 -m aepm doctor poker-night@0.1.0 --store store --answers answers.json")).toBeGreaterThan(at("python3 -m aepm design"));
+    expect(at("python3 -m aepm verify app --policy policy.json --trusted")).toBeGreaterThan(at("python3 -m aepm install"));
+    expect(at("<h3 class=\"mt\">From the recipe</h3>")).toBeGreaterThan(at("--trusted"));
+    expect(at("<h3 class=\"mt\">From the recipe</h3>")).toBeLessThan(at("<h2>About</h2>"));
+    expect(html).toContain("<code>npm run deploy</code>");
+  });
+
+  it("shows no recipe section when the description has no Building it", () => {
+    const html = recipeBody(recipeView(), "latest").html;
+    expect(html).toContain("python3 -m aepm verify app --policy policy.json --trusted");
+    expect(html).not.toContain("From the recipe");
+  });
+});
