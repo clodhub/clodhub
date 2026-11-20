@@ -59,77 +59,84 @@ function url(v: unknown, mail = false): boolean {
     return !!host && !u.username && !u.password && (!u.port || Number(u.port) >= 1) && (host.startsWith("[") || (host.length <= 253 && host.replace(/\.$/, "").split(".").every(label => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label))));
   } catch { return false; }
 }
-// The parts of a package URL (https://github.com/package-url/purl-spec): pkg:type/namespace/name@version?qualifiers#subpath.
-export interface Purl { type: string; namespace: string[]; name: string; version: string | null }
+// A package URL by spec section 6a (papers/catalogue-format-freeze.md), the rule aepm shares; both pass
+// shared/test/fixtures/purl-cases.json. pkg:type/namespace/name@version?qualifiers#subpath, each part percent-decoded.
+export interface Purl { type: string; namespace: string[]; name: string; version: string | null; qualifiers: Record<string, string>; subpath: string[] }
 
-// Types whose namespace is required, with the least number of segments: Maven's group, Swift's repository host and
-// owner, Go's module path, GitHub's owner.
-const PURL_NAMESPACE: Record<string, number> = { maven: 1, swift: 2, golang: 1, github: 1, bitbucket: 1, composer: 1 };
-// Types that have no namespace.
+const PURL_NAMESPACE: Record<string, number> = { maven: 1, golang: 1, github: 1, bitbucket: 1, composer: 1, swift: 2 };
 const PURL_NO_NAMESPACE = new Set(["cargo", "gem", "pypi", "nuget", "hex", "pub", "cocoapods", "hackage", "conda"]);
+const PURL_FORBIDDEN = /[\p{Cc}\p{Cf}\p{Zs}\p{Zl}\p{Zp}\p{Co}\p{Cs}]/u;
 
-// Characters a package URL may hold unencoded; anything else, and every "%" not followed by two hex digits, is refused.
-const PURL_CHARS = /^[A-Za-z0-9._~!$&'()*+,;=:@%/?#-]*$/;
-const PERCENT = /%(?![0-9A-Fa-f]{2})/;
-
-// Qualifiers: key=value pairs joined by "&", keys lowercase ASCII letters, digits, ".", "-" and "_" not starting with a
-// digit, each key once, values not empty. The subpath: "/"-separated segments, none empty, "." or "..".
-function purlQualifiers(q: string | undefined): boolean {
-  if (q === undefined) return true;
-  const pairs = q.slice(1).split("&");
-  const keys = new Set<string>();
-  for (const pair of pairs) {
-    const eq = pair.indexOf("=");
-    if (eq < 1) return false;
-    const key = pair.slice(0, eq);
-    const value = pair.slice(eq + 1);
-    if (!/^[a-z.\-_][a-z0-9.\-_]*$/.test(key) || keys.has(key) || value === "" || value.includes("=")) return false;
-    keys.add(key);
-  }
-  return true;
-}
-
-function purlSubpath(sub: string | undefined): boolean {
-  if (sub === undefined) return true;
-  const segments = sub.slice(1).replace(/^\/+|\/+$/g, "").split("/");
-  return segments.every((x) => x !== "" && x !== "." && x !== ".." && !x.includes("#") && !x.includes("?"));
-}
-
-export function parsePurl(v: unknown): Purl | null {
-  if (typeof v !== "string" || v.length > 1000 || !PURL_CHARS.test(v) || PERCENT.test(v)) return null;
-  const m = /^pkg:([A-Za-z][A-Za-z0-9.+-]*)\/+([^?#]+)(\?[^#]*)?(#.*)?$/.exec(v);
-  if (!m) return null;
-  if (!purlQualifiers(m[3]) || !purlSubpath(m[4])) return null;
+// Strict percent-decoding to UTF-8, then no control, format, separator, private-use or surrogate character.
+function purlDecode(raw: string): string | null {
+  if (/%(?![0-9A-Fa-f]{2})/.test(raw)) return null;
+  let text: string;
   try {
-    decodeURIComponent(v);
+    text = decodeURIComponent(raw);
   } catch {
     return null;
   }
-  const type = m[1]!.toLowerCase();
-  if (m[1] !== type) return null;
-  let path = m[2]!.replace(/\/+$/, "");
+  return PURL_FORBIDDEN.test(text) ? null : text;
+}
+
+export function parsePurl(v: unknown): Purl | null {
+  if (typeof v !== "string" || v.length > 1000 || !/^[\x21-\x7e]+$/.test(v) || !v.startsWith("pkg:")) return null;
+  let rest = v.slice(4);
+  let subpath: string | null = null;
+  let qualifiers: string | null = null;
+  const hash = rest.indexOf("#");
+  if (hash >= 0) [rest, subpath] = [rest.slice(0, hash), rest.slice(hash + 1)];
+  const query = rest.indexOf("?");
+  if (query >= 0) [rest, qualifiers] = [rest.slice(0, query), rest.slice(query + 1)];
+  const slash = rest.indexOf("/");
+  if (slash < 0) return null;
+  const type = rest.slice(0, slash);
+  let path = rest.slice(slash + 1);
+  if (!/^[a-z][a-z0-9.+-]*$/.test(type)) return null;
   let version: string | null = null;
   const at = path.lastIndexOf("@");
   if (at > path.lastIndexOf("/")) {
-    version = path.slice(at + 1);
+    const raw = path.slice(at + 1);
     path = path.slice(0, at);
+    if (raw === "") return null;
+    version = purlDecode(raw);
+    if (version === null) return null;
   }
-  const decode = (x: string) => { try { return decodeURIComponent(x); } catch { return null; } };
-  const segments = path.split("/").map(decode);
-  if (segments.some((x) => x === null || x === "" || x === "." || x === ".." || x.includes("/"))) return null;
+  const raws = path.split("/");
+  if (raws.some((x) => x === "")) return null;
+  const segments = raws.map(purlDecode);
+  if (segments.some((x) => x === null)) return null;
   const name = segments.pop()!;
   const namespace = segments as string[];
-  if (!name || /^@/.test(name)) return null;
-  if (version !== null) {
-    const decoded = decode(version);
-    if (!decoded || /\s/.test(decoded)) return null;
-    version = decoded;
-  }
+  if (name === "" || name.startsWith("@")) return null;
   if (PURL_NO_NAMESPACE.has(type) && namespace.length > 0) return null;
-  if ((PURL_NAMESPACE[type] ?? 0) > namespace.length) return null;
-  if (type === "swift" && !/^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(namespace[0]!)) return null;
-  if (type === "npm" && namespace.length > 0 && (namespace.length > 1 || !/^@[^@]+$/.test(namespace[0]!))) return null;
-  return { type, namespace, name, version };
+  if (namespace.length < (PURL_NAMESPACE[type] ?? 0)) return null;
+  if (type === "swift" && !namespace[0]!.includes(".")) return null;
+  if (type === "npm" && namespace.length > 0 && (namespace.length > 1 || !namespace[0]!.startsWith("@") || namespace[0]!.length < 2)) return null;
+  const quals: Record<string, string> = {};
+  if (qualifiers !== null) {
+    if (qualifiers === "") return null;
+    for (const pair of qualifiers.split("&")) {
+      const eq = pair.indexOf("=");
+      if (eq < 0) return null;
+      const key = pair.slice(0, eq);
+      const raw = pair.slice(eq + 1);
+      if (!/^[a-z][a-z0-9._-]*$/.test(key) || Object.prototype.hasOwnProperty.call(quals, key) || raw === "") return null;
+      const value = purlDecode(raw);
+      if (value === null || value === "") return null;
+      quals[key] = value;
+    }
+  }
+  const sub: string[] = [];
+  if (subpath !== null) {
+    if (subpath === "") return null;
+    for (const raw of subpath.split("/")) {
+      const segment = purlDecode(raw);
+      if (segment === null || segment === "" || segment === "." || segment === "..") return null;
+      sub.push(segment);
+    }
+  }
+  return { type, namespace, name, version, qualifiers: Object.fromEntries(Object.entries(quals).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))), subpath: sub };
 }
 
 // A package URL that is valid and pinned to `pin` (null: no version).
