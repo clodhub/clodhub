@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classDescriptor, canonical, descriptorDigest, graphProblems, selectedTargets, validLicence, validateFoundations, validateDescriptor, GRAMMAR_PATTERNS, componentFacts, fit, exampleComponentEntries, exampleComponentEntry, exampleAlternativeEntry, exampleRecipeEntry, exampleRecipeContext, isCatalogueName, isCatalogueSlug, isDigest, isPackagePath, isRepository, isSafeSvg, isVersion, compareVersions, newestVersion, propertyKind, settingSchema, validateRecipe, validateRecipeEntry, validateComponentEntry, validateSuitability, summariseMigration, exampleCategories, isPackageVersion, questionGroups, readReleaseChannel, validateCategories, validateClassEntry, validateQuality, versionLine } from "./index.js";
+import { classDescriptor, canonical, descriptorDigest, graphProblems, selectedTargets, validLicence, validateFoundations, validateDescriptor, GRAMMAR_PATTERNS, componentFacts, fit, exampleComponentEntries, exampleComponentEntry, exampleAlternativeEntry, exampleRecipeEntry, exampleRecipeContext, isCatalogueName, isCatalogueSlug, isDigest, isPackagePath, isRepository, isSafeSvg, isVersion, compareVersions, newestVersion, propertyKind, settingSchema, validateRecipe, validateRecipeEntry, validateComponentEntry, validateSuitability, summariseMigration, parsePurl, exampleCategories, isPackageVersion, questionGroups, readReleaseChannel, validateCategories, validateClassEntry, validateQuality, versionLine } from "./index.js";
 
 const patterns = Object.values(GRAMMAR_PATTERNS);
 const errors = (r: { ok: boolean; errors?: string[] }) => r.ok ? "" : r.errors!.join(" | ");
@@ -135,7 +135,7 @@ describe("native provenance declarations", () => {
     const e = exampleComponentEntry();
     e.foundations.files.push({ path: "NOTICE", executable: false }, { path: "lock", executable: false }, { path: "verification.xml", executable: false });
     const delivery = manager === "swift" ? { kind: "build-time", manager, lock: "lock", digest: "e".repeat(64) } : manager === "gradle" ? { kind: "build-time", manager, lock: "lock", digest: "e".repeat(64), verification: { path: "verification.xml", digest: "f".repeat(64) }, configurations: ["runtimeClasspath"], artifacts: [{ name: "lib-1.0.jar", digest: "d".repeat(64) }] } : { kind: "build-time", manager, lock: "lock", digest: "e".repeat(64), packagePath: "node_modules/parent/node_modules/lib", integrity: `sha512-${btoa("a".repeat(64))}` };
-    const upstream = { name: "lib", version: "1.0", revision: manager === "gradle" ? null : "a".repeat(40), repository: "https://example.org/lib", purl: manager === "gradle" ? "pkg:maven/org.example/lib@1.0" : `pkg:${manager}/lib@1.0`, licence: "MIT", notices: ["NOTICE"], delivery };
+    const upstream = { name: "lib", version: "1.0", revision: manager === "gradle" ? null : "a".repeat(40), repository: "https://example.org/lib", purl: manager === "gradle" ? "pkg:maven/org.example/lib@1.0" : manager === "swift" ? "pkg:swift/github.com/example/lib@1.0" : `pkg:${manager}/lib@1.0`, licence: "MIT", notices: ["NOTICE"], delivery };
     e.foundations.upstream = [upstream as any]; return e;
   };
   it.each(["swift", "gradle", "npm"] as const)("accepts exact %s delivery", manager => expect(errors(validateComponentEntry(source(manager)))).toBe(""));
@@ -271,5 +271,17 @@ describe("class descriptor format", () => {
     expect(d.format).toBe(2);
     d.format = 1;
     expect(validateDescriptor(d, patterns)).toEqual(["class-format-refused"]);
+  });
+});
+
+describe("package URLs", () => {
+  it.each(["pkg:npm/left-pad@1.3.0", "pkg:npm/%40angular/core@17.0.0", "pkg:maven/org.example/lib@1.0", "pkg:swift/github.com/vapor/vapor@4.0.0", "pkg:golang/golang.org/x/net@0.1.0", "pkg:pypi/requests@2.31.0", "pkg:cargo/serde@1.0.0", "pkg:generic/lib@1.0"])("accepts %s", (v) => expect(parsePurl(v)).not.toBeNull());
+  it.each(["pkg:npm/@1.3.0", "pkg:npm/", "npm/left-pad@1.3.0", "pkg:maven/lib@1.0", "pkg:swift/lib@1.0", "pkg:swift/vapor/vapor@4.0.0", "pkg:pypi/acme/requests@1.0", "pkg:NPM/left-pad@1.0", "pkg:npm/a//b@1.0", "pkg:npm/left pad@1.0", "pkg:npm/%E0%A4%A@1.0"])("refuses %s", (v) => expect(parsePurl(v)).toBeNull());
+  it("refuses an upstream record whose purl is not a pinned package URL", () => {
+    const e = exampleComponentEntry();
+    e.foundations.upstream = [{ name: "left-pad", version: "1.3.0", revision: "a".repeat(40), repository: "https://github.com/left-pad/left-pad", purl: "pkg:npm/@1.3.0", licence: "MIT", notices: ["src/index.mjs"], delivery: { kind: "bundled", files: [{ path: "src/index.mjs", digest: "d".repeat(64) }] } }];
+    expect(errors(validateComponentEntry(e))).toContain("upstream-provenance");
+    e.foundations.upstream[0]!.purl = "pkg:npm/left-pad@1.3.0";
+    expect(errors(validateComponentEntry(e))).toBe("");
   });
 });

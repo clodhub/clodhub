@@ -14,8 +14,8 @@ export const ENTRY_FORMAT = 2;
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
 const VERSION = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})$/;
-// A package version: three integers, and for a preview release a pre-release such as -preview.1.
-const PACKAGE_VERSION = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+){0,4})?$/;
+// A package version: three integers, and for a preview release exactly -preview.N with N a positive integer.
+const PACKAGE_VERSION = /^(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})\.(0|[1-9]\d{0,8})(-preview\.[1-9]\d{0,8})?$/;
 // OSV, GitHub and CVE advisory identifiers.
 const ADVISORY = /^(GHSA(-[23456789cfghjmpqrvwx]{4}){3}|CVE-\d{4}-\d{4,7}|[A-Z][A-Z0-9]{1,15}-[A-Za-z0-9._:-]{1,60})$/;
 const DIGEST = /^sha256:[0-9a-f]{64}$/;

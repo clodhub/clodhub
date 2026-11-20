@@ -12,6 +12,7 @@ let env: Env;
 let deps: TestDeps;
 let cookie: string;
 let osvCalls: Call[];
+let member = true;
 
 function release(repo: string, tag: string, asset: string, id: number) {
   return {
@@ -25,13 +26,15 @@ function stubs() {
   const routes: Record<string, (call: Call) => Response | Promise<Response>> = {
     "POST api.osv.dev/v1/querybatch": async (call) => {
       const { queries } = JSON.parse(call.body!) as { queries: { package: { purl: string } }[] };
+      if (queries.some((q) => q.package.purl.startsWith("pkg:generic/unreadable"))) return new Response(JSON.stringify({ code: 3, message: "Invalid query" }), { status: 400 });
       return jsonRes({ results: queries.map((q) => (q.package.purl === "pkg:npm/left-pad@1.3.0" ? { vulns: [{ id: "GHSA-aaaa-bbbb-cccc", modified: "2026-11-01T00:00:00Z" }] } : {})) });
     },
     "GET api.osv.dev/v1/vulns/GHSA-aaaa-bbbb-cccc": () => jsonRes({ id: "GHSA-aaaa-bbbb-cccc", summary: "Prototype pollution in left-pad", modified: "2026-11-01T00:00:00Z", database_specific: { severity: "HIGH" }, affected: [{ package: { purl: "pkg:npm/left-pad" }, ranges: [{ events: [{ introduced: "0" }, { fixed: "1.3.1" }] }] }] }),
   };
-  for (const [i, v] of ["0.1.0", "0.1.1", "0.1.2", "0.2.0", "0.3.0-preview.1"].entries()) Object.assign(routes, release("acme/card-deck", `v${v}`, `card-deck-${v}.tar`, 10 + i));
+  for (const [i, v] of ["0.1.0", "0.1.1", "0.1.2", "0.2.0", "0.3.0-preview.1", "1.0.0", "2.0.0", "3.0.0", "4.0.0", "5.0.0", "6.0.0"].entries()) Object.assign(routes, release("acme/card-deck", `v${v}`, `card-deck-${v}.tar`, 10 + i));
   for (const [i, part] of exampleComponentEntries().entries()) Object.assign(routes, release(part.source.repository, part.source.tag, part.bundle.asset, 50 + i));
   Object.assign(routes, release("acme/poker-night-recipe", "v0.1.0", "poker-night-0.1.0.tar", 21));
+  routes[`GET ${gh("/user/memberships/orgs/ourapps-ae")}`] = () => (member ? jsonRes({ state: "active" }) : new Response("not a member", { status: 404 }));
   const stub = fakeFetch(routes);
   osvCalls = stub.calls;
   return stub.fetch;
@@ -59,13 +62,20 @@ function card(version: string, patch: (e: Mutable) => void = () => {}): Mutable 
   return e;
 }
 
+// The example classes, published as the publish tool does before any component.
+async function publishClasses() {
+  for (const c of exampleClassEntries()) expect([200, 201]).toContain((await post("/api/dev/classes", c)).status);
+}
+
 async function publish(e: Mutable) {
+  await publishClasses();
   const res = await post("/api/dev/components", e);
   expect(res.status, await res.clone().text()).toBe(201);
 }
 
 beforeEach(async () => {
-  env = testEnv({ CATALOGUE_CURATORS: "george" });
+  member = true;
+  env = testEnv({ CATALOGUE_CURATORS: "42" });
   await clearDb(env);
   deps = testDeps(stubs());
   cookie = await signIn(env, deps);
@@ -164,13 +174,13 @@ describe("classes and categories", () => {
     expect(((await (await post("/api/dev/classes", deckClass)).json()) as { status: string }).status).toBe("unchanged");
     await publish(card("0.1.0", (e) => (e.quality = { level: "reviewed", certified: true, liveTested: null })));
     const list = (await (await get("/api/classes?category=games")).json()) as ClassList;
-    expect(list.classes.map((c) => [c.name, c.category, c.implementations])).toEqual([["ourapps-ae/card-deck-class", "games/cards", 1]]);
+    expect(list.classes.map((c) => [c.name, c.category, c.implementations])).toEqual([["ourapps-ae/card-deck-class", "games/cards", 1], ["ourapps-ae/seating-class", "games/tables", 0]]);
     const view = (await (await get("/api/classes/card-deck-class")).json()) as ClassVersionView;
     expect(view).toMatchObject({ title: "Card deck", summary: "A deck that shuffles, deals and burns cards", category: "games/cards", presentation: "visual", digest: classDigest });
     expect(view.suites.map((s) => s.id)).toEqual(["behaviour"]);
     expect(view.implementationList).toEqual([expect.objectContaining({ name: "acme/card-deck", version: "0.1.0", quality: { level: "reviewed", certified: true, liveTested: null }, thumbnail: `${BASE}/images/${EXAMPLE_IMAGE.thumbnail.slice(7)}.webp`, platforms: ["web", "server", "ios", "macos", "android"] })]);
     const tree = (await (await get("/api/categories")).json()) as { categories: { id: string; classes: number; components: number }[] };
-    expect(tree.categories.filter((c) => c.id.startsWith("games")).map((c) => [c.id, c.classes, c.components])).toEqual([["games", 1, 1], ["games/cards", 1, 1], ["games/tables", 0, 0]]);
+    expect(tree.categories.filter((c) => c.id.startsWith("games")).map((c) => [c.id, c.classes, c.components])).toEqual([["games", 2, 1], ["games/cards", 1, 1], ["games/tables", 1, 0]]);
     const text = await (await get("/classes/card-deck-class.txt")).text();
     expect(text).toContain("Card deck (ourapps-ae/card-deck-class) 1.0.0");
     expect(text).toContain("- acme/card-deck 0.1.0: A shuffled deck");
@@ -200,7 +210,7 @@ describe("classes and categories", () => {
   it("lets only a curator publish categories, and checks parents", async () => {
     env.CATALOGUE_CURATORS = "";
     expect((await post("/api/dev/categories", exampleCategories())).status).toBe(403);
-    env.CATALOGUE_CURATORS = "george";
+    env.CATALOGUE_CURATORS = "42";
     const orphan = await post("/api/dev/categories", { format: 1, categories: [{ id: "music/drums", title: "Drums", parent: "music" }] });
     expect(((await orphan.json()) as { error: string }).error).toContain("parent music is not in the tree");
     expect((await post("/api/dev/categories", { categories: [] })).status).toBe(400);
@@ -220,13 +230,13 @@ describe("vulnerabilities", () => {
     await publish(withPad("0.1.0"));
     await publish(card("0.2.0"));
     const before = (await (await get("/api/components/card-deck/0.1.0/vulnerabilities")).json()) as VulnerabilityReport;
-    expect(before).toEqual({ name: "acme/card-deck", version: "0.1.0", checkedAt: null, count: null, advisories: [] });
+    expect(before).toEqual({ name: "acme/card-deck", version: "0.1.0", checkedAt: null, count: null, advisories: [], unqueryable: [] });
     await scheduled("7 * * * *", env, deps);
     const batch = osvCalls.filter((c) => c.url.endsWith("/v1/querybatch"));
     expect(batch).toHaveLength(1);
     expect(JSON.parse(batch[0]!.body!)).toEqual({ queries: [{ package: { purl: "pkg:npm/left-pad@1.3.0" } }] });
     const after = (await (await get("/api/components/card-deck/0.1.0/vulnerabilities")).json()) as VulnerabilityReport;
-    expect(after).toEqual({ name: "acme/card-deck", version: "0.1.0", checkedAt: deps.now().toISOString(), count: 1, advisories: [{ id: "GHSA-aaaa-bbbb-cccc", summary: "Prototype pollution in left-pad", severity: "HIGH", affected: ["pkg:npm/left-pad@1.3.0"], fixedIn: ["1.3.1"], waived: null }] });
+    expect(after).toEqual({ name: "acme/card-deck", version: "0.1.0", checkedAt: deps.now().toISOString(), count: 1, advisories: [{ id: "GHSA-aaaa-bbbb-cccc", summary: "Prototype pollution in left-pad", severity: "HIGH", affected: ["pkg:npm/left-pad@1.3.0"], fixedIn: ["1.3.1"], waived: null }], unqueryable: [] });
     expect(((await (await get("/api/components/card-deck/0.1.0")).json()) as ComponentVersionView).vulnerabilitySummary.count).toBe(1);
     expect(((await (await get("/api/components/card-deck/0.2.0/vulnerabilities")).json()) as VulnerabilityReport).count).toBe(0);
     osvCalls.length = 0;
@@ -235,6 +245,33 @@ describe("vulnerabilities", () => {
     deps.advance(25 * 3600 * 1000);
     await scheduled("7 * * * *", env, deps);
     expect(osvCalls.map((c) => c.url)).toEqual(["https://api.osv.dev/v1/querybatch"]);
+  });
+
+  it("refuses a malformed purl at publish", async () => {
+    const res = await post("/api/dev/components", withPad("0.1.0", (e) => (e.foundations.upstream[0].purl = "pkg:npm/@1.3.0")));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: string }).error).toContain("upstream-provenance");
+  });
+
+  it("finds the purl OSV refuses by halving the batch, marks it unqueryable and checks the rest", async () => {
+    await publish(withPad("0.1.0"));
+    await publish(withPad("0.2.0", (e) => {
+      e.foundations.upstream.push({ ...e.foundations.upstream[0], name: "unreadable", version: "1.0", purl: "pkg:generic/unreadable@1.0" });
+    }));
+    for (let i = 0; i < 6; i++) await publish(withPad(`${i + 1}.0.0`, (e) => (e.foundations.upstream = [{ ...e.foundations.upstream[0], name: `lib${i}`, version: "2.0.0", purl: `pkg:npm/lib${i}@2.0.0` }])));
+    const result = await scheduled("7 * * * *", env, deps);
+    void result;
+    expect(osvCalls.filter((c) => c.url.endsWith("/v1/querybatch")).length).toBeGreaterThan(2);
+    const good = (await (await get("/api/components/card-deck/0.1.0/vulnerabilities")).json()) as VulnerabilityReport;
+    expect(good.count).toBe(1);
+    const bad = (await (await get("/api/components/card-deck/0.2.0/vulnerabilities")).json()) as VulnerabilityReport;
+    expect(bad).toMatchObject({ count: null, unqueryable: ["pkg:generic/unreadable@1.0"] });
+    expect(bad.checkedAt).not.toBeNull();
+    expect(((await (await get("/api/components/card-deck/4.0.0/vulnerabilities")).json()) as VulnerabilityReport).count).toBe(0);
+    expect(await (await get("/components/card-deck.txt?version=0.2.0")).text()).toContain("Known vulnerabilities: unknown: OSV could not check one of its package URLs");
+    osvCalls.length = 0;
+    await scheduled("7 * * * *", env, deps);
+    expect(osvCalls).toHaveLength(0);
   });
 
   it("filters to no known vulnerabilities on the newest version, and does not count a waived advisory", async () => {
@@ -252,20 +289,41 @@ describe("vulnerabilities", () => {
 describe("downloads and trending", () => {
   it("counts each download link per version and day, and sorts by downloads and trending", async () => {
     for (const part of exampleComponentEntries()) await publish(part as unknown as Mutable);
-    const bundle = (slug: string) => get(`/api/components/${slug}/0.1.0/bundle`);
-    for (let i = 0; i < 3; i++) await bundle("seating");
+    const bundle = (slug: string, address = "203.0.113.1") => handle(new Request(`${BASE}/api/components/${slug}/0.1.0/bundle`, { headers: { "CF-Connecting-IP": address } }), env, deps);
+    for (let i = 0; i < 3; i++) await bundle("seating", `203.0.113.${i + 1}`);
+    await bundle("seating", "203.0.113.1");
     await bundle("guided-tour");
     expect(((await (await get("/api/components/seating")).json()) as ComponentVersionView).versionDownloads).toBe(3);
+    const seen = (await env.DB.prepare("SELECT visitor FROM downloads_seen").all<{ visitor: string }>()).results.map((r) => r.visitor);
+    expect(seen).toHaveLength(4);
+    expect(seen.every((v) => /^[0-9a-f]{64}$/.test(v))).toBe(true);
     const top = async (sort: string) => ((await (await get(`/api/components?sort=${sort}&limit=2`)).json()) as ComponentList).components.map((c) => [c.name, c.downloads]);
     expect(await top("downloads")).toEqual([["acme/seating", 3], ["acme/guided-tour", 1]]);
     deps.advance(10 * 86_400_000);
     await bundle("guided-tour");
-    await scheduled("17 3 * * *", env, deps);
+    await scheduled("7 * * * *", env, deps);
     expect(await top("trending")).toEqual([["acme/guided-tour", 2], ["acme/apple-host", 0]]);
     expect(await top("downloads")).toEqual([["acme/seating", 3], ["acme/guided-tour", 2]]);
     deps.advance(30 * 86_400_000);
     await new CatalogueDb(env.DB).refreshDownloads(deps.now().toISOString().slice(0, 10));
     expect(((await (await get("/api/components/seating")).json()) as ComponentVersionView).downloads).toBe(0);
+  });
+});
+
+describe("download refresh in chunks", () => {
+  it("refreshes a bounded number of entries per statement and resumes on the next run", async () => {
+    for (const part of exampleComponentEntries()) await publish(part as unknown as Mutable);
+    const d = new CatalogueDb(env.DB);
+    const today = deps.now().toISOString().slice(0, 10);
+    const ids = (await env.DB.prepare("SELECT id FROM components ORDER BY seq").all<{ id: string }>()).results.map((r) => r.id);
+    for (const id of ids) await env.DB.prepare("INSERT INTO downloads_daily (kind, entry_id, version, day, n) VALUES ('component', ?, '0.1.0', ?, 2)").bind(id, today).run();
+    await env.DB.prepare("UPDATE components SET downloads = 0").run();
+    expect(await d.refreshDownloads(today, 1, 2)).toEqual({ chunks: 1, done: false });
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM components WHERE downloads = 2").first<{ n: number }>())!.n).toBe(2);
+    expect(await env.DB.prepare("SELECT pass, after, done FROM job_progress WHERE job = 'downloads-component'").first()).toMatchObject({ pass: today, done: 0 });
+    expect((await d.refreshDownloads(today, 10, 2)).done).toBe(true);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM components WHERE downloads = 2").first<{ n: number }>())!.n).toBe(ids.length);
+    expect(await d.refreshDownloads(today, 10, 2)).toEqual({ chunks: 0, done: true });
   });
 });
 
@@ -278,5 +336,139 @@ describe("listing at scale", () => {
     expect(rows).toBeLessThan(60);
     expect(((await res.json()) as ComponentList).total).toEqual({ count: 5, approximate: false });
     expect(((await (await get("/api/recipes")).json()) as RecipeList).total).toEqual({ count: 0, approximate: false });
+  });
+});
+
+describe("review fixes", () => {
+  it("lets only members of the class scope's GitHub organisation publish classes, the first publisher keeping the scope", async () => {
+    const [deckClass] = exampleClassEntries() as Mutable[];
+    member = false;
+    const refused = await post("/api/dev/classes", deckClass);
+    expect(refused.status).toBe(403);
+    expect(((await refused.json()) as { error: string }).error).toContain("member of the ourapps-ae organisation");
+    member = true;
+    expect((await post("/api/dev/classes", deckClass)).status).toBe(201);
+    const sue = await signIn(env, deps, { id: 9, login: "sue", name: "Sue" });
+    expect((await handle(api(sue, "PUT", "/api/dev/secrets", { githubToken: GH_TOKEN }), env, deps)).status).toBe(200);
+    const another = structuredClone(deckClass!);
+    another.class.name = "ourapps-ae/another-class";
+    const res = await post("/api/dev/classes", another, sue);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: string }).error).toContain("belongs to another developer");
+  });
+
+  it("answers 400 for an unknown value of every facet", async () => {
+    await publish(card("0.1.0"));
+    for (const query of ["platform=linux", "licence=not%20a%20licence", "quality=gold", "certified=maybe", "channel=beta", "secure=sometimes", "sort=random", "deprecated=never", "category=music", "class=acme/none", "publisher=nobody", "provides=nothing.here", "requires=nothing.here"]) {
+      expect((await get(`/api/components?${query}`)).status, query).toBe(400);
+    }
+    for (const query of ["platform=tvos", "licence=MIT", "quality=reviewed", "channel=security", "category=games"]) expect((await get(`/api/components?${query}`)).status, query).toBe(200);
+  });
+
+  it("accepts only -preview.N previews and refuses a security release on a line without a features release", async () => {
+    for (const v of ["0.3.0-preview.0", "0.3.0-beta.1", "0.3.0-preview.1.2", "0.3.0-preview"]) {
+      const res = await post("/api/dev/components", card(v, (e) => (e.release = { channel: "preview", fixes: [] })));
+      expect(res.status, v).toBe(400);
+    }
+    await publishClasses();
+    const lonely = await post("/api/dev/components", card("0.1.1", (e) => (e.release = { channel: "security", fixes: ["GHSA-aaaa-bbbb-cccc"] })));
+    expect(lonely.status).toBe(400);
+    expect(((await lonely.json()) as { error: string }).error).toContain("no published features release on line 0.1");
+  });
+
+  it("refuses an image whose structure is incomplete or corrupt", async () => {
+    const png = pngHeader(64, 64);
+    const html = new Uint8Array(33 + 760_000);
+    html.set(png.subarray(0, 33));
+    html.fill(0x3c, 33);
+    expect((await upload(html)).status).toBe(422);
+    expect((await upload(png.subarray(0, png.length - 12))).status).toBe(422);
+    const badCrc = png.slice();
+    badCrc[30] ^= 0xff;
+    expect((await upload(badCrc)).status).toBe(422);
+    const noIdat = png.slice();
+    noIdat.set(new TextEncoder().encode("IDAX"), 37);
+    expect((await upload(noIdat)).status).toBe(422);
+    const webp = webpHeader(32, 16);
+    const longer = new Uint8Array(webp.length + 8);
+    longer.set(webp);
+    expect((await upload(longer, "image/webp")).status).toBe(422);
+    const short = webp.slice();
+    new DataView(short.buffer).setUint32(16, 40, true);
+    expect((await upload(short, "image/webp")).status).toBe(422);
+    expect((await upload(png)).status).toBe(201);
+    expect((await upload(webp, "image/webp")).status).toBe(201);
+  });
+
+  it("lets only the uploader name an unclaimed image, removes images nobody named within a day, and limits uploads a day", async () => {
+    const sue = await signIn(env, deps, { id: 9, login: "sue", name: "Sue" });
+    const extra = pngHeader(1279, 800);
+    const extraHex = await hexOf(extra);
+    expect((await upload(extra, "image/png", undefined, sue)).status).toBe(201);
+    await publishClasses();
+    const borrowed = await post("/api/dev/components", card("0.1.0", (e) => (e.images[0] = { ...e.images[0], digest: `sha256:${extraHex}`, width: 1279 })));
+    expect(borrowed.status).toBe(422);
+    await publish(card("0.1.0"));
+    deps.advance(86_400_000 + 1000);
+    await scheduled("7 * * * *", env, deps);
+    expect((await get(`/images/${extraHex}.png`)).status).toBe(404);
+    expect((await get(`/images/${EXAMPLE_IMAGE.digest.slice(7)}.png`)).status).toBe(200);
+    env.IMAGE_UPLOADS_PER_DAY = "2";
+    expect((await upload(pngHeader(2, 2), "image/png", undefined, sue)).status).toBe(201);
+    expect((await upload(pngHeader(3, 3), "image/png", undefined, sue)).status).toBe(201);
+    expect((await upload(pngHeader(4, 4), "image/png", undefined, sue)).status).toBe(429);
+  });
+
+  it("matches short search words whole and longer ones as prefixes", async () => {
+    for (const part of exampleComponentEntries()) await publish(part as unknown as Mutable);
+    const names = async (q: string) => ((await (await get(`/api/components?q=${q}`)).json()) as ComponentList).components.map((c) => c.name);
+    expect(await names("se")).toEqual([]);
+    expect((await names("sea"))[0]).toBe("acme/seating");
+    expect(await names("de")).toEqual([]);
+  });
+
+  it("limits download links per address and minute", async () => {
+    await publish(card("0.1.0"));
+    env.BUNDLE_LINKS_PER_MINUTE = "2";
+    const link = (address: string) => handle(new Request(`${BASE}/api/components/card-deck/0.1.0/bundle`, { headers: { "CF-Connecting-IP": address } }), env, deps);
+    expect((await link("198.51.100.7")).status).toBe(200);
+    expect((await link("198.51.100.7")).status).toBe(200);
+    expect((await link("198.51.100.7")).status).toBe(429);
+    expect((await link("198.51.100.8")).status).toBe(200);
+    deps.advance(60_000);
+    expect((await link("198.51.100.7")).status).toBe(200);
+  });
+
+  it("pages through entries that tie on the sort value forward and back, each once", async () => {
+    for (const part of exampleComponentEntries()) await publish(part as unknown as Mutable);
+    const seen: string[] = [];
+    let page = (await (await get("/api/components?sort=downloads&limit=2")).json()) as ComponentList;
+    seen.push(...page.components.map((c) => c.name));
+    while (page.next) {
+      page = (await (await get(`/api/components?sort=downloads&limit=2&cursor=${page.next}`)).json()) as ComponentList;
+      seen.push(...page.components.map((c) => c.name));
+    }
+    expect(seen).toHaveLength(5);
+    expect(new Set(seen).size).toBe(5);
+    const back = (await (await get(`/api/components?sort=downloads&limit=2&cursor=${page.previous}`)).json()) as ComponentList;
+    expect(back.components.map((c) => c.name)).toEqual(seen.slice(2, 4));
+  });
+
+  it("names curators by GitHub id, not login", async () => {
+    env.CATALOGUE_CURATORS = "george";
+    expect((await post("/api/dev/categories", exampleCategories())).status).toBe(403);
+    env.CATALOGUE_CURATORS = "42";
+    expect((await post("/api/dev/categories", exampleCategories())).status).toBe(200);
+  });
+
+  it("counts a filtered total once and keeps it for ten minutes", async () => {
+    await publish(card("0.1.0"));
+    const total = async () => ((await (await get("/api/components?platform=web")).json()) as ComponentList).total;
+    expect(await total()).toEqual({ count: 1, approximate: false });
+    await env.DB.prepare("UPDATE listing_totals SET count = 7").run();
+    expect(await total()).toEqual({ count: 7, approximate: false });
+    deps.advance(11 * 60_000);
+    await env.DB.prepare("UPDATE listing_totals SET computed_at = '2000-01-01T00:00:00Z'").run();
+    expect(await total()).toEqual({ count: 1, approximate: false });
   });
 });

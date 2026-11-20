@@ -35,6 +35,7 @@ function githubFor(extra: Record<string, (call: Call) => Response | Promise<Resp
     ...release("acme/server-host", "v0.1.0", "server-host-0.1.0.tar", 51),
     ...release("acme/apple-host", "v0.1.0", "apple-host-0.1.0.tar", 52),
     ...release("acme/guided-tour", "v0.1.0", "guided-tour-0.1.0.tar", 53),
+    [`GET ${gh("/user/memberships/orgs/ourapps-ae")}`]: () => jsonRes({ state: "active" }),
     ...extra,
   });
   calls = stub.calls;
@@ -55,7 +56,7 @@ async function upload(bytes: Uint8Array, type = "image/png", c: string | null = 
 }
 
 beforeEach(async () => {
-  env = testEnv({ CATALOGUE_CURATORS: "george" });
+  env = testEnv({ CATALOGUE_CURATORS: "42" });
   await clearDb(env);
   githubFor();
   cookie = await signIn(env, deps);
@@ -63,6 +64,8 @@ beforeEach(async () => {
   expect((await post("/api/dev/categories", exampleCategories())).status).toBe(200);
   expect((await upload(EXAMPLE_IMAGE_BYTES.image)).status).toBe(201);
   expect((await upload(EXAMPLE_IMAGE_BYTES.thumbnail, "image/webp")).status).toBe(201);
+  for (const c of exampleClassEntries()) expect((await post("/api/dev/classes", c)).status).toBe(201);
+  calls.length = 0;
 });
 
 const get = (path: string) => handle(api(null, "GET", path), env, deps);
@@ -481,7 +484,7 @@ describe("reading recipes", () => {
     expect(await names("/api/recipes?platform=windows")).toEqual(["acme/garden-planner"]);
     expect(await names("/api/recipes?licence=MIT")).toEqual(["acme/garden-planner"]);
     expect(await names("/api/recipes?publisher=george&sort=name")).toEqual(["acme/garden-planner", "acme/poker-night"]);
-    expect(await names("/api/recipes?publisher=nobody")).toEqual([]);
+    expect((await get("/api/recipes?publisher=nobody")).status).toBe(400);
     expect(await names("/api/recipes?category=games&licence=MIT")).toEqual([]);
     expect(await names("/api/recipes?channel=features&sort=name")).toEqual(["acme/garden-planner", "acme/poker-night"]);
     expect(await names("/api/recipes?channel=security")).toEqual([]);
@@ -589,7 +592,7 @@ describe("search", () => {
     for (const q of ['"', "poker*", "poker OR zebra", "name:poker", "(", "poker-night", "NEAR(a b)", "\\", "'; DROP TABLE recipes; --", "**"]) {
       expect((await get(`/api/recipes?q=${encodeURIComponent(q)}`)).status, q).toBe(200);
     }
-    expect(ftsQuery('poker "night" OR *')).toBe('"poker"* "night"* "or"*');
+    expect(ftsQuery('poker "night" OR *')).toBe('"poker"* "night"* "or"');
     expect(ftsQuery("   ")).toBeNull();
     expect(ftsQuery("a ".repeat(20))!.split(" ")).toHaveLength(8);
     expect((await get(`/api/recipes?q=${"x".repeat(201)}`)).status).toBe(400);
@@ -635,7 +638,7 @@ describe("components", () => {
     expect(tree.categories.find((c) => c.id === "games/cards")).toMatchObject({ components: 1 });
   });
 
-  it("refuses a visual class without images, an image not uploaded, and a category outside the tree", async () => {
+  it("refuses a visual class without images and an image not uploaded", async () => {
     const none = await post("/api/dev/components", component((e) => (e.images = [])));
     expect(none.status).toBe(400);
     expect(((await none.json()) as { error: string }).error).toContain("visual class");
@@ -644,19 +647,34 @@ describe("components", () => {
     expect(((await missing.json()) as { error: string }).error).toContain("upload the image first");
     const size = await post("/api/dev/components", component((e) => (e.images[0].width = 1000)));
     expect(((await size.json()) as { error: string }).error).toContain("is 1280 by 800");
-    const elsewhere = await post("/api/dev/components", component((e) => {
-      e.foundations.classes[0].descriptor.category = "music";
+  });
+
+  it("takes the category and class from the published class and refuses a component whose copy differs or whose class is unpublished", async () => {
+    const changed = await post("/api/dev/components", component((e) => {
+      e.foundations.classes[0].descriptor.category = "tools";
       e.foundations.classes[0].reference.digest = descriptorDigest(e.foundations.classes[0].descriptor);
       e.foundations.implements = [e.foundations.classes[0].reference];
     }));
-    expect(((await elsewhere.json()) as { error: string }).error).toContain("category music is not in the category tree");
+    expect(changed.status).toBe(400);
+    expect(((await changed.json()) as { error: string }).error).toContain("the published class has");
+    const unpublished = await post("/api/dev/components", component((e) => {
+      e.foundations.classes[0].descriptor.version = "2.0.0";
+      e.foundations.classes[0].reference.version = "2.0.0";
+      e.foundations.classes[0].reference.digest = descriptorDigest(e.foundations.classes[0].descriptor);
+      e.foundations.implements = [e.foundations.classes[0].reference];
+    }));
+    expect(unpublished.status).toBe(400);
+    expect(((await unpublished.json()) as { error: string }).error).toContain("is not published; publish the class first");
+    await publishCard();
+    const card = (await (await get("/api/components/card-deck")).json()) as ComponentVersionView;
+    expect(card).toMatchObject({ category: "games/cards" });
   });
 
   it("refuses quality from anyone but a curator, and sets it as a curator", async () => {
     const quality = { level: "reviewed", certified: true, liveTested: null };
     env.CATALOGUE_CURATORS = "";
     expect((await post("/api/dev/components", component((e) => (e.quality = quality)))).status).toBe(403);
-    env.CATALOGUE_CURATORS = "george";
+    env.CATALOGUE_CURATORS = "42";
     await publishCard((e) => (e.quality = quality));
     const v = (await (await get("/api/components/card-deck")).json()) as ComponentVersionView;
     expect(v.quality).toEqual(quality);
@@ -977,7 +995,7 @@ describe("page variants", () => {
     expect(second).toContain("- acme/guided-tour 0.1.0");
     expect(second).toContain("Previous: ");
     expect(await (await get("/classes.txt")).text()).toContain("ourapps component classes");
-    expect(await (await get("/categories.txt")).text()).toContain("  - Cards (games/cards): 0 classes, 1 components, 0 recipes");
+    expect(await (await get("/categories.txt")).text()).toContain("  - Cards (games/cards): 1 classes, 1 components, 0 recipes");
     expect(await (await get("/components.txt?q=nothingmatches")).text()).toContain("No components match.");
     expect(await (await get("/recipes.txt?category=tools")).text()).toContain("No recipes match.");
     expect((await get("/recipes/poker-night.txt?version=0.1.0")).status).toBe(200);

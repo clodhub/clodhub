@@ -363,8 +363,10 @@ export interface VulnerabilityReport {
   name: string;
   version: string;
   checkedAt: string | null;
+  // Null before the first check, and when OSV refused one of the version's purls (listed in `unqueryable`).
   count: number | null;
   advisories: Advisory[];
+  unqueryable: string[];
 }
 
 // bundle-unavailable: the publisher's account is deleted and the release is not public, so no download link exists.

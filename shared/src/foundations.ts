@@ -59,10 +59,50 @@ function url(v: unknown, mail = false): boolean {
     return !!host && !u.username && !u.password && (!u.port || Number(u.port) >= 1) && (host.startsWith("[") || (host.length <= 253 && host.replace(/\.$/, "").split(".").every(label => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label))));
   } catch { return false; }
 }
+// The parts of a package URL (https://github.com/package-url/purl-spec): pkg:type/namespace/name@version?qualifiers#subpath.
+export interface Purl { type: string; namespace: string[]; name: string; version: string | null }
+
+// Types whose namespace is required, with the least number of segments: Maven's group, Swift's repository host and
+// owner, Go's module path, GitHub's owner.
+const PURL_NAMESPACE: Record<string, number> = { maven: 1, swift: 2, golang: 1, github: 1, bitbucket: 1, composer: 1 };
+// Types that have no namespace.
+const PURL_NO_NAMESPACE = new Set(["cargo", "gem", "pypi", "nuget", "hex", "pub", "cocoapods", "hackage", "conda"]);
+
+export function parsePurl(v: unknown): Purl | null {
+  if (typeof v !== "string" || v.length > 1000 || /[\s\\]/.test(v)) return null;
+  const m = /^pkg:([A-Za-z][A-Za-z0-9.+-]*)\/+([^?#]+)(\?[^#]*)?(#.*)?$/.exec(v);
+  if (!m) return null;
+  const type = m[1]!.toLowerCase();
+  if (m[1] !== type) return null;
+  let path = m[2]!.replace(/\/+$/, "");
+  let version: string | null = null;
+  const at = path.lastIndexOf("@");
+  if (at > path.lastIndexOf("/")) {
+    version = path.slice(at + 1);
+    path = path.slice(0, at);
+  }
+  const decode = (x: string) => { try { return decodeURIComponent(x); } catch { return null; } };
+  const segments = path.split("/").map(decode);
+  if (segments.some((x) => x === null || x === "" || x === "." || x === ".." || x.includes("/"))) return null;
+  const name = segments.pop()!;
+  const namespace = segments as string[];
+  if (!name || /^@/.test(name)) return null;
+  if (version !== null) {
+    const decoded = decode(version);
+    if (!decoded || /\s/.test(decoded)) return null;
+    version = decoded;
+  }
+  if (PURL_NO_NAMESPACE.has(type) && namespace.length > 0) return null;
+  if ((PURL_NAMESPACE[type] ?? 0) > namespace.length) return null;
+  if (type === "swift" && !/^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$/.test(namespace[0]!)) return null;
+  if (type === "npm" && namespace.length > 0 && (namespace.length > 1 || !/^@[^@]+$/.test(namespace[0]!))) return null;
+  return { type, namespace, name, version };
+}
+
+// A package URL that is valid and pinned to `pin` (null: no version).
 function purl(v: unknown, pin: string | null = null): boolean {
-  if (!text(v) || /\s|\\/.test(v) || !/^pkg:[a-z][a-z0-9.+-]*\/.+/.test(v)) return false;
-  const tail = v.split(/[?#]/)[0].split("/").at(-1)!;
-  try { return (tail.includes("@") ? decodeURIComponent(tail.slice(tail.lastIndexOf("@") + 1)) : null) === pin; } catch { return false; }
+  const p = parsePurl(v);
+  return p !== null && p.version === pin;
 }
 
 // RFC 8785 uses ECMAScript number serialization and UTF-16 property ordering.

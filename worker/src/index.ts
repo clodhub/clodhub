@@ -10,6 +10,7 @@ import { devPage, linkLatest, linkPage, linkQr, serveArtefact } from "./routes/p
 import * as catalogue from "./routes/catalogue.js";
 import { CatalogueDb } from "./catalogue-db.js";
 import { checkVulnerabilities } from "./vulnerabilities.js";
+import { removeUnclaimedImages } from "./routes/catalogue.js";
 import { serveWebApp, webAppLinkId } from "./webapp.js";
 
 // Sent on every response so browsers and scanners see a locked-down site.
@@ -98,7 +99,7 @@ async function route(request: Request, env: Env, deps: Deps): Promise<Response> 
     if (p.length === 1) return catalogue.list(env, kind, url);
     if (p.length === 2) return catalogue.versionView(env, kind, p[1]!, "latest");
     if (p.length === 3) return catalogue.versionView(env, kind, p[1]!, p[2]!);
-    if (p.length === 4 && p[3] === "bundle") return catalogue.bundle(env, deps, kind, p[1]!, p[2]!);
+    if (p.length === 4 && p[3] === "bundle") return catalogue.bundle(request, env, deps, kind, p[1]!, p[2]!);
     if (p.length === 4 && p[3] === "diagram.svg" && kind === "recipe") return catalogue.recipeDiagram(env, p[1]!, p[2]!);
     if (p.length === 4 && p[3] === "components.svg" && kind === "recipe") return catalogue.recipeComponentsDiagram(env, p[1]!, p[2]!);
     if (p.length === 4 && p[3] === "connections.svg" && kind === "component") return catalogue.componentConnectionsDiagram(env, p[1]!, p[2]!);
@@ -182,10 +183,14 @@ export default {
 
 // The cron triggers in wrangler.jsonc.
 export async function scheduled(cron: string, env: Env, deps: Deps): Promise<void> {
-  // Hourly: the purls not checked at OSV for a day.
-  if (cron === "7 * * * *") return void (await checkVulnerabilities(env, deps));
-  // Daily: the 30-day download counts and trending.
-  if (cron === "17 3 * * *") return new CatalogueDb(env.DB).refreshDownloads(deps.now().toISOString().slice(0, 10));
+  // Hourly: the purls not checked at OSV for a day, the next chunks of the day's download refresh, and the images
+  // nobody named within a day.
+  if (cron === "7 * * * *") {
+    await checkVulnerabilities(env, deps);
+    await new CatalogueDb(env.DB).refreshDownloads(deps.now().toISOString().slice(0, 10));
+    await removeUnclaimedImages(env, deps);
+    return;
+  }
   // Every ten minutes: TestFlight builds into the testers' group and fresh builds before expiry.
   return tickTestflight(env, deps);
 }

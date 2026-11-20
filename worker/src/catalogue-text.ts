@@ -32,7 +32,7 @@ function page(title: string, body: string[]): string {
 }
 
 const quality = (q: Quality | null): string => (q ? `${QUALITY_TEXT[q.level]}${q.certified ? ", certified" : ", publisher-reviewed"}` : "not assessed");
-const known = (n: number | null): string => (n === null ? "not checked yet" : n === 0 ? "none known" : `${n} known`);
+const known = (n: number | null, checkedAt: string | null = null): string => (n === null ? (checkedAt ? "unknown: OSV could not check one of its package URLs" : "not checked yet") : n === 0 ? "none known" : `${n} known`);
 
 function recipeLine(r: RecipeSummary): string[] {
   return [`- ${r.title} (${r.name}) ${r.version}: ${r.summary}`, ...warnings(r.deprecations).map((w) => `  ${w}`), `  category ${r.category}; platforms ${list(r.platforms)}; quality ${quality(r.quality)}; ${r.channel}; vulnerabilities ${known(r.vulnerabilities)}; ${r.downloads} downloads in 30 days; updated ${r.updatedAt.slice(0, 10)}`, `  ${r.url}.txt`];
@@ -209,7 +209,7 @@ function releaseLines(v: RecipeVersionView | ComponentVersionView, kind: "recipe
     `Release: ${v.release.channel}${v.release.fixes.length ? `, fixes ${v.release.fixes.join(", ")}` : ""}`,
     `Line ${v.line.line}: ${v.line.securityReleases.length === 0 ? "no security releases" : `security releases ${v.line.securityReleases.map((r) => `${r.version} (fixes ${r.fixes.join(", ")})`).join("; ")}`}`,
     `Quality: ${quality(v.quality)}${v.quality?.liveTested ? `; live-tested ${v.quality.liveTested.at} on ${v.quality.liveTested.platform}` : ""}`,
-    `Known vulnerabilities: ${known(s.count)}${s.checkedAt ? ` (checked ${s.checkedAt.slice(0, 10)} at OSV)` : ""}${v.vulnerabilityWaivers.length ? `; waived ${v.vulnerabilityWaivers.map((w) => w.id).join(", ")}` : ""}; ${s.url}`,
+    `Known vulnerabilities: ${known(s.count, s.checkedAt)}${s.checkedAt ? ` (checked ${s.checkedAt.slice(0, 10)} at OSV)` : ""}${v.vulnerabilityWaivers.length ? `; waived ${v.vulnerabilityWaivers.map((w) => w.id).join(", ")}` : ""}; ${s.url}`,
     `Downloads: ${v.downloads} in 30 days; ${v.versionDownloads} of this version`,
     ...(v.images.length ? [`Images (${v.images.length}): ${v.images.map((i) => `${i.url} (${i.platform}, ${i.caption})`).join("; ")}`] : []),
     `Classes: ${origin}/classes.txt; this ${kind === "recipes" ? "recipe" : "component"} as JSON: ${origin}/api/${kind}/${v.slug}/${v.version}`,

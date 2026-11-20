@@ -446,7 +446,7 @@ POST /api/dev/categories          classes/categories.json
 -> 200 { "status": "published", "added": ["games/cards"], "renamed": [], "total": 42 }
 ```
 
-- Only the catalogue's curators (GitHub logins in the Worker's `CATALOGUE_CURATORS`) may send it; anyone else gets 403.
+- Only the catalogue's curators (numeric GitHub user ids in the Worker's `CATALOGUE_CURATORS`) may send it; anyone else gets 403.
 - `id` is a category path: lowercase segments of letters, digits and hyphens joined by `/`, at most 6 deep. `parent` is the path without its last segment, or null. A parent must be in the body or already in the tree.
 - Missing categories are added, existing ones take the new title; nothing is removed.
 
@@ -461,7 +461,8 @@ POST /api/dev/classes
 
 - `class` is class.json itself (format 2; an earlier format is refused with `class-format-refused`): `{ format: 2, name, version, title, summary, category, presentation, provides, requires, settings, inventory, verification }`. `title` is at most 80 characters, `summary` at most 300, `category` a path that exists in the tree, `presentation` `visual` or `none`. The same four fields are required on every descriptor in a package's `foundations.classes`, and they are inside the descriptor digest.
 - The digest is computed by the catalogue (sha256 of the RFC 8785 canonical descriptor); the body carries none.
-- 400 invalid class (the message lists the codes, for example `class: class-fields`) or a category outside the tree; 409 the name belongs to another developer, or the version is published with another digest.
+- The scope of `name` (`ourapps-ae`) is a GitHub organisation: the publisher's saved GitHub token must show an active membership of it (403 otherwise; 409 when no token is saved). The first developer to publish a class in a scope keeps the scope; anyone else gets 409.
+- 400 invalid class (the message lists the codes, for example `class: class-fields`) or a category outside the tree; 409 the name or scope belongs to another developer, or the version is published with another digest.
 
 #### Images
 
@@ -473,7 +474,9 @@ Content-Type: image/png | image/webp
 -> 200 the same with "status": "unchanged" when that sha256 is already stored
 ```
 
-- The catalogue checks that the sha256 of the bytes equals the one in the address (422 otherwise), that the bytes are the declared type (422), that the size is at most 2 MiB (413) and that width and height are 1 to 16,384 pixels. Other types get 415.
+- The catalogue checks that the sha256 of the bytes equals the one in the address (422 otherwise), that the size is at most 2 MiB (413), that width and height are 1 to 16,384 pixels, and that the bytes are a complete image of the declared type (422): a PNG has valid chunks with correct CRCs from IHDR through IEND at the end of the file, with at least one IDAT; a WebP has a RIFF size equal to the file size, chunks that fill it exactly, and one complete VP8 or VP8L image (no animation). Nothing is decompressed. Other types get 415.
+- A developer may upload `IMAGE_UPLOADS_PER_DAY` images in 24 hours (300 unless the Worker sets it); more gets 429.
+- An image is kept once a published entry names it. An entry may name an image no entry names yet only if the same developer uploaded it. An image no published entry names within 24 hours of upload is removed.
 - Upload each image and its 480-pixel-wide WebP thumbnail (a thumbnail of an image narrower than 480 pixels keeps its width). Images are served at `GET /images/<hex>.<png|webp>` with `Cache-Control: public, max-age=31536000, immutable`.
 
 #### Components
@@ -500,12 +503,13 @@ POST /api/dev/components
 -> 200 the same with "status": "unchanged" for the same version and digest again
 ```
 
-- `version` is three integers, with a pre-release (`0.9.0-preview.1`) only for the preview channel.
-- `release` comes from the verified manifest. `channel` is `security` (patch above 0; `fixes` lists one or more OSV, GHSA or CVE ids), `features` (patch 0; `fixes` empty) or `preview` (a pre-release; `fixes` empty).
-- `foundations.implements` names exactly one class, and that class's descriptor is in `foundations.classes`. The component's listing category is that class's `category`, which must be in the tree; the body has no `category` field.
+- `version` is `MAJOR.MINOR.PATCH`, or `MAJOR.MINOR.PATCH-preview.N` (N a positive integer) for the preview channel. No other pre-release form is accepted.
+- `release` comes from the verified manifest. `channel` is `security` (patch above 0; `fixes` lists one or more OSV, GHSA or CVE ids; a features release of the same name on the same `MAJOR.MINOR` line must be published already), `features` (patch 0; `fixes` empty) or `preview` (`-preview.N`; `fixes` empty).
+- `foundations.implements` names exactly one class, and that class's descriptor is in `foundations.classes`. That class name and version must be published (POST /api/dev/classes first) with the same digest; otherwise 400. The component's class, listing category and presentation come from the published class; the body has no `category` field.
+- Every `foundations.upstream[].purl` is a package URL by the purl specification, pinned to the upstream version, with the namespace its type needs (`pkg:maven/<group>/<artifact>@v`, `pkg:swift/<host>/<owner>/<name>@v`, `pkg:golang/<module path>/<name>@v`; npm scopes as `%40scope`). A purl OSV still refuses is shown with vulnerabilities "unknown" (`count: null`, the purl in `unqueryable`).
 - `images`: at most 12, read from the verified archive, each uploaded first (with its thumbnail) with the width and height stated. A component whose class has `presentation: "visual"` needs at least one. The first image is the main image. `caption` is at most 140 characters; `platform` is one of `foundations.platforms`.
 - `vulnerabilityWaivers` is `[]` when none; each `reason` is at most 500 characters.
-- `quality` is null or left out, except from a curator: `level` is `packaged`, `reviewed`, `integration-tested` or `live-tested` (each includes the ones before it), `certified` is true when the guardian signature is Level N's, `liveTested` is `{ at: "<ISO date>", platform }` for `live-tested` and null otherwise. Quality from anyone else gets 403.
+- `quality` is null or left out, except from a curator (by numeric GitHub id): `level` is `packaged`, `reviewed`, `integration-tested` or `live-tested` (each includes the ones before it), `certified` is true when the guardian signature is Level N's, `liveTested` is `{ at: "<ISO date>", platform }` for `live-tested` and null otherwise. Quality from anyone else gets 403.
 - The other fields are as before this format: ports, settings, interface facts and dependencies from `aepm.bundle.read_archive`; `foundations` copied from the manifest (`licence` is `identity.licence`).
 - The full entry is stored as a document; the listing keeps a summary of the newest listed version. The newest listed version is the highest that is not a preview, or the highest preview while nothing else is listed.
 
@@ -549,7 +553,7 @@ Deprecating a name flags every version; the catalogue then shows a warning on th
 
 #### What the catalogue reads back
 
-`GET /api/{components,recipes}/:name/:version` (`:version` may be `latest`) returns, among the fields in agents.md, `versions: [{ version, digest, publishedAt, channel, fixes }]` for every listed version, `release: { channel, fixes }` of the shown version, `line: { line, securityReleases: [{ version, fixes, publishedAt }] }`, `quality`, `images`, `vulnerabilitySummary` and `vulnerabilityWaivers`. aepm's `outdated` reads `versions` and needs no archive. `GET .../vulnerabilities` returns `{ name, version, checkedAt, count, advisories: [{ id, summary, severity, affected: [purl], fixedIn, waived }] }`; the catalogue checks every published version's purls (from `foundations.upstream`) at OSV daily.
+`GET /api/{components,recipes}/:name/:version` (`:version` may be `latest`) returns, among the fields in agents.md, `versions: [{ version, digest, publishedAt, channel, fixes }]` for every listed version, `release: { channel, fixes }` of the shown version, `line: { line, securityReleases: [{ version, fixes, publishedAt }] }`, `quality`, `images`, `vulnerabilitySummary` and `vulnerabilityWaivers`. aepm's `outdated` reads `versions` and needs no archive. `GET .../vulnerabilities` returns `{ name, version, checkedAt, count, advisories: [{ id, summary, severity, affected: [purl], fixedIn, waived }], unqueryable: [purl] }`; the catalogue checks every published version's purls (from `foundations.upstream`) at OSV daily. `count` is null before the first check, and when OSV refused one of the purls (listed in `unqueryable`).
 
 Public reads, bundle links and the plain-text and JSON variants are in agents.md.
 

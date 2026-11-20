@@ -248,6 +248,7 @@ CREATE TABLE component_interfaces (
   FOREIGN KEY (component_id, version) REFERENCES component_versions(component_id, version) ON DELETE CASCADE
 );
 CREATE INDEX component_interfaces_type ON component_interfaces(type, direction);
+CREATE INDEX component_interfaces_port ON component_interfaces(port_id, direction);
 
 CREATE TABLE component_dependencies (
   component_id TEXT NOT NULL,
@@ -313,6 +314,7 @@ CREATE TABLE class_versions (
 );
 
 -- Uploaded images and thumbnails, by sha256 hex; the bytes are in R2 at images/<sha256>.
+-- claimed_at is set when a published entry names the image; an image nobody names within a day is removed.
 CREATE TABLE images (
   digest TEXT PRIMARY KEY,
   type TEXT NOT NULL CHECK (type IN ('png', 'webp')),
@@ -320,8 +322,11 @@ CREATE TABLE images (
   height INTEGER NOT NULL,
   bytes INTEGER NOT NULL,
   uploaded_by TEXT,
-  uploaded_at TEXT NOT NULL
+  uploaded_at TEXT NOT NULL,
+  claimed_at TEXT
 );
+CREATE INDEX images_unclaimed ON images(uploaded_at) WHERE claimed_at IS NULL;
+CREATE INDEX images_uploader ON images(uploaded_by, uploaded_at);
 
 -- Download links issued per version and day (UTC), for the 30-day count and trending.
 CREATE TABLE downloads_daily (
@@ -334,11 +339,47 @@ CREATE TABLE downloads_daily (
 );
 CREATE INDEX downloads_daily_day ON downloads_daily(day);
 
+-- Who fetched a download link today, as a salted sha256 of the address: one download per address, version and day.
+CREATE TABLE downloads_seen (
+  day TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  entry_id TEXT NOT NULL,
+  version TEXT NOT NULL,
+  visitor TEXT NOT NULL,
+  PRIMARY KEY (day, kind, entry_id, version, visitor)
+) WITHOUT ROWID;
+
+-- Requests per key and minute, for rate limits.
+CREATE TABLE rate_limits (
+  key TEXT NOT NULL,
+  minute TEXT NOT NULL,
+  n INTEGER NOT NULL,
+  PRIMARY KEY (key, minute)
+) WITHOUT ROWID;
+
+-- Listing totals per kind and filter combination, kept for ten minutes.
+CREATE TABLE listing_totals (
+  key TEXT PRIMARY KEY,
+  count INTEGER NOT NULL,
+  approximate INTEGER NOT NULL,
+  computed_at TEXT NOT NULL
+);
+
+-- Where a job that runs in chunks has got to: its pass (for example the day) and the last seq done.
+CREATE TABLE job_progress (
+  job TEXT PRIMARY KEY,
+  pass TEXT NOT NULL,
+  after INTEGER NOT NULL,
+  done INTEGER NOT NULL DEFAULT 0
+);
+
 -- Package URLs a version bundles or downloads (from its foundations upstream records), checked at OSV.
+-- unqueryable: OSV refused the purl, so its advisories are unknown.
 CREATE TABLE purls (
   purl TEXT PRIMARY KEY,
   checked_at TEXT,
-  advisories TEXT NOT NULL DEFAULT '[]'
+  advisories TEXT NOT NULL DEFAULT '[]',
+  unqueryable INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX purls_checked ON purls(checked_at);
 

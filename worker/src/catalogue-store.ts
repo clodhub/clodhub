@@ -41,21 +41,88 @@ export interface ImageFacts {
   height: number;
 }
 
-// The type and size of a PNG or WebP from its header; null for anything else.
-export function imageFacts(bytes: Uint8Array): ImageFacts | null {
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(bytes: Uint8Array): number {
+  let c = 0xffffffff;
+  for (const b of bytes) c = CRC_TABLE[(c ^ b) & 0xff]! ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+const ascii = (bytes: Uint8Array, at: number, n: number) => String.fromCharCode(...bytes.subarray(at, at + n));
+
+// A PNG whose chunks all carry correct CRCs, from IHDR through IEND at the end of the file, with at least one IDAT.
+function pngFacts(bytes: Uint8Array): ImageFacts | null {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const ascii = (at: number, n: number) => String.fromCharCode(...bytes.subarray(at, at + n));
-  if (bytes.length >= 24 && bytes[0] === 0x89 && ascii(1, 3) === "PNG" && ascii(12, 4) === "IHDR") return { type: "png", width: view.getUint32(16), height: view.getUint32(20) };
-  if (bytes.length >= 30 && ascii(0, 4) === "RIFF" && ascii(8, 4) === "WEBP") {
-    const chunk = ascii(12, 4);
-    if (chunk === "VP8X") return { type: "webp", width: 1 + (bytes[24]! | (bytes[25]! << 8) | (bytes[26]! << 16)), height: 1 + (bytes[27]! | (bytes[28]! << 8) | (bytes[29]! << 16)) };
-    if (chunk === "VP8L" && bytes[20] === 0x2f) {
-      const b = view.getUint32(21, true);
-      return { type: "webp", width: (b & 0x3fff) + 1, height: ((b >> 14) & 0x3fff) + 1 };
-    }
-    if (chunk === "VP8 " && bytes[23] === 0x9d && bytes[24] === 0x01 && bytes[25] === 0x2a) return { type: "webp", width: view.getUint16(26, true) & 0x3fff, height: view.getUint16(28, true) & 0x3fff };
+  if (bytes.length < 57 || ![0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a].every((b, i) => bytes[i] === b)) return null;
+  let at = 8;
+  let first = true;
+  let idat = false;
+  let size: { width: number; height: number } | null = null;
+  while (at + 12 <= bytes.length) {
+    const length = view.getUint32(at);
+    const type = ascii(bytes, at + 4, 4);
+    const end = at + 12 + length;
+    if (length > 0x7fffffff || end > bytes.length || !/^[A-Za-z]{4}$/.test(type)) return null;
+    if (crc32(bytes.subarray(at + 4, at + 8 + length)) !== view.getUint32(at + 8 + length)) return null;
+    if (first) {
+      if (type !== "IHDR" || length !== 13) return null;
+      size = { width: view.getUint32(at + 8), height: view.getUint32(at + 12) };
+      first = false;
+    } else if (type === "IHDR") return null;
+    if (type === "IDAT") idat = true;
+    if (type === "IEND") return length === 0 && end === bytes.length && idat && size ? { type: "png", ...size } : null;
+    at = end;
   }
   return null;
+}
+
+// A WebP whose RIFF size is the file's, whose chunks fill it exactly, and which holds one complete still image
+// (a VP8 or VP8L chunk). Animations are refused.
+function webpFacts(bytes: Uint8Array): ImageFacts | null {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  if (bytes.length < 30 || ascii(bytes, 0, 4) !== "RIFF" || ascii(bytes, 8, 4) !== "WEBP" || view.getUint32(4, true) + 8 !== bytes.length) return null;
+  let at = 12;
+  let size: { width: number; height: number } | null = null;
+  let image = false;
+  let extended: { width: number; height: number } | null = null;
+  while (at < bytes.length) {
+    if (at + 8 > bytes.length) return null;
+    const type = ascii(bytes, at, 4);
+    const length = view.getUint32(at + 4, true);
+    const end = at + 8 + length + (length % 2);
+    if (end > bytes.length) return null;
+    const data = at + 8;
+    if (type === "ANIM" || type === "ANMF") return null;
+    if (type === "VP8X" && at === 12 && length >= 10) extended = { width: 1 + (bytes[data + 4]! | (bytes[data + 5]! << 8) | (bytes[data + 6]! << 16)), height: 1 + (bytes[data + 7]! | (bytes[data + 8]! << 8) | (bytes[data + 9]! << 16)) };
+    if (type === "VP8L" && !image) {
+      if (length < 5 || bytes[data] !== 0x2f) return null;
+      const b = view.getUint32(data + 1, true);
+      size = { width: (b & 0x3fff) + 1, height: ((b >>> 14) & 0x3fff) + 1 };
+      image = true;
+    } else if (type === "VP8 " && !image) {
+      if (length < 10 || bytes[data + 3] !== 0x9d || bytes[data + 4] !== 0x01 || bytes[data + 5] !== 0x2a) return null;
+      size = { width: view.getUint16(data + 6, true) & 0x3fff, height: view.getUint16(data + 8, true) & 0x3fff };
+      image = true;
+    }
+    at = end;
+  }
+  if (at !== bytes.length || !image || !size) return null;
+  if (extended && (extended.width !== size.width || extended.height !== size.height)) return null;
+  return { type: "webp", ...size };
+}
+
+// The type and size of a structurally complete PNG or WebP; null for anything else.
+export function imageFacts(bytes: Uint8Array): ImageFacts | null {
+  return pngFacts(bytes) ?? webpFacts(bytes);
 }
 
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {

@@ -11,26 +11,53 @@ export const EXAMPLE_INTERFACE_DIGEST = `sha256:${"c".repeat(64)}`;
 
 const v1 = (type: string) => ({ type, version: "1.0.0" });
 
-// The header of a PNG and of a WebP (VP8X) of the given size: enough for the catalogue's type and size check.
-export function pngHeader(width: number, height: number): Uint8Array {
-  const b = new Uint8Array(33);
-  b.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
-  new DataView(b.buffer).setUint32(16, width);
-  new DataView(b.buffer).setUint32(20, height);
-  b.set([8, 6, 0, 0, 0], 24);
-  return b;
+// CRC-32 (ISO 3309), as PNG chunks carry it.
+export function crc32(bytes: Uint8Array): number {
+  let c = 0xffffffff;
+  for (const b of bytes) {
+    c ^= b;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  }
+  return (c ^ 0xffffffff) >>> 0;
 }
 
+// A complete, structurally valid PNG of the given size: IHDR, one IDAT and IEND, each with its CRC. The IDAT is not
+// a real picture; the catalogue checks structure, not pixels.
+export function pngHeader(width: number, height: number): Uint8Array {
+  const chunk = (type: string, data: Uint8Array) => {
+    const out = new Uint8Array(12 + data.length);
+    const view = new DataView(out.buffer);
+    view.setUint32(0, data.length);
+    out.set(new TextEncoder().encode(type), 4);
+    out.set(data, 8);
+    view.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+    return out;
+  };
+  const ihdr = new Uint8Array(13);
+  new DataView(ihdr.buffer).setUint32(0, width);
+  new DataView(ihdr.buffer).setUint32(4, height);
+  ihdr.set([8, 6, 0, 0, 0], 8);
+  const parts = [new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr), chunk("IDAT", new Uint8Array([0x78, 0x9c, 0x63, 0, 0, 0, 1, 0, 1])), chunk("IEND", new Uint8Array(0))];
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of parts) (out.set(p, at), (at += p.length));
+  return out;
+}
+
+// A complete, structurally valid lossless WebP (one VP8L chunk) of the given size.
 export function webpHeader(width: number, height: number): Uint8Array {
-  const b = new Uint8Array(30);
-  b.set([...new TextEncoder().encode("RIFF")], 0);
-  new DataView(b.buffer).setUint32(4, 22, true);
-  b.set([...new TextEncoder().encode("WEBPVP8X")], 8);
-  new DataView(b.buffer).setUint32(16, 10, true);
-  const w = width - 1;
-  const h = height - 1;
-  b.set([w & 255, (w >> 8) & 255, (w >> 16) & 255, h & 255, (h >> 8) & 255, (h >> 16) & 255], 24);
-  return b;
+  const data = new Uint8Array(10);
+  data[0] = 0x2f;
+  const bits = (width - 1) | ((height - 1) << 14);
+  new DataView(data.buffer).setUint32(1, bits >>> 0, true);
+  const out = new Uint8Array(20 + data.length);
+  const view = new DataView(out.buffer);
+  out.set(new TextEncoder().encode("RIFF"), 0);
+  view.setUint32(4, out.length - 8, true);
+  out.set(new TextEncoder().encode("WEBPVP8L"), 8);
+  view.setUint32(16, data.length, true);
+  out.set(data, 20);
+  return out;
 }
 
 const hex = (bytes: Uint8Array) => `sha256:${bytesToHex(sha256(bytes))}`;

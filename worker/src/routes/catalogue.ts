@@ -3,6 +3,8 @@
 // packages stay in the publisher's GitHub releases.
 import {
   CATEGORY_PATH,
+  FOUNDATION_PLATFORMS,
+  validLicence,
   CHANNELS,
   DEPRECATED_FILTERS,
   IMAGE_LIMITS,
@@ -27,6 +29,7 @@ import {
   validateRecipeEntry,
   versionLine,
   type Advisory,
+  type ClassDescriptor,
   type BundleLink,
   type CategoryCount,
   type Channel,
@@ -70,6 +73,8 @@ export const MAX_RECIPES_PER_DEVELOPER = 50;
 export const MAX_COMPONENTS_PER_DEVELOPER = 200;
 export const MAX_VERSIONS_PER_ENTRY = 200;
 export const MAX_CLASSES_PER_DEVELOPER = 200;
+export const DEFAULT_IMAGE_UPLOADS_PER_DAY = 300;
+export const DEFAULT_BUNDLE_LINKS_PER_MINUTE = 60;
 
 const SECRET_PATTERN = /-----BEGIN [A-Z ]*PRIVATE KEY-----|\bgh[pousr]_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{30,}|\boa_[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b/;
 
@@ -129,8 +134,8 @@ export function listQuery(url: URL, kind: Kind): ListQuery {
     q,
     category: word(url, "category", CATEGORY_PATH),
     class: kind === "component" ? word(url, "class", /^[a-z0-9-]{1,39}\/[a-z0-9-]{1,40}$/) : undefined,
-    platform: word(url, "platform", /^[a-z][a-z0-9-]{0,30}$/),
-    licence: word(url, "licence", /^[A-Za-z0-9.+-]{1,60}$/),
+    platform: oneOf(url, "platform", FOUNDATION_PLATFORMS),
+    licence: licenceParam(url),
     quality: oneOf(url, "quality", QUALITY_LEVELS),
     certified: yes(url, "certified"),
     channel: oneOf<Channel>(url, "channel", CHANNELS),
@@ -145,6 +150,13 @@ export function listQuery(url: URL, kind: Kind): ListQuery {
   };
   for (const key of Object.keys(query) as (keyof ListQuery)[]) if (query[key] === undefined) delete query[key];
   return query;
+}
+
+function licenceParam(url: URL): string | undefined {
+  const value = url.searchParams.get("licence")?.trim();
+  if (!value) return undefined;
+  if (value.length > 100 || !validLicence(value)) throw new HttpError(400, "licence must be an SPDX licence expression such as MIT or Apache-2.0");
+  return value;
 }
 
 function slugOf(input: string): string {
@@ -291,6 +303,10 @@ async function publisherId(env: Env, slug: string | undefined): Promise<string |
 
 async function listing(env: Env, d: CatalogueDb, kind: Kind, q: ListQuery) {
   const pid = await publisherId(env, q.publisher);
+  if (pid === null) throw new HttpError(400, `publisher ${q.publisher} is not a publisher on ourapps`);
+  if (q.category && !(await d.categoryExists(q.category))) throw new HttpError(400, `category ${q.category} is not in the category tree`);
+  if (q.class && !(await d.classByName(q.class))) throw new HttpError(400, `class ${q.class} is not published`);
+  for (const [direction, types] of [["provides", q.provides], ["requires", q.requires]] as const) for (const type of types ?? []) if (!(await d.interfaceExists(type, direction))) throw new HttpError(400, `${direction} ${type}: no component ${direction} that interface`);
   const empty = { rows: [] as SummaryRow[], total: { count: 0, approximate: false }, next: null, previous: null };
   const [page, categories] = await Promise.all([pid === null ? Promise.resolve(empty) : d.list(kind, q, pid ?? null), d.categoryChildren(q.category ?? null)]);
   const trees = await d.deprecationsFor(page.rows.map((r) => subject(kind, r, r.latestVersion!)));
@@ -375,7 +391,7 @@ export async function vulnerabilityReport(env: Env, d: CatalogueDb, kind: Kind, 
     fixedIn: [...new Set(Object.entries(a.fixed).filter(([pkg]) => a.purls.some((p) => p.startsWith(pkg.split("@")[0]!) || pkg.endsWith(`:${p.split("/").pop()!.split("@")[0]}`))).flatMap(([, v]) => v))],
     waived: waived.get(a.id) ?? null,
   }));
-  return { name: f.entry.name, version: f.row.version, checkedAt: f.row.vulnerabilitiesCheckedAt, count: f.row.vulnerabilities, advisories };
+  return { name: f.entry.name, version: f.row.version, checkedAt: f.row.vulnerabilitiesCheckedAt, count: f.row.vulnerabilities, advisories, unqueryable: await d.unqueryablePurls(kind, f.entry.id, f.row.version) };
 }
 
 const SVG_HEADERS = { "Content-Type": "image/svg+xml", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox" };
@@ -457,9 +473,17 @@ async function githubRelease(env: Env, deps: Deps, repo: string, tag: string, to
   return { status: "ok", assets: Array.isArray(body?.assets) ? body!.assets! : [] };
 }
 
-// GET /api/{recipes,components}/:name/:version/bundle. Each link issued counts one download of that version.
-export async function bundle(env: Env, deps: Deps, kind: Kind, name: string, version: string): Promise<Response> {
+// GET /api/{recipes,components}/:name/:version/bundle. An address may ask for BUNDLE_LINKS_PER_MINUTE links a minute;
+// the first link an address gets for a version on a day counts one download. Addresses are kept only as a sha256
+// salted with the day and the link secret.
+export async function bundle(request: Request, env: Env, deps: Deps, kind: Kind, name: string, version: string): Promise<Response> {
   const d = db(env);
+  const now = deps.now();
+  const day = now.toISOString().slice(0, 10);
+  const address = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  const visitor = await sha256Hex(new TextEncoder().encode(`${day}|${address}|${env.LINK_SECRET ?? ""}`));
+  const limit = Number(env.BUNDLE_LINKS_PER_MINUTE ?? DEFAULT_BUNDLE_LINKS_PER_MINUTE);
+  if ((await d.hit(`bundle:${visitor}`, now.toISOString().slice(0, 16))) > limit) throw new HttpError(429, `at most ${limit} download links a minute; try again shortly`);
   const { entry, row } = await found(env, d, kind, name, version);
   const [tree] = await d.deprecationsFor([subject(kind, entry, row.version)]);
   const base = { name: entry.name, version: row.version, digest: row.digest, asset: row.bundleAsset, assetDigest: row.bundleDigest, deprecations: tree!.notices };
@@ -467,7 +491,7 @@ export async function bundle(env: Env, deps: Deps, kind: Kind, name: string, ver
   if (asset === "unavailable") return json({ ...base, status: "bundle-unavailable", url: null, expiresAt: null } satisfies BundleLink);
   const url = await dlUrl(env, deps, { url: asset.url, kind: "bundle", dev: entry.developerId ?? "", name: row.bundleAsset });
   const expiresAt = new Date(Math.floor(deps.now().getTime() / 1000) * 1000 + 60 * 60 * 1000).toISOString();
-  await d.countDownload(kind, entry.id, row.version, deps.now().toISOString().slice(0, 10));
+  await d.countDownload(kind, entry.id, row.version, day, visitor);
   return json({ ...base, status: "available", url, expiresAt } satisfies BundleLink);
 }
 
@@ -506,18 +530,32 @@ export async function uploadImage(request: Request, env: Env, deps: Deps, dev: A
   if (bytes.length === 0 || bytes.length > IMAGE_LIMITS.bytes) throw new HttpError(413, `an image is 1 to ${IMAGE_LIMITS.bytes} bytes`);
   if ((await sha256Hex(bytes)) !== hex) throw new HttpError(422, "the sha256 of the bytes is not the one in the address");
   const facts = imageFacts(bytes);
-  if (!facts || `image/${facts.type}` !== declared) throw new HttpError(422, `the bytes are not a ${declared.slice(6).toUpperCase()} image`);
+  if (!facts || `image/${facts.type}` !== declared) throw new HttpError(422, `the bytes are not a complete ${declared.slice(6).toUpperCase()} image`);
   if (facts.width < 1 || facts.height < 1 || facts.width > IMAGE_LIMITS.side || facts.height > IMAGE_LIMITS.side) throw new HttpError(422, `width and height must be 1 to ${IMAGE_LIMITS.side} pixels`);
   const d = db(env);
   if (await d.image(hex)) return json({ status: "unchanged", digest: `sha256:${hex}`, ...facts, bytes: bytes.length, url: `${env.PUBLIC_ORIGIN}/images/${hex}.${facts.type}` });
+  const limit = Number(env.IMAGE_UPLOADS_PER_DAY ?? DEFAULT_IMAGE_UPLOADS_PER_DAY);
+  if ((await d.imagesUploadedSince(dev.id, new Date(deps.now().getTime() - 86_400_000).toISOString())) >= limit) throw new HttpError(429, `at most ${limit} images can be uploaded a day`);
   await env.CATALOGUE.put(imageKey(hex), bytes, { httpMetadata: { contentType: declared, cacheControl: "public, max-age=31536000, immutable" } });
   await d.addImage({ digest: hex, type: facts.type, width: facts.width, height: facts.height, bytes: bytes.length }, dev.id, deps.now().toISOString());
   return json({ status: "stored", digest: `sha256:${hex}`, ...facts, bytes: bytes.length, url: `${env.PUBLIC_ORIGIN}/images/${hex}.${facts.type}` }, 201);
 }
 
-// Every listed image and thumbnail must be uploaded first, with the width and height the entry states.
-async function checkImages(d: CatalogueDb, images: PackageImage[]): Promise<void> {
+// Images nobody named within a day are removed (hourly, a bounded number at a time).
+export async function removeUnclaimedImages(env: Env, deps: Deps): Promise<number> {
+  const d = db(env);
+  const gone = await d.unclaimedImages(new Date(deps.now().getTime() - 86_400_000).toISOString(), 200);
+  if (gone.length === 0) return 0;
+  await env.CATALOGUE.delete(gone.map(imageKey));
+  await d.removeImages(gone);
+  return gone.length;
+}
+
+// Every listed image and thumbnail must be uploaded first, with the width and height the entry states, and be named
+// by a published entry already or have been uploaded by the same developer.
+async function checkImages(d: CatalogueDb, images: PackageImage[], developerId: string): Promise<void> {
   const known = await d.images(images.flatMap((i) => [hexOf(i.digest), hexOf(i.thumbnail)]));
+  for (const [hex, i] of known) if (!i.claimed && i.uploadedBy !== developerId) known.delete(hex);
   images.forEach((i, n) => {
     const full = known.get(hexOf(i.digest));
     const thumb = known.get(hexOf(i.thumbnail));
@@ -689,7 +727,8 @@ function problems(errors: string[]): HttpError {
   return new HttpError(400, `invalid entry: ${errors.slice(0, 10).join("; ")}${errors.length > 10 ? `; and ${errors.length - 10} more` : ""}`);
 }
 
-const curator = (env: Env, dev: AuthedDeveloper) => (env.CATALOGUE_CURATORS ?? "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean).includes(dev.githubLogin.toLowerCase());
+// Curators are named by numeric GitHub user id, which a renamed account keeps.
+const curator = (env: Env, dev: AuthedDeveloper) => (env.CATALOGUE_CURATORS ?? "").split(",").map((s) => s.trim()).filter(Boolean).includes(String(dev.githubId));
 
 interface Candidate {
   kind: Kind;
@@ -776,11 +815,10 @@ async function catalogueContext(env: Env, d: CatalogueDb, body: unknown): Promis
 
 const purlsOf = (f: Foundations): string[] => [...new Set(f.upstream.map((u) => u.purl))].slice(0, 5000);
 
-function listingOf(kind: Kind, e: ComponentEntry | RecipeEntry, category: string): Listing {
+function listingOf(kind: Kind, e: ComponentEntry | RecipeEntry, category: string, cls: ClassDescriptor | null): Listing {
   const thumbnail = e.images[0]?.thumbnail ?? null;
-  if (kind === "component") {
+  if (kind === "component" && cls) {
     const c = e as ComponentEntry;
-    const cls = c.foundations.classes.find((x) => x.reference.digest === c.foundations.implements[0]!.digest)!.descriptor;
     return { description: c.description, title: "", summary: "", category, className: cls.name, classVersion: cls.version, classTitle: cls.title, platforms: c.foundations.platforms, targets: c.targets, tags: c.tags, licence: c.foundations.licence, thumbnail };
   }
   const r = (e as RecipeEntry).recipe;
@@ -794,15 +832,28 @@ async function publishEntry(request: Request, env: Env, deps: Deps, dev: AuthedD
   const name = kind === "component" ? (e as ComponentEntry).name : (e as RecipeEntry).recipe.name;
   const version = kind === "component" ? (e as ComponentEntry).version : (e as RecipeEntry).recipe.version;
   let category: string;
+  let publishedClass: ClassDescriptor | null = null;
   if (kind === "component") {
+    // The category and class come from the published class, never from the component's own copy.
     const c = e as ComponentEntry;
-    const cls = c.foundations.classes.find((x) => x.reference.digest === c.foundations.implements[0]!.digest)?.descriptor;
-    if (!cls) throw problems(["foundations.implements: the implemented class must be in foundations.classes"]);
-    category = cls.category;
-    if (cls.presentation === "visual" && c.images.length === 0) throw problems([`images: ${cls.name} is a visual class, so at least one image of the component as built is required`]);
+    const ref = c.foundations.implements[0]!;
+    const row = await d.classByName(ref.name);
+    const version = row ? await d.classVersion(row.id as string, ref.version) : null;
+    if (!version) throw problems([`class ${ref.name} ${ref.version} is not published; publish the class first (POST /api/dev/classes)`]);
+    if (version.digest !== ref.digest) throw problems([`class ${ref.name} ${ref.version}: the component's descriptor has digest ${ref.digest}, the published class has ${version.digest}`]);
+    publishedClass = version.descriptor;
+    category = publishedClass.category;
+    if (publishedClass.presentation === "visual" && c.images.length === 0) throw problems([`images: ${publishedClass.name} is a visual class, so at least one image of the component as built is required`]);
   } else category = (e as RecipeEntry).recipe.category;
+  // A security release fixes a line that has a features release.
+  if (e.release.channel === "security") {
+    const entry = await d.entryBySlug(kind, splitName(name)!.slug);
+    const line = versionLine(version);
+    const features = entry ? (await d.versions(kind, entry.id, true)).some((v) => v.channel === "features" && versionLine(v.version) === line) : false;
+    if (!features) throw problems([`release.channel security: ${name} has no published features release on line ${line}`]);
+  }
   if (!(await d.categoryExists(category))) throw problems([`category ${category} is not in the category tree (classes/categories.json, POST /api/dev/categories)`]);
-  await checkImages(d, e.images);
+  await checkImages(d, e.images, dev.id);
   const c: Candidate = { kind, name, version, digest: e.digest, source: e.source, bundle: e.bundle };
   const plan = await prepare(env, d, deps, dev, c);
   const slug = splitName(name)!.slug;
@@ -814,7 +865,7 @@ async function publishEntry(request: Request, env: Env, deps: Deps, dev: AuthedD
   } else {
     await verifyRelease(env, deps, dev, c);
     const key = await putDocument(env, kind, slug, version, e);
-    const listing = listingOf(kind, e, category);
+    const listing = listingOf(kind, e, category, publishedClass);
     const base = { version, digest: e.digest, channel: e.release.channel, fixes: e.release.fixes, images: e.images, waivers: e.vulnerabilityWaivers, quality: e.quality, source: e.source, bundle: e.bundle, document: key, listing, purls: purlsOf(e.foundations) };
     if (kind === "component") {
       const x = e as ComponentEntry;
@@ -824,6 +875,7 @@ async function publishEntry(request: Request, env: Env, deps: Deps, dev: AuthedD
       await d.publish("recipe", plan.entry, plan.fresh, { ...base, recipe: x.recipe, hasDiagram: Boolean(x.page.diagram) }, now);
     }
   }
+  await d.claimImages(e.images.flatMap((i) => [hexOf(i.digest), hexOf(i.thumbnail)]), now);
   await audit(request, env, deps, dev.id, `${kind}-published`, `${name} ${version}`);
   return published(env, kind, "published", name, slug, version);
 }
@@ -866,6 +918,11 @@ export async function publishClass(request: Request, env: Env, deps: Deps, dev: 
   const d = db(env);
   if (!(await d.categoryExists(c.category))) throw problems([`class.category ${c.category} is not in the category tree (classes/categories.json, POST /api/dev/categories)`]);
   const { scope, slug } = splitName(c.name)!;
+  // The scope is the developer's own login, or a GitHub organisation the developer belongs to; within a scope the first
+  // developer to publish a class keeps it.
+  const holder = await d.scopeHolder(scope);
+  if (holder && holder !== dev.id) throw new HttpError(409, `the class scope ${scope} belongs to another developer`);
+  if (!holder && scope !== dev.githubLogin.toLowerCase() && !(await memberOf(env, deps, dev, scope))) throw new HttpError(403, `publish ${scope}/... classes as ${scope} or as a member of the ${scope} organisation on GitHub`);
   const existing = await d.classByName(c.name);
   const bySlug = existing ?? (await d.classBySlug(slug));
   if (bySlug && bySlug.name !== c.name) throw new HttpError(409, `the name ${slug} is already published as ${bySlug.name}`);
@@ -883,6 +940,21 @@ export async function publishClass(request: Request, env: Env, deps: Deps, dev: 
   await d.publishClass(existing, { id: randomId(8), name: c.name, scope, slug, developerId: dev.id }, c, result.entry.digest, deps.now().toISOString());
   await audit(request, env, deps, dev.id, "class-published", `${c.name} ${c.version}`);
   return json(url, 201);
+}
+
+// Whether the developer's saved GitHub token shows an active membership of the organisation.
+async function memberOf(env: Env, deps: Deps, dev: AuthedDeveloper, org: string): Promise<boolean> {
+  const token = (await loadSecrets(env, dev.id, ["githubToken"])).githubToken;
+  if (!token) throw new HttpError(409, "save a GitHub token in Settings first: it shows which organisations you belong to");
+  let res: Response;
+  try {
+    res = await fetchUpstream(env, deps, `${env.GITHUB_API_BASE}/user/memberships/orgs/${encodeURIComponent(org)}`, token, "application/vnd.github+json");
+  } catch {
+    throw new HttpError(502, "GitHub could not be reached");
+  }
+  if (res.status === 404 || res.status === 403) return false;
+  if (!res.ok) throw new HttpError(502, `GitHub answered ${res.status} for your membership of ${org}`);
+  return ((await res.json().catch(() => ({}))) as { state?: string }).state === "active";
 }
 
 // POST /api/dev/categories with classes/categories.json. A curator adds categories; existing ones keep their place and
