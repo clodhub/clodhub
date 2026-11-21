@@ -1009,7 +1009,7 @@ export async function publishClass(request: Request, env: Env, deps: Deps, dev: 
   // developer to publish a class keeps it.
   const holder = await d.scopeHolder(scope);
   if (holder && holder !== dev.id) throw new HttpError(409, `the class scope ${scope} belongs to another developer`);
-  if (!holder && scope !== dev.githubLogin.toLowerCase() && !(await memberOf(env, deps, dev, scope))) throw new HttpError(403, `publish ${scope}/... classes as ${scope} or as a member of the ${scope} organisation on GitHub`);
+  if (!holder && scope !== dev.githubLogin.toLowerCase() && !(await memberOf(env, deps, dev, scope))) throw new HttpError(403, `publish ${scope}/... classes as ${scope} or as a member of the ${scope} organisation on GitHub; a member of an organisation that restricts third-party apps grants ourapps access to it (GitHub Settings, Applications, Authorized OAuth Apps, ourapps, Grant) and signs in to ourapps.app again`);
   const existing = await d.classByName(c.name);
   const bySlug = existing ?? (await d.classBySlug(slug));
   if (bySlug && bySlug.name !== c.name) throw new HttpError(409, `the name ${slug} is already published as ${bySlug.name}`);

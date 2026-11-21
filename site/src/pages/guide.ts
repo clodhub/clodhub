@@ -294,7 +294,7 @@ POST   /api/dev/recipes/&lt;name&gt;/undeprecate</code></pre>
       body: html`
         <ol class="steps">
           <li>Open <a href="${origin}/dev">${origin}/dev</a> and tap <b>Sign in with GitHub</b>. Any GitHub account works, including a free one.</li>
-          <li>GitHub asks you to allow ourapps to read your public profile and your organisation memberships (scopes <code>read:user</code> and <code>read:org</code>). Memberships decide who may publish classes in an organisation's scope. Repository access comes later, from a token you create yourself.</li>
+          <li>GitHub asks you to allow ourapps to read your public profile and your organisation memberships (scopes <code>read:user</code> and <code>read:org</code>). Memberships decide who may publish classes in an organisation's scope. An organisation that restricts third-party apps is read only after you press Grant next to it on that page (or later under Settings, Applications, Authorized OAuth Apps, ourapps). Repository access comes later, from a token you create yourself.</li>
           <li>You land on the console. Your public page address is set from your GitHub login, for example <a href="/${slug}">${origin}/${slug}</a>. Change it and your display name under <a href="/dev/settings">Settings</a>; the display name is what your people see on every install page.</li>
         </ol>
         ${callout("info", html`<p>Sign-in lasts 30 days on a browser. Sign out from the sidebar. The console is a normal website; nothing to install.</p>`)}
