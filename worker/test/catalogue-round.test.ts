@@ -390,7 +390,9 @@ describe("review fixes", () => {
     member = false;
     const refused = await post("/api/dev/classes", deckClass);
     expect(refused.status).toBe(403);
-    expect(((await refused.json()) as { error: string }).error).toContain("member of the ourapps-ae organisation");
+    const error = ((await refused.json()) as { error: string }).error;
+    expect(error).toContain("member of the ourapps-ae organisation");
+    expect(error).toContain("Authorized OAuth Apps, ourapps, Grant");
     member = true;
     expect((await post("/api/dev/classes", deckClass)).status).toBe(201);
     const sue = await signIn(env, deps, { id: 9, login: "sue", name: "Sue" });
