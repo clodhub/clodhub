@@ -1399,8 +1399,9 @@ export async function agents(root: HTMLElement): Promise<void> {
         <div class="card">
           <h3>Where an agent finds them</h3>
           <table class="table small mt-s">
-            <tr><td><code>GET /api/recipes/search?q=</code></td><td>search recipes (no key)</td></tr>
-            <tr><td><code>GET /api/components/search?q=</code></td><td>search components; filter by <code>provides</code> and <code>requires</code></td></tr>
+            <tr><td><code>GET /api/recipes?q=</code></td><td>search and filter recipes (no key): category, platform, quality, certified, channel, no known vulnerabilities</td></tr>
+            <tr><td><code>GET /api/components?q=</code></td><td>the same for components, plus <code>class</code>, <code>provides</code> and <code>requires</code></td></tr>
+            <tr><td><code>/classes/:name</code></td><td>a class and the components that implement it, side by side</td></tr>
             <tr><td><code>/recipes/:name.txt</code>, <code>/components/:name.txt</code></td><td>the entry as plain text: build steps, questions, slots, components, settings</td></tr>
             <tr><td><code>/recipes/:name/details.txt</code>, <code>/components/:name/details.txt</code></td><td>the rest of an entry: slot classes, suitability, connections, package foundations, upstream sources and file lists</td></tr>
             <tr><td><code>GET /api/recipes/:name/:version/details</code></td><td>the full package foundations as JSON; the version itself gives counts</td></tr>

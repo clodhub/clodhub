@@ -8,6 +8,9 @@ import { tickTestflight } from "./testflight.js";
 import * as dev from "./routes/dev.js";
 import { devPage, linkLatest, linkPage, linkQr, serveArtefact } from "./routes/public.js";
 import * as catalogue from "./routes/catalogue.js";
+import { CatalogueDb } from "./catalogue-db.js";
+import { checkVulnerabilities } from "./vulnerabilities.js";
+import { removeUnclaimedImages } from "./routes/catalogue.js";
 import { serveWebApp, webAppLinkId } from "./webapp.js";
 
 // Sent on every response so browsers and scanners see a locked-down site.
@@ -58,6 +61,7 @@ async function route(request: Request, env: Env, deps: Deps): Promise<Response> 
   if (parts[0] === "dl" && parts.length === 2 && m === "GET") return serveArtefact(env, deps, parts[1]);
   if (parts[0] !== "api") {
     if (m === "GET" && parts.length === 1 && parts[0] === "sitemap.xml") return catalogue.sitemap(env);
+    if (m === "GET" && parts.length === 2 && parts[0] === "images") return catalogue.image(env, parts[1]!);
     const variant = m === "GET" ? catalogue.pageVariant(env, parts, url, request) : null;
     if (variant) return variant;
     const verification = env.GOOGLE_SITE_VERIFICATION;
@@ -91,18 +95,25 @@ async function route(request: Request, env: Env, deps: Deps): Promise<Response> 
   }
 
   if ((p[0] === "recipes" || p[0] === "components") && m === "GET") {
-    const recipes = p[0] === "recipes";
-    if (p.length === 1) return recipes ? catalogue.listRecipes(env, url) : catalogue.listComponents(env, url);
-    if (p.length === 2 && p[1] === "search") return recipes ? catalogue.searchRecipes(env, url) : catalogue.searchComponents(env, url);
-    if (p.length === 2) return recipes ? catalogue.recipeDetail(env, p[1], "latest") : catalogue.componentDetail(env, p[1], "latest");
-    if (p.length === 3) return recipes ? catalogue.recipeDetail(env, p[1], p[2]) : catalogue.componentDetail(env, p[1], p[2]);
-    if (p.length === 4 && p[3] === "bundle") return recipes ? catalogue.recipeBundle(env, deps, p[1], p[2]) : catalogue.componentBundle(env, deps, p[1], p[2]);
-    if (p.length === 4 && p[3] === "diagram.svg" && recipes) return catalogue.recipeDiagram(env, p[1], p[2]);
-    if (p.length === 4 && p[3] === "components.svg" && recipes) return catalogue.recipeComponentsDiagram(env, p[1], p[2]);
-    if (p.length === 4 && p[3] === "connections.svg" && !recipes) return catalogue.componentConnectionsDiagram(env, p[1], p[2]);
-    if (p.length === 4 && p[3] === "deprecations") return catalogue.deprecations(env, recipes ? "recipe" : "component", p[1], p[2]);
-    if (p.length === 4 && p[3] === "details") return catalogue.versionDetails(env, recipes ? "recipe" : "component", p[1], p[2]);
+    const kind = p[0] === "recipes" ? "recipe" : "component";
+    if (p.length === 1) return catalogue.list(env, kind, url);
+    if (p.length === 2) return catalogue.versionView(env, kind, p[1]!, "latest");
+    if (kind === "recipe" && p[2] === "reports" && (p.length === 3 || p.length === 4)) return catalogue.buildReports(env, p[1]!, p[3] ?? null);
+    if (p.length === 3) return catalogue.versionView(env, kind, p[1]!, p[2]!);
+    if (p.length === 4 && p[3] === "bundle") return catalogue.bundle(request, env, deps, kind, p[1]!, p[2]!);
+    if (p.length === 4 && p[3] === "diagram.svg" && kind === "recipe") return catalogue.recipeDiagram(env, p[1]!, p[2]!);
+    if (p.length === 4 && p[3] === "components.svg" && kind === "recipe") return catalogue.recipeComponentsDiagram(env, p[1]!, p[2]!);
+    if (p.length === 4 && p[3] === "connections.svg" && kind === "component") return catalogue.componentConnectionsDiagram(env, p[1]!, p[2]!);
+    if (p.length === 4 && p[3] === "deprecations") return catalogue.deprecations(env, kind, p[1]!, p[2]!);
+    if (p.length === 4 && p[3] === "details") return catalogue.versionDetails(env, kind, p[1]!, p[2]!);
+    if (p.length === 4 && p[3] === "vulnerabilities") return catalogue.vulnerabilities(env, kind, p[1]!, p[2]!);
   }
+  if (p[0] === "classes" && m === "GET") {
+    if (p.length === 1) return catalogue.listClasses(env, url);
+    if (p.length === 2) return catalogue.classDetail(env, p[1]!, "latest");
+    if (p.length === 3) return catalogue.classDetail(env, p[1]!, p[2]!);
+  }
+  if (p[0] === "categories" && p.length === 1 && m === "GET") return catalogue.categories(env);
 
   if (p[0] === "build" && p.length === 3 && p[2] === "targets" && m === "GET") return buildTargets(request, env, p[1]);
   if (p[0] === "build" && p.length === 5 && p[3] === "testflight" && p[4] === "distribution" && m === "GET") return buildDistributionStatus(request, env, deps, p[1], p[2]);
@@ -145,9 +156,14 @@ async function route(request: Request, env: Env, deps: Deps): Promise<Response> 
       const recipes = p[1] === "recipes";
       if (p.length === 2 && m === "GET") return catalogue.listMine(env, me, recipes ? "recipe" : "component");
       if (p.length === 2 && m === "POST") return recipes ? catalogue.publishRecipe(request, env, deps, me) : catalogue.publishComponent(request, env, deps, me);
+      if (p.length === 5 && m === "POST" && p[4] === "quality") return catalogue.setQuality(request, env, deps, me, recipes ? "recipe" : "component", p[2]!, p[3]!);
+      if (recipes && p.length === 4 && m === "POST" && p[3] === "reports") return catalogue.publishBuildReport(request, env, deps, me, p[2]!);
       if (p.length === 4 && m === "POST" && (p[3] === "deprecate" || p[3] === "undeprecate")) return catalogue.setDeprecation(request, env, deps, me, recipes ? "recipe" : "component", p[2], p[3] === "deprecate");
       if ((p.length === 3 || p.length === 4) && m === "DELETE") return catalogue.unlist(request, env, deps, me, recipes ? "recipe" : "component", p[2], p[3] ?? null);
     }
+    if (p[1] === "classes" && p.length === 2 && m === "POST") return catalogue.publishClass(request, env, deps, me);
+    if (p[1] === "categories" && p.length === 2 && m === "POST") return catalogue.publishCategories(request, env, deps, me);
+    if (p[1] === "images" && p.length === 3 && m === "PUT") return catalogue.uploadImage(request, env, deps, me, p[2]!);
     if (p[1] === "links" && p.length === 4 && p[3] === "revoke" && m === "POST") return dev.revokeLink(env, deps, me, p[2], false);
     if (p[1] === "links" && p.length === 3 && m === "DELETE") return dev.revokeLink(env, deps, me, p[2], true);
     if (p[1] === "links" && p.length === 3 && m === "PUT") return dev.renameLink(request, env, me, p[2]);
@@ -164,6 +180,30 @@ async function route(request: Request, env: Env, deps: Deps): Promise<Response> 
 
 export default {
   fetch: (request: Request, env: Env) => handle(request, env),
-  // Every ten minutes: TestFlight builds into the friends' group and fresh builds before expiry.
-  scheduled: (_event: ScheduledController, env: Env, ctx: ExecutionContext) => ctx.waitUntil(tickTestflight(env, defaultDeps)),
+  scheduled: (event: ScheduledController, env: Env, ctx: ExecutionContext) => ctx.waitUntil(scheduled(event.cron, env, defaultDeps)),
 } satisfies ExportedHandler<Env>;
+
+// The cron triggers in wrangler.jsonc.
+export async function scheduled(cron: string, env: Env, deps: Deps): Promise<void> {
+  // Hourly: the vulnerability check, the next chunks of the day's download refresh, the images nobody named within a
+  // day, the download address hashes of past days, and old listing totals. Each runs whatever the others do; a failure is logged.
+  if (cron === "7 * * * *") {
+    const tasks: [string, () => Promise<unknown>][] = [
+      ["vulnerability check", () => checkVulnerabilities(env, deps)],
+      ["download refresh", () => new CatalogueDb(env.DB).refreshDownloads(deps.now().toISOString().slice(0, 10))],
+      ["image clean-up", () => removeUnclaimedImages(env, deps)],
+      ["download address clean-up", () => new CatalogueDb(env.DB).forgetVisitors(deps.now())],
+      ["listing totals clean-up", () => new CatalogueDb(env.DB).pruneListingTotals()],
+    ];
+    for (const [name, task] of tasks) {
+      try {
+        await task();
+      } catch (e) {
+        console.error(`hourly ${name} failed: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+    return;
+  }
+  // Every ten minutes: TestFlight builds into the testers' group and fresh builds before expiry.
+  return tickTestflight(env, deps);
+}

@@ -23,7 +23,12 @@ export type AuditEvent =
   | "recipe-deprecated"
   | "recipe-undeprecated"
   | "component-deprecated"
-  | "component-undeprecated";
+  | "component-undeprecated"
+  | "recipe-quality"
+  | "component-quality"
+  | "class-published"
+  | "recipe-report-published"
+  | "categories-published";
 
 export async function audit(request: Request | null, env: Env, deps: Deps, developerId: string, event: AuditEvent, detail = ""): Promise<void> {
   const cf = request ? (request as Request & { cf?: { country?: string } }).cf : undefined;

@@ -262,8 +262,11 @@ function body(): Raw {
           </table>
           <table class="table">
             <tr><th>Route</th><th>Who</th><th>What</th></tr>
-            <tr><td><code>GET /api/recipes</code>, <code>/api/recipes/search?q=</code>, <code>/api/recipes/:name/:version</code></td><td>anyone</td><td>List with <code>category</code>, <code>target</code>, <code>tag</code>, <code>deprecated</code>, <code>limit</code>, <code>offset</code>; search; one version (<code>latest</code> allowed)</td></tr>
-            <tr><td><code>GET /api/components</code>, <code>/api/components/search?q=</code>, <code>/api/components/:name/:version</code></td><td>anyone</td><td>The same, plus <code>provides</code> and <code>requires</code> to filter by interface</td></tr>
+            <tr><td><code>GET /api/recipes</code>, <code>/api/recipes/:name/:version</code></td><td>anyone</td><td>Search (<code>q</code>) and list with <code>category</code>, <code>platform</code>, <code>licence</code>, <code>quality</code>, <code>certified</code>, <code>channel</code>, <code>secure</code>, <code>publisher</code>, <code>deprecated</code>, <code>sort</code>, <code>cursor</code>, <code>limit</code>; one version (<code>latest</code> allowed)</td></tr>
+            <tr><td><code>GET /api/components</code>, <code>/api/components/:name/:version</code></td><td>anyone</td><td>The same, plus <code>class</code>, <code>provides</code> and <code>requires</code></td></tr>
+            <tr><td><code>GET /api/classes</code>, <code>/api/classes/:name/:version</code>, <code>/api/categories</code></td><td>anyone</td><td>Classes by category with their implementations; the category tree with counts</td></tr>
+            <tr><td><code>GET /api/{recipes,components}/:name/:version/vulnerabilities</code></td><td>anyone</td><td>The known advisories from OSV affecting that version</td></tr>
+            <tr><td><code>GET /images/:sha256.:ext</code></td><td>anyone</td><td>Package images and thumbnails, cached for a year</td></tr>
             <tr><td><code>GET /api/{recipes,components}/:name/:version/bundle</code></td><td>anyone</td><td>A signed link to the package, valid one hour</td></tr>
             <tr><td><code>GET /api/{recipes,components}/:name/:version/deprecations</code></td><td>anyone</td><td>The deprecation warnings for that version and everything it uses</td></tr>
             <tr><td><code>GET /api/{recipes,components}/:name/:version/details</code></td><td>anyone</td><td>The package foundations in full: upstream sources, exact dependencies, styles, classes, files</td></tr>

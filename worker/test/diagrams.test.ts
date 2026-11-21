@@ -3,6 +3,7 @@ import { EXAMPLE_BUNDLE_DIGEST, EXAMPLE_DIGEST, descriptorDigest, exampleFoundat
 import { OURPOKER_CATALOGUE, OURPOKER_RECIPE } from "../../shared/src/fixtures/ourpoker.js";
 import { CatalogueDb, type EntryRow } from "../src/catalogue-db.js";
 import type { Env } from "../src/env.js";
+import { putDocument } from "../src/catalogue-store.js";
 import { SECURITY_HEADERS, handle } from "../src/index.js";
 import { api, clearDb, signIn, testDeps, testEnv } from "./helpers.js";
 
@@ -14,29 +15,37 @@ const get = (path: string) => handle(api(null, "GET", path), env, deps);
 
 function entry(name: string, developerId: string): EntryRow {
   const [scope, slug] = name.split("/") as [string, string];
-  return { id: `id-${slug}`, name, scope, slug, developerId, repo: `${scope}/${slug}`, latestVersion: null, flag: null, createdAt: now, updatedAt: now };
+  return { seq: 0, id: `id-${slug}`, name, scope, slug, developerId, repo: `${scope}/${slug}`, latestVersion: null, flag: null, createdAt: now, updatedAt: now };
 }
 
-// The OurPoker recipe and its 39 components, stored as publishing stores them.
+// The OurPoker recipe and its 39 components, stored as publishing stores them: each component implements its slot's
+// class, whose category is the component's group.
 async function seed(): Promise<void> {
   const developerId = (await env.DB.prepare("SELECT id FROM developers").first<{ id: string }>())!.id;
   const d = new CatalogueDb(env.DB);
-  const classes = OURPOKER_RECIPE.components.map(c => {
+  const groups = [...new Set(OURPOKER_CATALOGUE.map((c) => c.category ?? "other"))];
+  await d.addCategories(groups.map((id) => ({ id, title: id, parent: null })));
+  const classes = OURPOKER_RECIPE.components.map((c, i) => {
     const descriptor = exampleFoundations().classes[0].descriptor;
     descriptor.name = `ourapps-ae/${c.id}-class`;
+    descriptor.category = OURPOKER_CATALOGUE[i]!.category ?? "other";
     descriptor.provides = c.class.provides.map(p => ({ type: p.type, version: p.version, path: descriptor.inventory[0].path, modules: { web: ["index.mjs"] } }));
     descriptor.requires = c.class.requires.map(p => ({ type: p.type, version: p.version }));
     return { reference: { name: descriptor.name, version: descriptor.version, digest: descriptorDigest(descriptor) }, descriptor };
   });
-  for (const c of OURPOKER_CATALOGUE) {
+  for (const [i, c] of OURPOKER_CATALOGUE.entries()) {
+    const cls = classes[i]!;
     const e: ComponentEntry = {
-      foundations: { ...exampleFoundations(), classes, implements: classes.map(c => c.reference) },
-      format: 1,
+      foundations: { ...exampleFoundations(), classes: [cls], implements: [cls.reference] },
+      format: 2,
+      release: { channel: "features", fixes: [] },
+      images: [],
+      vulnerabilityWaivers: [],
+      quality: null,
       name: c.name,
       version: c.version,
       digest: EXAMPLE_DIGEST,
       description: c.name,
-      category: c.category,
       tags: [],
       targets: c.targets,
       guardians: [],
@@ -51,7 +60,10 @@ async function seed(): Promise<void> {
       source: { repository: c.name, tag: `v${c.version}` },
       bundle: { asset: "bundle.tar", digest: EXAMPLE_BUNDLE_DIGEST },
     };
-    await d.publishComponent(null, entry(c.name, developerId), e, now);
+    const slug = c.name.split("/")[1]!;
+    const document = await putDocument(env, "component", slug, c.version, e);
+    const listing = { description: e.description, title: "", summary: "", category: cls.descriptor.category, className: cls.descriptor.name, classVersion: cls.descriptor.version, classTitle: cls.descriptor.title, platforms: e.foundations.platforms, targets: e.targets, tags: [], licence: "Apache-2.0", thumbnail: null };
+    await d.publish("component", null, entry(c.name, developerId), { version: c.version, digest: e.digest, channel: "features", fixes: [], images: [], waivers: [], quality: null, source: e.source, bundle: e.bundle, document, listing, purls: [], description: e.description, guardians: [], suitability: e.suitability, classDigest: cls.reference.digest, provides: e.provides, requires: e.requires, dependencies: [] }, now);
   }
   const base = exampleRecipeEntry();
   const r: RecipeEntry = {
@@ -60,7 +72,9 @@ async function seed(): Promise<void> {
     recipe: { ...base.recipe, name: OURPOKER_RECIPE.name, version: OURPOKER_RECIPE.version, title: OURPOKER_RECIPE.title, components: OURPOKER_RECIPE.components.map((c, i) => ({ ...c, class: classes[i].reference, configuration: {} })), connections: OURPOKER_RECIPE.connections, jobs: [], scale: null, questions: [] },
     source: { repository: "ourapps-ae/ourpoker", tag: `v${OURPOKER_RECIPE.version}` },
   };
-  await d.publishRecipe(null, entry(OURPOKER_RECIPE.name, developerId), r, now);
+  const document = await putDocument(env, "recipe", "ourpoker", OURPOKER_RECIPE.version, r);
+  const listing = { description: "", title: r.recipe.title, summary: r.recipe.summary, category: groups[0]!, className: null, classVersion: null, classTitle: null, platforms: r.foundations.platforms, targets: r.recipe.targets, tags: [], licence: "Apache-2.0", thumbnail: null };
+  await d.publish("recipe", null, entry(OURPOKER_RECIPE.name, developerId), { version: OURPOKER_RECIPE.version, digest: r.digest, channel: "features", fixes: [], images: [], waivers: [], quality: null, source: r.source, bundle: r.bundle, document, listing, purls: [], recipe: r.recipe, hasDiagram: true }, now);
 }
 
 beforeEach(async () => {
@@ -116,11 +130,11 @@ describe("component connections diagram", () => {
     expect(svg).toContain("optional: may stay unconnected");
   });
 
-  it("lists four users of a popular interface and counts the rest", async () => {
+  it("lists the four most downloaded users of a popular interface and counts the rest", async () => {
     const svg = await (await get("/api/components/theme/0.3.0/connections.svg")).text();
-    const users = OURPOKER_CATALOGUE.filter((c) => c.requires.some((p) => p.type === "ae/theme")).map((c) => c.name).sort();
+    const users = OURPOKER_CATALOGUE.filter((c) => c.requires.some((p) => p.type === "ae/theme")).map((c) => c.name);
     expect(users.length).toBeGreaterThan(4);
-    for (const name of users.slice(0, 4)) expect(svg, name).toContain(`${name}<`);
+    expect(users.filter((name) => svg.includes(`${name}<`))).toHaveLength(4);
     expect(svg).toContain(`>${users.length - 4} more</text>`);
   });
 

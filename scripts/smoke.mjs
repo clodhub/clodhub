@@ -155,7 +155,7 @@ async function textPageChecks() {
     const listed = await call("GET", `/api/${kind}?limit=100`, { auth: "", pattern: `/api/${kind}` });
     const entries = listed.status === 200 ? listed.json[kind] : [];
     expectStatus(`GET /api/${kind}`, listed, 200);
-    expectStatus(`GET /api/${kind}/search`, await call("GET", `/api/${kind}/search?q=a`, { auth: "", pattern: `/api/${kind}/search` }), 200);
+    expectStatus(`GET /api/${kind}?q=`, await call("GET", `/api/${kind}?q=a`, { auth: "", pattern: `/api/${kind}` }), 200);
     let largest = ["none", 0];
     let largestApi = ["none", 0];
     for (const { slug, version } of entries) {
@@ -172,6 +172,7 @@ async function textPageChecks() {
       if (viewSize > largestApi[1]) largestApi = [slug, viewSize];
       const counts = view.json?.foundations?.counts;
       record(view.status === 200 && viewSize < apiLimit && counts && !("upstream" in view.json.foundations), `GET /api/${kind}/${slug}/${version} is under ${apiLimit} bytes and gives counts`, `${view.status}, ${viewSize} bytes`);
+      record(Array.isArray(view.json?.versions) && view.json.versions.every((v) => typeof v.channel === "string" && Array.isArray(v.fixes)), `GET /api/${kind}/${slug}/${version} gives each version's channel and fixes`);
       const full = await call("GET", `/api/${kind}/${slug}/${version}/details`, { auth: "", pattern: `/api/${kind}/:name/:version/details` });
       const f = full.json?.foundations;
       record(full.status === 200 && f && counts && f.upstream.length === counts.upstream && f.compatibility.dependencies.length === counts.dependencies && f.files.length === counts.files, `GET /api/${kind}/${slug}/${version}/details matches the counts`, String(full.status));
@@ -180,10 +181,28 @@ async function textPageChecks() {
     if (first) {
       expectStatus(`GET /api/${kind}/:name/:version/bundle`, await call("GET", `/api/${kind}/${first.slug}/${first.version}/bundle`, { auth: "", pattern: `/api/${kind}/:name/:version/bundle` }), 200);
       expectStatus(`GET /api/${kind}/:name/:version/deprecations`, await call("GET", `/api/${kind}/${first.slug}/${first.version}/deprecations`, { auth: "", pattern: `/api/${kind}/:name/:version/deprecations` }), 200);
+      const vulns = await call("GET", `/api/${kind}/${first.slug}/${first.version}/vulnerabilities`, { auth: "", pattern: `/api/${kind}/:name/:version/vulnerabilities` });
+      record(vulns.status === 200 && Array.isArray(vulns.json?.advisories), `GET /api/${kind}/:name/:version/vulnerabilities`, String(vulns.status));
+      const withImage = entries.find((e) => e.thumbnail);
+      if (withImage) {
+        const img = await fetch(withImage.thumbnail);
+        record(img.status === 200 && /immutable/.test(img.headers.get("Cache-Control") ?? ""), `GET ${new URL(withImage.thumbnail).pathname} is served with immutable caching`, String(img.status));
+      }
       if (kind === "recipes") expectStatus("GET /api/recipes/:name/:version/diagram.svg", await call("GET", `/api/recipes/${first.slug}/${first.version}/diagram.svg`, { auth: "", pattern: "/api/recipes/:name/:version/diagram.svg" }), [200, 404]);
     }
+    // A listing page reads about one page of rows, whatever the catalogue's size.
+    const page = await fetch(`${base}/api/${kind}?sort=downloads&limit=30`);
+    const rows = Number(page.headers.get("X-D1-Rows-Read"));
+    record(page.ok && rows < 2000, `/api/${kind} reads at most 2,000 rows for a page`, `${rows} rows read`);
+    const body = await page.json();
+    if (body.next) record((await fetch(`${base}/api/${kind}?sort=downloads&limit=30&cursor=${body.next}`)).ok, `/api/${kind} turns the page with its cursor`);
     console.log(`     largest /${kind} text page: ${largest[0]}, ${largest[1]} bytes; largest version response: ${largestApi[0]}, ${largestApi[1]} bytes`);
   }
+  const classes = await call("GET", "/api/classes", { auth: "", pattern: "/api/classes" });
+  expectStatus("GET /api/classes", classes, 200);
+  const firstClass = classes.json?.classes?.[0];
+  if (firstClass) expectStatus("GET /api/classes/:name/:version", await call("GET", `/api/classes/${firstClass.slug}/latest`, { auth: "", pattern: "/api/classes/:name/:version" }), 200);
+  expectStatus("GET /api/categories", await call("GET", "/api/categories", { auth: "", pattern: "/api/categories" }), 200);
   const session = await call("GET", "/api/auth/session", { auth: "" });
   record(session.status === 200 && session.json === null, "GET /api/auth/session answers null for a visitor", `${session.status} ${session.text.slice(0, 80)}`);
 }

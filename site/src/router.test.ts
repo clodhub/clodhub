@@ -31,6 +31,9 @@ describe("matchRoute", () => {
     expect(matchRoute("/components/card-deck/details")).toEqual({ page: "details", kind: "components", slug: "card-deck" });
     expect(matchRoute("/recipes/poker-night/details")).toEqual({ page: "details", kind: "recipes", slug: "poker-night" });
     expect(matchRoute("/recipes/poker-night/other")).toEqual({ page: "not-found" });
+    expect(matchRoute("/classes")).toEqual({ page: "classes" });
+    expect(matchRoute("/classes/card-deck-class")).toEqual({ page: "class", slug: "card-deck-class" });
+    expect(matchRoute("/categories")).toEqual({ page: "categories" });
   });
 
   it("does not take /recipes or /components for developer pages", () => {

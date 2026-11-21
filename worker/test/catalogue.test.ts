@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { SIGNATURES_NOTE, summariseFoundations, type Foundations, type PackageDetails, EXAMPLE_BUNDLE_DIGEST, EXAMPLE_INTERFACE_DIGEST, exampleComponentEntries, exampleComponentEntry, exampleRecipeEntry, type BundleLink, type ComponentList, type ComponentSearch, type ComponentVersionView, type DeprecationReport, type RecipeList, type RecipeSearch, type RecipeVersionView } from "@my/store-shared";
+import { descriptorDigest, EXAMPLE_IMAGE, EXAMPLE_IMAGE_BYTES, exampleCategories, exampleClassEntries, pngHeader, webpHeader, SIGNATURES_NOTE, summariseFoundations, type Foundations, type PackageDetails, EXAMPLE_BUNDLE_DIGEST, EXAMPLE_INTERFACE_DIGEST, exampleComponentEntries, exampleComponentEntry, exampleRecipeEntry, type BundleLink, type BuildReportList, type BuildReportView, type ComponentList, type ComponentVersionView, type DeprecationReport, type RecipeList, type RecipeVersionView } from "@my/store-shared";
 import { Db } from "../src/db.js";
+import report060 from "./fixtures/ourpoker-0.6.0-2026-11-16.json";
+import report080 from "./fixtures/ourpoker-0.8.0-2026-11-20.json";
 import { ftsQuery } from "../src/catalogue-db.js";
 import { componentDetailsText, componentText, recipeDetailsText, recipeText } from "../src/catalogue-text.js";
 import type { Env } from "../src/env.js";
@@ -35,6 +37,7 @@ function githubFor(extra: Record<string, (call: Call) => Response | Promise<Resp
     ...release("acme/server-host", "v0.1.0", "server-host-0.1.0.tar", 51),
     ...release("acme/apple-host", "v0.1.0", "apple-host-0.1.0.tar", 52),
     ...release("acme/guided-tour", "v0.1.0", "guided-tour-0.1.0.tar", 53),
+    [`GET ${gh("/user/memberships/orgs/ourapps-ae")}`]: () => jsonRes({ state: "active" }),
     ...extra,
   });
   calls = stub.calls;
@@ -46,12 +49,25 @@ async function saveToken(c = cookie) {
   expect(res.status).toBe(200);
 }
 
+// Uploads image bytes the way the publish tool does.
+async function upload(bytes: Uint8Array, type = "image/png", c: string | null = cookie, address?: string) {
+  const hex = address ?? [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  const headers: Record<string, string> = { "Content-Type": type, Origin: BASE };
+  if (c) headers.Cookie = c;
+  return handle(new Request(`${BASE}/api/dev/images/${hex}`, { method: "PUT", headers, body: bytes }), env, deps);
+}
+
 beforeEach(async () => {
-  env = testEnv();
+  env = testEnv({ CATALOGUE_CURATORS: "42" });
   await clearDb(env);
   githubFor();
   cookie = await signIn(env, deps);
   await saveToken();
+  expect((await post("/api/dev/categories", exampleCategories())).status).toBe(200);
+  expect((await upload(EXAMPLE_IMAGE_BYTES.image)).status).toBe(201);
+  expect((await upload(EXAMPLE_IMAGE_BYTES.thumbnail, "image/webp")).status).toBe(201);
+  for (const c of exampleClassEntries()) expect((await post("/api/dev/classes", c)).status).toBe(201);
+  calls.length = 0;
 });
 
 const get = (path: string) => handle(api(null, "GET", path), env, deps);
@@ -86,7 +102,7 @@ const digest = (c: string) => `sha256:${c.repeat(64)}`;
 
 async function publishCard(patch?: (e: Mutable) => void) {
   const res = await post("/api/dev/components", component(patch));
-  expect(res.status).toBe(201);
+  expect(res.status, await res.clone().text()).toBe(201);
   return res;
 }
 
@@ -95,14 +111,14 @@ async function publishParts() {
   const held = new Set((await env.DB.prepare("SELECT name FROM components").all<{ name: string }>()).results.map((r) => r.name));
   for (const part of exampleComponentEntries().filter((e) => !held.has(e.name))) {
     const res = await post("/api/dev/components", part);
-    expect(res.status, part.name).toBe(201);
+    expect(res.status, `${part.name} ${await res.clone().text()}`).toBe(201);
   }
 }
 
 async function publishRecipe(patch?: (e: Mutable) => void) {
   await publishParts();
   const res = await post("/api/dev/recipes", recipe(patch));
-  expect(res.status).toBe(201);
+  expect(res.status, await res.clone().text()).toBe(201);
   return res;
 }
 
@@ -237,6 +253,7 @@ describe("publishing a component", () => {
 
   it("limits the names one developer can hold", async () => {
     await publishParts();
+    env.CATALOGUE_CURATORS = "";
     const now = new Date().toISOString();
     const dev = (await env.DB.prepare("SELECT id FROM developers").first<{ id: string }>())!.id;
     await env.DB.batch(Array.from({ length: 50 }, (_, i) => env.DB.prepare("INSERT INTO recipes (id, name, scope, slug, developer_id, repo, created_at, updated_at) VALUES (?, ?, 'acme', ?, ?, 'acme/x', ?, ?)").bind(`r${i}`, `acme/recipe-${i}`, `recipe-${i}`, dev, now, now)));
@@ -275,15 +292,6 @@ describe("publishing a recipe", () => {
     expect(await bare.text()).toBe(text);
   });
 
-  it("keeps absent foundation projections unavailable without manufacturing facts", async () => {
-    await publishCard();
-    await env.DB.prepare("UPDATE component_versions SET foundations = NULL").run();
-    expect((await get("/api/components/card-deck")).status).toBe(404);
-    const list = (await (await get("/api/components")).json()) as ComponentList;
-    expect(list.components).toEqual([]); expect(list.total).toBe(0); expect(list.categories).toEqual([]);
-    expect((await env.DB.prepare("SELECT digest FROM component_versions").first<{digest: string}>())!.digest).toBe(exampleComponentEntry().digest);
-  });
-
   it.each(["platforms", "classes", "licence", "upstream", "compatibility", "maintenance"])("requires foundation field %s", async field => {
     const response = await post("/api/dev/components", component(e => delete e.foundations[field]));
     expect(response.status).toBe(400);
@@ -307,8 +315,9 @@ describe("publishing a recipe", () => {
   it("stores the recipe, its slots and its page material", async () => {
     await publishRecipe();
     const version = await env.DB.prepare("SELECT * FROM recipe_versions").first<Record<string, unknown>>();
-    expect(version).toMatchObject({ title: "Poker Night", category: "games", source_repo: "acme/poker-night-recipe", source_tag: "v0.1.0", bundle_asset: "poker-night-0.1.0.tar" });
-    const stored = JSON.parse(version!.recipe as string);
+    expect(version).toMatchObject({ title: "Poker Night", channel: "features", source_repo: "acme/poker-night-recipe", source_tag: "v0.1.0", bundle_asset: "poker-night-0.1.0.tar", document: expect.stringMatching(/^documents\/recipe\/poker-night\/0\.1\.0\/[0-9a-f]{64}\.json$/) });
+    expect(JSON.parse(version!.listing as string)).toMatchObject({ category: "games", title: "Poker Night", thumbnail: EXAMPLE_IMAGE.thumbnail });
+    const stored = JSON.parse(await (await env.CATALOGUE.get(version!.document as string))!.text()).recipe;
     expect(stored.questions).toHaveLength(7);
     expect(stored.components[1]).toEqual(exampleRecipeEntry().recipe.components[1]);
     const slots = await env.DB.prepare("SELECT slot_id, component_name, component_version, preferred FROM recipe_slots ORDER BY slot_id").all();
@@ -387,7 +396,9 @@ describe("publishing a recipe", () => {
     expect(deck.preferred).toEqual({ name: "acme/card-deck", version: "0.1.0", url: `${BASE}/components/card-deck` });
     expect(deck.catalogue).toMatchObject({ description: "A shuffled deck of 52 cards that deals and burns cards.", guardians: ["Example Guardian Ltd"] });
     expect(deck.catalogue!.suitability.profiles[0].cost).toBe("none");
-    expect(deck.alternatives).toEqual({ count: 0, url: `${BASE}/components?provides=ae%2Fcard-deck` });
+    expect(deck.alternatives).toEqual({ count: 0, url: `${BASE}/components?class=ourapps-ae%2Fcard-deck-class` });
+    expect(deck.catalogue!.quality).toBeNull();
+    expect(deck.catalogue!.thumbnail).toBe(`${BASE}/images/${EXAMPLE_IMAGE.thumbnail.slice(7)}.webp`);
     await del("/api/dev/components/seating/0.1.0");
     const unlisted = ((await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView).components.find((s) => s.id === "seats")!;
     expect(unlisted.catalogue).toBeNull();
@@ -396,27 +407,21 @@ describe("publishing a recipe", () => {
     expect(used.usedBy).toEqual([{ name: "acme/poker-night", slug: "poker-night", title: "Poker Night", version: "0.1.0", url: `${BASE}/recipes/poker-night`, slots: [{ id: "deck", preferred: true }] }]);
   });
 
-  it("counts the other catalogue components that fit each slot's class", async () => {
+  it("counts the other listed components implementing each slot's class", async () => {
     await publishRecipe();
-    // Other decks: one fits the deck slot's class; one requires more, one provides another version, one needs a setting
-    // the recipe never writes, one has another interface document, one does not install an entry module.
     const other = (slug: string, id: number, patch: (e: Mutable) => void = () => {}) => {
       githubFor(release(`acme/${slug}`, "v0.1.0", `${slug}-0.1.0.tar`, id));
       return post("/api/dev/components", component((e) => ((e.name = `acme/${slug}`), (e.source = { repository: `acme/${slug}`, tag: "v0.1.0" }), (e.bundle.asset = `${slug}-0.1.0.tar`), patch(e))));
     };
     expect((await other("fancy-deck", 61)).status).toBe(201);
     expect((await other("strict-deck", 62, (e) => (e.requires = [{ id: "audit", type: "ae/audit", version: "1.0.0" }]))).status).toBe(201);
-    expect((await other("old-deck", 63, (e) => ((e.provides = [{ id: "card-deck", type: "ae/card-deck", version: "0.9.0" }]), (e.interfaceDigests = { "ae/card-deck@0.9.0": EXAMPLE_INTERFACE_DIGEST }), (e.interfaceModules = {})))).status).toBe(201);
-    expect((await other("reworded-deck", 65, (e) => (e.interfaceDigests = { "ae/card-deck@1.0.0": digest("9") }))).status).toBe(201);
-    expect((await other("partial-deck", 66, (e) => (e.foundations.artefacts = []))).status).toBe(201);
-    expect((await other("needy-deck", 64, (e) => (e.settings = [{ id: "seed", type: "string", grammar: "label", required: true, secret: false, hasDefault: false }]))).status).toBe(201);
     const view = (await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView;
-    expect(view.components.find((s) => s.id === "deck")!.alternatives).toEqual({ count: 2, url: `${BASE}/components?provides=ae%2Fcard-deck` });
+    expect(view.components.find((s) => s.id === "deck")!.alternatives).toEqual({ count: 2, url: `${BASE}/components?class=ourapps-ae%2Fcard-deck-class` });
     expect(view.components.find((s) => s.id === "seats")!.alternatives.count).toBe(0);
-    const listed = ((await (await get("/api/components?provides=ae/card-deck")).json()) as ComponentList).components.map((c) => c.name);
-    expect(listed).toEqual(["acme/card-deck", "acme/fancy-deck", "acme/needy-deck", "acme/old-deck", "acme/partial-deck", "acme/reworded-deck", "acme/strict-deck"]);
+    const listed = ((await (await get("/api/components?class=ourapps-ae/card-deck-class&sort=name")).json()) as ComponentList).components.map((c) => c.name);
+    expect(listed).toEqual(["acme/card-deck", "acme/fancy-deck", "acme/strict-deck"]);
     const text = await (await get("/recipes/poker-night/details.txt")).text();
-    expect(text).toContain(`    other components of this class (2): ${BASE}/components?provides=ae%2Fcard-deck`);
+    expect(text).toContain(`    other components of this class (2): ${BASE}/components?class=ourapps-ae%2Fcard-deck-class`);
   });
 });
 
@@ -438,6 +443,7 @@ describe("job candidates", () => {
     expect(view.deprecations.map((d) => [d.name, d.via])).toEqual([["acme/cheap-host", ["acme/poker-night"]]]);
     const hostSlot = view.components.find((s) => s.id === "host")!;
     expect(hostSlot.alternatives.count).toBe(1);
+    expect(hostSlot.alternatives.url).toBe(`${BASE}/components?class=ourapps-ae%2Fserver-host-class`);
   });
 });
 
@@ -446,7 +452,7 @@ describe("reading recipes", () => {
     await publishRecipe();
   });
 
-  it("lists with categories and filters by category, target and tag", async () => {
+  it("lists with category counts, facets, sorts and cursors", async () => {
     githubFor({ ...release("acme/poker-night-recipe", "v0.1.0", "poker-night-0.1.0.tar", 21), ...release("acme/garden-recipe", "v1.0.0", "garden-1.0.0.tar", 22) });
     await publishRecipe((e) => {
       e.recipe.name = "acme/garden-planner";
@@ -455,7 +461,9 @@ describe("reading recipes", () => {
       e.recipe.category = "tools";
       e.recipe.tags = ["plants"];
       e.recipe.targets = { client: ["windows"], server: [] };
-      e.foundations.platforms.push("windows");
+      e.foundations.platforms = ["windows", "server"];
+      e.foundations.licence = "MIT";
+      e.images = [{ ...e.images[0], platform: "windows" }];
       e.recipe.version = "1.0.0";
       e.recipe.components = [e.recipe.components[0]];
       e.recipe.jobs = [];
@@ -468,20 +476,36 @@ describe("reading recipes", () => {
       e.digest = digest("1");
     });
     const all = (await (await get("/api/recipes")).json()) as RecipeList;
-    expect(all.total).toBe(2);
-    expect(all.categories).toEqual([{ category: "games", count: 1 }, { category: "tools", count: 1 }]);
+    expect(all.total).toEqual({ count: 2, approximate: false });
+    expect(all.query).toMatchObject({ sort: "downloads", deprecated: "include", limit: 30 });
+    expect(all.categories.map((c) => [c.id, c.recipes])).toEqual([["delivery", 0], ["games", 1], ["presentation", 0], ["tools", 1]]);
+    expect(((await (await get("/api/recipes?category=games")).json()) as RecipeList).categories.map((c) => c.id)).toEqual(["games/cards", "games/tables"]);
     const names = (path: string) => get(path).then((r) => r.json() as Promise<RecipeList>).then((l) => l.recipes.map((x) => x.name));
     expect(await names("/api/recipes?category=tools")).toEqual(["acme/garden-planner"]);
-    expect(await names("/api/recipes?target=ios")).toEqual(["acme/poker-night"]);
-    expect(await names("/api/recipes?target=windows")).toEqual(["acme/garden-planner"]);
-    expect(await names("/api/recipes?target=hosting-provider")).toEqual(["acme/poker-night"]);
-    expect(await names("/api/recipes?tag=plants")).toEqual(["acme/garden-planner"]);
-    expect(await names("/api/recipes?category=games&tag=plants")).toEqual([]);
-    const paged = (await (await get("/api/recipes?limit=1&offset=1")).json()) as RecipeList;
-    expect(paged).toMatchObject({ total: 2, limit: 1, offset: 1 });
-    expect(paged.recipes).toHaveLength(1);
+    expect(await names("/api/recipes?platform=ios")).toEqual(["acme/poker-night"]);
+    expect(await names("/api/recipes?platform=windows")).toEqual(["acme/garden-planner"]);
+    expect(await names("/api/recipes?licence=MIT")).toEqual(["acme/garden-planner"]);
+    expect(await names("/api/recipes?publisher=george&sort=name")).toEqual(["acme/garden-planner", "acme/poker-night"]);
+    expect(await names("/api/recipes?publisher=nobody")).toEqual([]);
+    expect(await names("/api/recipes?category=games&licence=MIT")).toEqual([]);
+    expect(await names("/api/recipes?channel=features&sort=name")).toEqual(["acme/garden-planner", "acme/poker-night"]);
+    expect(await names("/api/recipes?channel=security")).toEqual([]);
+    expect(await names("/api/recipes?quality=packaged")).toEqual([]);
+    expect(await names("/api/recipes?secure=true&sort=name")).toEqual(["acme/garden-planner", "acme/poker-night"]);
+    expect(await names("/api/recipes?q=plants")).toEqual(["acme/garden-planner"]);
+    expect(await names("/api/recipes?sort=updated")).toHaveLength(2);
+    const first = (await (await get("/api/recipes?limit=1&sort=name")).json()) as RecipeList;
+    expect(first.recipes.map((r) => r.name)).toEqual(["acme/garden-planner"]);
+    expect(first.previous).toBeNull();
+    const second = (await (await get(`/api/recipes?limit=1&sort=name&cursor=${first.next}`)).json()) as RecipeList;
+    expect(second.recipes.map((r) => r.name)).toEqual(["acme/poker-night"]);
+    expect(second.next).toBeNull();
+    const back = (await (await get(`/api/recipes?limit=1&sort=name&cursor=${second.previous}`)).json()) as RecipeList;
+    expect(back.recipes.map((r) => r.name)).toEqual(["acme/garden-planner"]);
     expect((await get("/api/recipes?limit=0")).status).toBe(400);
     expect((await get("/api/recipes?category=Bad%20Value")).status).toBe(400);
+    expect((await get("/api/recipes?sort=relevance")).status).toBe(400);
+    expect((await get("/api/recipes?quality=great")).status).toBe(400);
   });
 
   it("returns the summary fields and no secrets or internal ids", async () => {
@@ -494,6 +518,14 @@ describe("reading recipes", () => {
       title: "Poker Night",
       summary: "A card game for a club's league night, with house rules.",
       category: "games",
+      platforms: ["web", "server", "ios", "macos", "android"],
+      licence: "Apache-2.0",
+      quality: null,
+      channel: "features",
+      vulnerabilities: 0,
+      thumbnail: `${BASE}/images/${EXAMPLE_IMAGE.thumbnail.slice(7)}.webp`,
+      downloads: 0,
+      updatedAt: deps.now().toISOString(),
       tags: ["cards", "multiplayer"],
       targets: { client: ["web", "ios", "android", "macos"], server: ["hosting-provider"] },
       publishedAt: deps.now().toISOString(),
@@ -517,7 +549,11 @@ describe("reading recipes", () => {
     expect(v.questions.map((q) => q.id)).toEqual(["targets", "scale", "chips", "lessons", "tourStyle", "server", "serverKey"]);
     expect(v.components).toHaveLength(5);
     expect(v.tests.answerSets[0].id).toBe("web-only");
-    expect(v.versions).toEqual([{ version: "0.1.0", digest: digest("a"), publishedAt: deps.now().toISOString() }]);
+    expect(v.versions).toEqual([{ version: "0.1.0", digest: digest("a"), publishedAt: deps.now().toISOString(), channel: "features", fixes: [] }]);
+    expect(v.release).toEqual({ channel: "features", fixes: [] });
+    expect(v.line).toEqual({ line: "0.1", securityReleases: [] });
+    expect(v.images).toEqual([{ url: `${BASE}/images/${EXAMPLE_IMAGE.digest.slice(7)}.png`, thumbnail: `${BASE}/images/${EXAMPLE_IMAGE.thumbnail.slice(7)}.webp`, caption: "The table during a hand", platform: "web", width: 1280, height: 800 }]);
+    expect(v.vulnerabilitySummary).toEqual({ count: 0, checkedAt: deps.now().toISOString(), url: `${BASE}/api/recipes/poker-night/0.1.0/vulnerabilities` });
     expect(v.bundle).toEqual({ asset: "poker-night-0.1.0.tar", digest: EXAMPLE_BUNDLE_DIGEST, url: `${BASE}/api/recipes/poker-night/0.1.0/bundle` });
     expect(v.description).toContain("Poker Night deals a hand");
     expect(v.diagram).toBe(`${BASE}/api/recipes/poker-night/0.1.0/diagram.svg`);
@@ -544,85 +580,118 @@ describe("search", () => {
     await publishRecipe();
   });
 
-  it("finds recipes by name, title, summary, tags and description, with prefixes", async () => {
-    const find = async (q: string) => ((await (await get(`/api/recipes/search?q=${encodeURIComponent(q)}`)).json()) as RecipeSearch).recipes.map((r) => r.name);
-    for (const q of ["poker", "Poker Night", "league", "multiplayer", "multi", "deals a hand", "lessons", "acme"]) expect(await find(q), q).toEqual(["acme/poker-night"]);
+  const find = async (q: string, kind = "recipes") => ((await (await get(`/api/${kind}?q=${encodeURIComponent(q)}`)).json()) as RecipeList & ComponentList)[kind as "recipes"].map((r) => r.name);
+
+  it("finds recipes by name, title, summary, class and tags, with prefixes, ranked by relevance", async () => {
+    for (const q of ["poker", "Poker Night", "league", "multiplayer", "multi", "acme"]) expect(await find(q), q).toEqual(["acme/poker-night"]);
     expect(await find("zebra")).toEqual([]);
     expect(await find("poker zebra")).toEqual([]);
+    expect(((await (await get("/api/recipes?q=poker")).json()) as RecipeList).query.sort).toBe("relevance");
+    expect(((await (await get("/api/recipes?q=poker&sort=name")).json()) as RecipeList).recipes).toHaveLength(1);
   });
 
   it("treats search syntax as plain words", async () => {
-    for (const q of ['"', "poker*", "poker OR zebra", "name:poker", "(", "poker-night", "NEAR(a b)", "\\", "'; DROP TABLE recipes; --"]) {
-      expect((await get(`/api/recipes/search?q=${encodeURIComponent(q)}`)).status, q).toBe(200);
+    for (const q of ['"', "poker*", "poker OR zebra", "name:poker", "(", "poker-night", "NEAR(a b)", "\\", "'; DROP TABLE recipes; --", "**"]) {
+      expect((await get(`/api/recipes?q=${encodeURIComponent(q)}`)).status, q).toBe(200);
     }
-    expect(ftsQuery('poker "night" OR *')).toBe('"poker"* "night"* "or"*');
+    expect(ftsQuery('poker "night" OR *')).toBe('"poker"* "night"* "or"');
     expect(ftsQuery("   ")).toBeNull();
     expect(ftsQuery("a ".repeat(20))!.split(" ")).toHaveLength(8);
+    expect((await get(`/api/recipes?q=${"x".repeat(201)}`)).status).toBe(400);
   });
 
-  it("requires a query", async () => {
-    expect((await get("/api/recipes/search")).status).toBe(400);
-    expect((await get("/api/recipes/search?q=")).status).toBe(400);
-    expect((await get(`/api/recipes/search?q=${"x".repeat(201)}`)).status).toBe(400);
-    expect((await get("/api/recipes/search?q=%20%20")).status).toBe(400);
-    expect(((await (await get("/api/recipes/search?q=%2A%2A")).json()) as RecipeSearch).recipes).toEqual([]);
-  });
-
-  it("keeps recipes and components apart", async () => {
-    expect(((await (await get("/api/components/search?q=poker")).json()) as ComponentSearch).components).toEqual([]);
-    const cards = (await (await get("/api/components/search?q=deck")).json()) as ComponentSearch;
-    expect(cards.components.map((c) => c.name)).toEqual(["acme/card-deck"]);
-    expect(((await (await get("/api/components/search?q=shuffled")).json()) as ComponentSearch).components).toHaveLength(1);
-    expect(((await (await get("/api/recipes/search?q=deck")).json()) as RecipeSearch).recipes).toEqual([]);
+  it("keeps recipes and components apart, and finds a component by its class", async () => {
+    expect(await find("poker", "components")).toEqual([]);
+    expect(await find("deck", "components")).toEqual(["acme/card-deck"]);
+    expect(await find("shuffled", "components")).toEqual(["acme/card-deck"]);
+    expect(await find("deck")).toEqual([]);
   });
 
   it("searches the newest listed version", async () => {
     githubFor(release("acme/poker-night-recipe", "v0.2.0", "poker-night-0.2.0.tar", 23));
     await publishRecipe((e) => ((e.recipe.version = "0.2.0"), (e.recipe.title = "Showdown"), (e.digest = digest("2")), (e.source.tag = "v0.2.0"), (e.bundle.asset = "poker-night-0.2.0.tar")));
-    const find = async (q: string) => ((await (await get(`/api/recipes/search?q=${q}`)).json()) as RecipeSearch).recipes.map((r) => `${r.title} ${r.version}`);
-    expect(await find("showdown")).toEqual(["Showdown 0.2.0"]);
-    expect(await find("poker")).toEqual(["Showdown 0.2.0"]);
+    const titles = async (q: string) => ((await (await get(`/api/recipes?q=${q}`)).json()) as RecipeList).recipes.map((r) => `${r.title} ${r.version}`);
+    expect(await titles("showdown")).toEqual(["Showdown 0.2.0"]);
+    expect(await titles("poker")).toEqual(["Showdown 0.2.0"]);
     await del("/api/dev/recipes/poker-night/0.2.0");
-    expect(await find("showdown")).toEqual([]);
-    expect(await find("poker")).toEqual(["Poker Night 0.1.0"]);
+    expect(await titles("showdown")).toEqual([]);
+    expect(await titles("poker")).toEqual(["Poker Night 0.1.0"]);
   });
 });
 
 describe("components", () => {
-  it("lists and filters by interface, category, target and tag", async () => {
-    await publishCard();
-    githubFor(release("acme/seating", "v0.1.0", "seating-0.1.0.tar", 31));
-    expect(
-      (
-        await post("/api/dev/components", component((e) => {
-          e.name = "acme/seating";
-          e.description = "Seats for people at a table.";
-          e.category = "tables";
-          e.tags = ["seats"];
-          e.targets = { client: ["web", "ios"], server: ["hosting-provider"] };
-          e.provides = [{ id: "seating", type: "ae/seating", version: "1.0.0" }];
-          e.requires = [{ id: "guest-identity", type: "ae/guest-identity", version: "1.0.0" }];
-          e.interfaceDigests = { "ae/seating@1.0.0": EXAMPLE_INTERFACE_DIGEST };
-          e.interfaceModules = {};
-          e.source = { repository: "acme/seating", tag: "v0.1.0" };
-          e.bundle.asset = "seating-0.1.0.tar";
-        }))
-      ).status,
-    ).toBe(201);
-    const names = async (q: string) => ((await (await get(`/api/components${q}`)).json()) as ComponentList).components.map((c) => c.name);
-    expect(await names("")).toEqual(["acme/card-deck", "acme/seating"]);
+  it("lists and filters by class, interface, category and platform, with the category from the class", async () => {
+    await publishParts();
+    const names = async (q: string) => ((await (await get(`/api/components${q}${q ? "&" : "?"}sort=name`)).json()) as ComponentList).components.map((c) => c.name);
+    expect(await names("")).toEqual(["acme/apple-host", "acme/card-deck", "acme/guided-tour", "acme/seating", "acme/server-host"]);
     expect(await names("?provides=ae/card-deck")).toEqual(["acme/card-deck"]);
     expect(await names("?provides=card-deck")).toEqual(["acme/card-deck"]);
     expect(await names("?requires=ae/random-source")).toEqual(["acme/card-deck"]);
-    expect(await names("?requires=ae/guest-identity")).toEqual(["acme/seating"]);
-    expect(await names("?provides=ae/guest-identity")).toEqual([]);
-    expect(await names("?category=tables")).toEqual(["acme/seating"]);
-    expect(await names("?target=ios")).toEqual(["acme/seating"]);
-    expect(await names("?target=hosting-provider")).toEqual(["acme/seating"]);
-    expect(await names("?tag=deck")).toEqual(["acme/card-deck"]);
-    const list = (await (await get("/api/components")).json()) as ComponentList;
-    expect(list.categories).toEqual([{ category: "cards", count: 1 }, { category: "tables", count: 1 }]);
-    expect(list.components[0].provides).toEqual([{ id: "card-deck", type: "ae/card-deck", version: "1.0.0" }]);
+    expect(await names("?requires=ae/card-deck")).toEqual(["acme/seating"]);
+    expect(await names("?class=ourapps-ae/seating-class")).toEqual(["acme/seating"]);
+    expect(await names("?category=games")).toEqual(["acme/card-deck", "acme/seating"]);
+    expect(await names("?category=games/tables")).toEqual(["acme/seating"]);
+    expect(await names("?category=delivery")).toEqual(["acme/apple-host", "acme/server-host"]);
+    expect(await names("?platform=tvos")).toEqual([]);
+    const list = (await (await get("/api/components?sort=name")).json()) as ComponentList;
+    expect(list.categories.map((c) => [c.id, c.components])).toEqual([["delivery", 2], ["games", 2], ["presentation", 1], ["tools", 0]]);
+    expect(list.components[1]).toMatchObject({ name: "acme/card-deck", category: "games/cards", class: { name: "ourapps-ae/card-deck-class", version: "1.0.0", title: "Card deck" } });
+    const tree = (await (await get("/api/categories")).json()) as { categories: { id: string; components: number; classes: number }[] };
+    expect(tree.categories.find((c) => c.id === "games/cards")).toMatchObject({ components: 1 });
+  });
+
+  it("refuses a visual class without images and an image not uploaded", async () => {
+    const none = await post("/api/dev/components", component((e) => (e.images = [])));
+    expect(none.status).toBe(400);
+    expect(((await none.json()) as { error: string }).error).toContain("visual class");
+    const missing = await post("/api/dev/components", component((e) => (e.images[0].digest = digest("7"))));
+    expect(missing.status).toBe(422);
+    expect(((await missing.json()) as { error: string }).error).toContain("upload the image first");
+    const size = await post("/api/dev/components", component((e) => (e.images[0].width = 1000)));
+    expect(((await size.json()) as { error: string }).error).toContain("is 1280 by 800");
+  });
+
+  it("takes the category and class from the published class and refuses a component whose copy differs or whose class is unpublished", async () => {
+    const changed = await post("/api/dev/components", component((e) => {
+      e.foundations.classes[0].descriptor.category = "tools";
+      e.foundations.classes[0].reference.digest = descriptorDigest(e.foundations.classes[0].descriptor);
+      e.foundations.implements = [e.foundations.classes[0].reference];
+    }));
+    expect(changed.status).toBe(400);
+    expect(((await changed.json()) as { error: string }).error).toContain("the published class has");
+    const unpublished = await post("/api/dev/components", component((e) => {
+      e.foundations.classes[0].descriptor.version = "2.0.0";
+      e.foundations.classes[0].reference.version = "2.0.0";
+      e.foundations.classes[0].reference.digest = descriptorDigest(e.foundations.classes[0].descriptor);
+      e.foundations.implements = [e.foundations.classes[0].reference];
+    }));
+    expect(unpublished.status).toBe(400);
+    expect(((await unpublished.json()) as { error: string }).error).toContain("is not published; publish the class first");
+    await publishCard();
+    const card = (await (await get("/api/components/card-deck")).json()) as ComponentVersionView;
+    expect(card).toMatchObject({ category: "games/cards" });
+  });
+
+  it("refuses quality from anyone but a curator, and sets it as a curator", async () => {
+    const quality = { level: "reviewed", certified: true, liveTested: null };
+    env.CATALOGUE_CURATORS = "";
+    expect((await post("/api/dev/components", component((e) => (e.quality = quality)))).status).toBe(403);
+    env.CATALOGUE_CURATORS = "42";
+    await publishCard((e) => (e.quality = quality));
+    const v = (await (await get("/api/components/card-deck")).json()) as ComponentVersionView;
+    expect(v.quality).toEqual(quality);
+    const names = async (q: string) => ((await (await get(`/api/components?${q}`)).json()) as ComponentList).components.map((c) => c.name);
+    expect(await names("quality=reviewed")).toEqual(["acme/card-deck"]);
+    expect(await names("quality=integration-tested")).toEqual([]);
+    expect(await names("certified=true")).toEqual(["acme/card-deck"]);
+    expect(await names("certified=false")).toEqual([]);
+    const live = { level: "live-tested", certified: true, liveTested: { at: "2026-11-19", platform: "web" } };
+    expect((await post("/api/dev/components/card-deck/0.1.0/quality", live)).status).toBe(200);
+    expect(((await (await get("/api/components/card-deck")).json()) as ComponentVersionView).quality).toEqual(live);
+    expect(await names("quality=live-tested")).toEqual(["acme/card-deck"]);
+    expect((await post("/api/dev/components/card-deck/0.1.0/quality", { level: "live-tested", certified: true })).status).toBe(400);
+    env.CATALOGUE_CURATORS = "";
+    expect((await post("/api/dev/components/card-deck/0.1.0/quality", live)).status).toBe(403);
   });
 
   it("keeps optional requirements and profile settings through publication, reads and text", async () => {
@@ -637,6 +706,7 @@ describe("components", () => {
     expect(view.suitability.profiles[0].settings).toEqual({ plan: "eco", capacity: 10, durable: true });
     const text = await (await get("/components/card-deck.txt")).text();
     expect(text).toContain("Requires: random-source (ae/random-source 1.0.0, optional), audit (ae/audit 1.0.0)");
+    expect(text).toContain("Class: ourapps-ae/card-deck-class@1.0.0 (Card deck); category games/cards");
     expect(text).toContain("settings plan \"eco\", capacity 10, durable true");
     const bad = await post("/api/dev/components", nextComponent("0.2.0", digest("e"), (e) => (e.requires[0].optional = "yes")));
     expect(bad.status).toBe(400);
@@ -681,9 +751,10 @@ describe("unlisting", () => {
 
   it("hides every version when none is named, and keeps the rows", async () => {
     expect(await (await del("/api/dev/components/card-deck")).json()).toEqual({ ok: true, unlisted: 2 });
-    expect(((await (await get("/api/components")).json()) as ComponentList).total).toBe(0);
+    expect(((await (await get("/api/components")).json()) as ComponentList).total).toEqual({ count: 0, approximate: false });
     expect((await get("/api/components/card-deck")).status).toBe(404);
-    expect(((await (await get("/api/components/search?q=deck")).json()) as ComponentSearch).components).toEqual([]);
+    expect(((await (await get("/api/components?q=deck")).json()) as ComponentList).components).toEqual([]);
+    expect(((await (await get("/api/categories")).json()) as { categories: { id: string; components: number }[] }).categories.find((c) => c.id === "games")!.components).toBe(0);
     expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM component_versions").first<{ n: number }>())!.n).toBe(2);
     const mine = (await (await handle(api(cookie, "GET", "/api/dev/components"), env, deps)).json()) as { components: { name: string; latestVersion: string | null; versions: { version: string; listed: boolean }[] }[] };
     expect(mine.components[0]).toMatchObject({ name: "acme/card-deck", latestVersion: null });
@@ -697,7 +768,7 @@ describe("unlisting", () => {
     const again = await post("/api/dev/components", nextComponent("0.2.0", digest("e")));
     expect(again.status).toBe(201);
     expect(((await (await get("/api/components/card-deck")).json()) as ComponentVersionView).version).toBe("0.2.0");
-    expect(((await (await get("/api/components/search?q=deck")).json()) as ComponentSearch).components).toHaveLength(1);
+    expect(((await (await get("/api/components?q=deck")).json()) as ComponentList).components).toHaveLength(1);
   });
 
   it("answers unknown names and versions with 404 and is quiet when repeated", async () => {
@@ -789,11 +860,20 @@ describe("page variants", () => {
     expect(page).toContain("Build it (aepm, Python 3.12, Node.js, Graphviz)");
     expect(page).toContain("python3 -m aepm fetch poker-night@0.1.0 --with-dependencies --store store");
     expect(page).toContain("- chips (integer): Starting chips?");
+    // The questions in the three groups of ask, the follow-ups with the answer that asks them.
+    const groups = ["Ask the person (2)", "Ask unless the request settles it (2)", "Defaults (3)"].map((h) => page.indexOf(h));
+    expect(groups.every((at, i) => at > 0 && (i === 0 || at > groups[i - 1]))).toBe(true);
+    expect(page.indexOf("- server (choice)")).toBeLessThan(groups[1]);
+    expect(page).toContain("- tourStyle (choice): Short or full lessons?\n  follow-up: asked when lessons is yes");
+    expect(page).toContain("- serverKey (secretRef): Reference to the hosting access key\n  follow-up: asked when server is paid");
+    expect(page).toContain("Tell the person how many questions toAsk lists, ask them in one round, include as conditional questions in that round the followUps whose condition one of those answers could meet, and add no others");
+    expect(page).toContain("Release: features");
+    expect(page).toContain("Line 0.1: no security releases");
+    expect(page).toContain("Known vulnerabilities: none known");
     expect(page).toContain("Slots (5): each needs a component of its class");
     expect(page).toContain("- deck: class ourapps-ae/card-deck-class@1.0.0; preferred acme/card-deck@0.1.0");
     expect(page).toContain("- apple: class ourapps-ae/apple-shell-class@1.0.0; preferred acme/apple-host@0.1.0; only when (targets includes ios) or (targets includes macos)");
-    expect(page).toContain("python3 -m aepm design poker-night@0.1.0 --store store --answers answers.json --substitute SLOT=NAME@VERSION --out definition.json");
-    expect(page).toContain("asked only when lessons is yes; otherwise it takes its default");
+    expect(page).toContain("python3 -m aepm alternatives poker-night@0.1.0 SLOT --store store lists the components that fit, then add --substitute SLOT=NAME@VERSION to design");
     expect(page).toContain("sets host.targets to the answer");
     expect(page).toContain("range: 100 to 1000000");
     expect(page).toContain("- job server fills slot host (the answer to server restricts the candidates first): acme/server-host (free), acme/server-host (paid)");
@@ -814,7 +894,7 @@ describe("page variants", () => {
     expect(more).toContain("provides ae/seating 1.0.0; requires ae/card-deck 1.0.0; settings minimumPlayers integer, always written");
     expect(more).toContain("provides ae/server-host 1.0.0; requires none; settings targets string (label), always written, expectedPeople integer, always written, accountReference string (slug)");
     expect(more).toContain("- slot apple (only when (targets includes ios) or (targets includes macos))");
-    expect(more).toContain("    other components of this class (0): https://ourapps.app/components?provides=ae%2Fcard-deck\n    python3 -m aepm alternatives poker-night@0.1.0 deck --store store");
+    expect(more).toContain("    other components of this class (0): https://ourapps.app/components?class=ourapps-ae%2Fcard-deck-class\n    python3 -m aepm alternatives poker-night@0.1.0 deck --store store");
     expect(more).toContain("- seats.seating -> application.seating");
     expect(more).toContain("guardians: Example Guardian Ltd");
     expect(more).toContain("Package foundations (publisher-declared)");
@@ -846,10 +926,11 @@ describe("page variants", () => {
     expect(summary).toContain("- acme/part-38@0.1.0");
     expect(rest.split("Upstream: an-upstream-library-with-a-long-name").length - 1).toBe(825);
     expect(rest).toContain("pkg:npm/dependency-722");
-    expect(((await (await get("/recipes.json?category=games")).json()) as RecipeList).total).toBe(1);
+    expect(((await (await get("/recipes.json?category=games")).json()) as RecipeList).total).toEqual({ count: 1, approximate: false });
 
     const components = await (await get("/components.txt")).text();
-    expect(components).toContain("- acme/card-deck 0.1.0: A shuffled deck of 52 cards that deals and burns cards.");
+    expect(components).toContain("- acme/card-deck 0.1.0: A shuffled deck of 52 cards that deals and burns cards.\n  class ourapps-ae/card-deck-class@1.0.0 (Card deck); category games/cards");
+    expect(components).toContain("5 components match; this page shows 5, sorted by downloads.");
     const one = await (await get("/components/card-deck.txt")).text();
     expect(one).toContain("Provides: card-deck (ae/card-deck 1.0.0)");
     expect(one).toContain("Used by recipes: acme/poker-night 0.1.0 (slot deck)");
@@ -907,7 +988,16 @@ describe("page variants", () => {
   });
 
   it("searches and filters in the text variants and picks a version", async () => {
-    expect(await (await get("/recipes.txt?q=poker")).text()).toContain("ourapps recipe search: poker");
+    expect(await (await get("/recipes.txt?q=poker")).text()).toContain("1 recipes match; this page shows 1, sorted by relevance.");
+    const paged = await (await get("/components.txt?limit=2&sort=name")).text();
+    expect(paged).toContain("this page shows 2, sorted by name");
+    const next = /Next: (\S+)/.exec(paged)![1]!;
+    expect(next).toContain(`${BASE}/components.txt?sort=name&cursor=`);
+    const second = await (await get(new URL(next).pathname + new URL(next).search + "&limit=2")).text();
+    expect(second).toContain("- acme/guided-tour 0.1.0");
+    expect(second).toContain("Previous: ");
+    expect(await (await get("/classes.txt")).text()).toContain("ourapps component classes");
+    expect(await (await get("/categories.txt")).text()).toContain("  - Cards (games/cards): 1 classes, 1 components, 0 recipes");
     expect(await (await get("/components.txt?q=nothingmatches")).text()).toContain("No components match.");
     expect(await (await get("/recipes.txt?category=tools")).text()).toContain("No recipes match.");
     expect((await get("/recipes/poker-night.txt?version=0.1.0")).status).toBe(200);
@@ -945,7 +1035,6 @@ const POOL = (patch: (e: Mutable) => void = () => {}) =>
   component((e) => {
     e.name = "acme/random-pool";
     e.description = "A pool of random numbers.";
-    e.category = "randomness";
     e.tags = ["random"];
     e.provides = [{ id: "random-source", type: "ae/random-source", version: "1.0.0" }];
     e.requires = [];
@@ -958,7 +1047,7 @@ const POOL = (patch: (e: Mutable) => void = () => {}) =>
 
 async function publishPool(patch?: (e: Mutable) => void) {
   const res = await post("/api/dev/components", POOL(patch));
-  expect(res.status).toBe(201);
+  expect(res.status, await res.clone().text()).toBe(201);
 }
 
 // card-deck builds on random-pool, and poker-night prefers card-deck and the other example components.
@@ -987,7 +1076,7 @@ describe("developer deprecation", () => {
     expect(detail.deprecations).toEqual([notice]);
     const list = (await (await get("/api/components")).json()) as ComponentList;
     expect(list.components.find((c) => c.name === "acme/card-deck")!.deprecations).toEqual([notice]);
-    const found = (await (await get("/api/components/search?q=deck")).json()) as ComponentSearch;
+    const found = (await (await get("/api/components?q=deck")).json()) as ComponentList;
     expect(found.components[0].deprecations).toEqual([notice]);
     expect(((await (await get("/components/card-deck.json")).json()) as ComponentVersionView).deprecations).toEqual([notice]);
 
@@ -1014,13 +1103,13 @@ describe("developer deprecation", () => {
   it("filters lists and search with deprecated=exclude|include|only", async () => {
     await publishPool();
     await post("/api/dev/components/card-deck/deprecate", {});
-    const names = async (path: string) => ((await (await get(path)).json()) as ComponentList).components.map((c) => c.name);
+    const names = async (path: string) => ((await (await get(`${path}${path.includes("?") ? "&" : "?"}sort=name`)).json()) as ComponentList).components.map((c) => c.name);
     expect(await names("/api/components")).toEqual(["acme/card-deck", "acme/random-pool"]);
     expect(await names("/api/components?deprecated=include")).toEqual(["acme/card-deck", "acme/random-pool"]);
     expect(await names("/api/components?deprecated=exclude")).toEqual(["acme/random-pool"]);
     expect(await names("/api/components?deprecated=only")).toEqual(["acme/card-deck"]);
-    expect(((await (await get("/api/components?deprecated=exclude")).json()) as ComponentList).total).toBe(1);
-    const found = async (value: string) => ((await (await get(`/api/components/search?q=a&deprecated=${value}`)).json()) as ComponentSearch).components.map((c) => c.name);
+    expect(((await (await get("/api/components?deprecated=exclude")).json()) as ComponentList).total).toEqual({ count: 1, approximate: false });
+    const found = async (value: string) => ((await (await get(`/api/components?q=a&deprecated=${value}`)).json()) as ComponentList).components.map((c: { name: string }) => c.name);
     expect(await found("only")).toEqual(["acme/card-deck"]);
     expect(await found("exclude")).toEqual(["acme/random-pool"]);
     expect((await get("/api/components?deprecated=maybe")).status).toBe(400);
@@ -1086,7 +1175,7 @@ describe("deprecation reaches what uses a flagged component", () => {
     expect(recipe.deprecations).toEqual([pool]);
     expect(recipe.components.map((c) => c.deprecation)).toEqual([null, null, null, null, null]);
     expect(((await (await get("/api/recipes")).json()) as RecipeList).recipes[0].deprecations).toEqual([pool]);
-    expect(((await (await get("/api/recipes/search?q=poker")).json()) as RecipeSearch).recipes[0].deprecations).toEqual([pool]);
+    expect(((await (await get("/api/recipes?q=poker")).json()) as RecipeList).recipes[0].deprecations).toEqual([pool]);
     expect(((await (await get("/recipes/poker-night.json")).json()) as RecipeVersionView).deprecations).toEqual([pool]);
     const text = await (await get("/recipes/poker-night.txt")).text();
     expect(text).toContain("DEPRECATION WARNING: acme/random-pool 0.1.0 is deprecated by its publisher (owner-deprecated, since 2026-10-16T10:00:00.000Z, used by acme/card-deck); replacement acme/card-deck");
@@ -1150,10 +1239,10 @@ describe("account deletion keeps the catalogue and orphans it", () => {
   });
 
   it("keeps every catalogue row and the search rows, with a null owner and the orphaned flag", async () => {
-    const before = (await env.DB.prepare("SELECT COUNT(*) AS n FROM catalogue_fts").first<{ n: number }>())!.n;
+    const before = (await env.DB.prepare("SELECT (SELECT COUNT(*) FROM component_fts) + (SELECT COUNT(*) FROM recipe_fts) AS n").first<{ n: number }>())!.n;
     await deleteAccount();
     expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM developers").first<{ n: number }>())!.n).toBe(0);
-    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM catalogue_fts").first<{ n: number }>())!.n).toBe(before);
+    expect((await env.DB.prepare("SELECT (SELECT COUNT(*) FROM component_fts) + (SELECT COUNT(*) FROM recipe_fts) AS n").first<{ n: number }>())!.n).toBe(before);
     for (const [table, n] of [["recipes", 1], ["recipe_versions", 1], ["recipe_slots", 5], ["components", 6], ["component_versions", 6], ["component_interfaces", 8], ["component_dependencies", 1]] as const) {
       expect((await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table}`).first<{ n: number }>())!.n, table).toBe(n);
     }
@@ -1171,12 +1260,12 @@ describe("account deletion keeps the catalogue and orphans it", () => {
     const at = deps.now().toISOString();
     const own = { name: "acme/card-deck", version: "0.1.0", status: "orphaned", reason: "owner-deleted", since: at, replacement: "acme/random-pool", via: [] };
     const list = (await (await get("/api/components")).json()) as ComponentList;
-    expect(list.total).toBe(6);
+    expect(list.total).toEqual({ count: 6, approximate: false });
     expect(list.components.every((c) => c.status === "orphaned" && c.publisher === null)).toBe(true);
     expect(list.components.find((c) => c.name === "acme/card-deck")!.deprecations).toEqual([own, { name: "acme/random-pool", version: "0.1.0", status: "orphaned", reason: "owner-deleted", since: at, via: ["acme/card-deck"] }]);
-    expect(((await (await get("/api/components/search?q=pool")).json()) as ComponentSearch).components[0].status).toBe("orphaned");
-    expect(((await (await get("/api/components?deprecated=only")).json()) as ComponentList).total).toBe(6);
-    expect(((await (await get("/api/components?deprecated=exclude")).json()) as ComponentList).total).toBe(0);
+    expect(((await (await get("/api/components?q=pool")).json()) as ComponentList).components[0].status).toBe("orphaned");
+    expect(((await (await get("/api/components?deprecated=only")).json()) as ComponentList).total).toEqual({ count: 6, approximate: false });
+    expect(((await (await get("/api/components?deprecated=exclude")).json()) as ComponentList).total).toEqual({ count: 0, approximate: false });
 
     const recipe = (await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView;
     expect(recipe).toMatchObject({ status: "orphaned", publisher: null });
@@ -1253,5 +1342,140 @@ describe("account deletion keeps the catalogue and orphans it", () => {
     const dev = (await env.DB.prepare("SELECT id FROM developers").first<{ id: string }>())!.id;
     await env.DB.prepare("UPDATE components SET deprecated_at = NULL, deprecated_reason = NULL").run();
     await expect(env.DB.prepare("DELETE FROM developers WHERE id = ?").bind(dev).run()).rejects.toThrow();
+  });
+});
+
+describe("build reports", () => {
+  const ourpoker = "ourapps-ae/ourpoker";
+  const reports = [report060, report080] as unknown as Mutable[];
+
+  // OurPoker as migration 0022 leaves it: the name and owner, no listed version, and the digests it published.
+  async function ourpokerBeforeTheRound() {
+    const dev = (await env.DB.prepare("SELECT id FROM developers WHERE github_id = 42").first<{ id: string }>())!.id;
+    await env.DB.prepare("INSERT INTO recipes (id, name, scope, slug, developer_id, repo, created_at, updated_at) VALUES ('ourpoker', ?, 'ourapps-ae', 'ourpoker', ?, 'ourapps-ae/ourpoker', '2026-11-01', '2026-11-20')").bind(ourpoker, dev).run();
+    for (const r of reports) await env.DB.prepare("INSERT INTO published_digests (kind, name, version, digest, published_at) VALUES ('recipe', ?, ?, ?, ?)").bind(ourpoker, r.recipe.version, r.recipe.digest, `${r.date}T00:00:00Z`).run();
+  }
+
+  const send = (r: unknown, c: string | null = cookie, slug = "ourpoker") => post(`/api/dev/recipes/${slug}/reports`, r, c);
+  // The reports are of 16 and 20 November; sessions last 30 days, so sign in again on the later day.
+  beforeEach(async () => {
+    deps.advance(40 * 86_400_000);
+    cookie = await signIn(env, deps);
+  });
+
+  it("keeps the two OurPoker reports of versions no longer listed, newest first, and answers the same report again unchanged", async () => {
+    await ourpokerBeforeTheRound();
+    for (const r of reports) {
+      const res = await send(r);
+      expect(res.status, await res.clone().text()).toBe(201);
+      expect(await res.json()).toMatchObject({ status: "published", name: ourpoker, version: r.recipe.version });
+    }
+    const again = await send(reports[0]);
+    expect(again.status).toBe(200);
+    expect(((await again.json()) as { status: string }).status).toBe("unchanged");
+    const list = (await (await get("/api/recipes/ourpoker/reports")).json()) as BuildReportList;
+    expect(list.currentVersion).toBeNull();
+    expect(list.reports.map((r) => [r.version, r.date, r.current, r.activeMinutes, r.costUsd])).toEqual([["0.8.0", "2026-11-20", false, 27.6, 1.85], ["0.6.0", "2026-11-16", false, 28.1, 3.2]]);
+    expect(list.reports[0]!.report).toEqual(report080);
+    const one = (await (await get(`/api/recipes/ourpoker/reports/${list.reports[1]!.id}`)).json()) as BuildReportView;
+    expect(one.results).toHaveLength(7);
+    expect((await get("/api/recipes/ourpoker/reports/0000")).status).toBe(404);
+  });
+
+  it("refuses a report from a non-curator, of a version or digest never published, with a secret, or with fields out of shape", async () => {
+    await ourpokerBeforeTheRound();
+    const sue = await signIn(env, deps, { id: 9, login: "sue", name: "Sue" });
+    expect((await send(reports[1], sue)).status).toBe(403);
+    const error = async (patch: (r: Mutable) => void) => {
+      const r = structuredClone(reports[1]!);
+      patch(r);
+      const res = await send(r);
+      return [res.status, ((await res.json()) as { error: string }).error] as const;
+    };
+    expect(await error((r) => (r.recipe.version = "0.9.0"))).toEqual([422, `${ourpoker} 0.9.0 has never been published`]);
+    expect((await error((r) => (r.recipe.digest = `sha256:${"0".repeat(64)}`)))[0]).toBe(422);
+    expect((await error((r) => (r.prompt = `use ghp_${"a".repeat(36)}`)))[0]).toBe(400);
+    expect((await error((r) => (r.problems = ["one\ttwo"])))[1]).toContain("problems must list");
+    expect((await error((r) => (r.extra = 1)))[1]).toContain("report.extra is not a field");
+    expect((await error((r) => (r.format = 2)))[1]).toContain("format-refused");
+    expect((await error((r) => (r.rating.score = 11)))[1]).toContain("rating.score");
+    expect((await error((r) => (r.results[0].built = "yes")))[1]).toContain("results[0].built");
+    expect((await error((r) => (r.recipe.name = "ourapps-ae/other")))[1]).toContain("not ourapps-ae/ourpoker");
+    expect((await error((r) => (r.date = "2099-01-01")))[1]).toContain("future");
+  });
+
+  it("makes a version integration-tested when it is published after a fully built report of it", async () => {
+    const dev = (await env.DB.prepare("SELECT id FROM developers WHERE github_id = 42").first<{ id: string }>())!.id;
+    const digest = (recipe() as Mutable).digest as string;
+    await env.DB.prepare("INSERT INTO recipes (id, name, scope, slug, developer_id, repo, created_at, updated_at) VALUES ('pn', 'acme/poker-night', 'acme', 'poker-night', ?, 'acme/poker-night-recipe', '2026-11-01', '2026-11-01')").bind(dev).run();
+    await env.DB.prepare("INSERT INTO published_digests (kind, name, version, digest, published_at) VALUES ('recipe', 'acme/poker-night', '0.1.0', ?, '2026-11-01')").bind(digest).run();
+    const report = structuredClone(reports[1]!);
+    report.recipe = { name: "acme/poker-night", version: "0.1.0", digest };
+    expect((await send(report, cookie, "poker-night")).status).toBe(201);
+    await publishRecipe();
+    expect(((await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView).quality).toMatchObject({ level: "integration-tested" });
+  });
+
+  it("shows reports on the recipe page and text page, notes an older version, and makes a fully built version integration-tested", async () => {
+    await publishRecipe();
+    const listed = (await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView;
+    const current = structuredClone(reports[1]!);
+    current.recipe = { name: "acme/poker-night", version: "0.1.0", digest: listed.digest };
+    expect((await send(current, cookie, "poker-night")).status).toBe(201);
+    await env.DB.prepare("INSERT INTO published_digests (kind, name, version, digest, published_at) VALUES ('recipe', 'acme/poker-night', '0.0.9', ?, '2026-11-01')").bind(`sha256:${"9".repeat(64)}`).run();
+    const older = structuredClone(reports[0]!);
+    older.recipe = { name: "acme/poker-night", version: "0.0.9", digest: `sha256:${"9".repeat(64)}` };
+    older.results[0].built = false;
+    expect((await send(older, cookie, "poker-night")).status).toBe(201);
+    const view = (await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView;
+    expect(view.quality).toMatchObject({ level: "integration-tested" });
+    expect(view.buildReports.map((r) => [r.version, r.current])).toEqual([["0.1.0", true], ["0.0.9", false]]);
+    const text = await (await get("/recipes/poker-night.txt")).text();
+    expect(text).toContain("Build reports (2): agents building an application from this recipe, newest first");
+    expect(text).toContain("- 0.1.0, 2026-11-20: OpenCode 2.3.2, anthropic/claude-opus-5-5; 27.6 active minutes, US$1.85; built 7 of 7 targets; 6 problems; rated 7/10; ");
+    expect(text).toContain("- 0.0.9 (not the current version), 2026-11-16: OpenCode, anthropic/claude-opus-5-5; 28.1 active minutes, US$3.20; built 6 of 7 targets;");
+  });
+});
+
+describe("build steps on the recipe text page", () => {
+  const generic = (page: string, digest: string) => {
+    const at = (s: string) => page.indexOf(s);
+    const steps = [
+      "python3 -m aepm fetch poker-night@0.1.0 --with-dependencies --store store",
+      `tar -xf store/objects/${digest.slice(7)}.tar INSTRUCTIONS.md`,
+      "python3 -m aepm questions poker-night@0.1.0 --store store",
+      "python3 -m aepm design poker-night@0.1.0 --store store --answers answers.json --out definition.json",
+      "python3 -m aepm doctor poker-night@0.1.0 --store store --answers answers.json",
+      "add --install to install the missing ones it can",
+      "python3 -m aepm resolve definition.json",
+      "python3 -m aepm install definition.json --lock lock.json --store store --policy policy.json --target app",
+      "python3 -m aepm verify app --policy policy.json --trusted",
+      "Build and run each target as INSTRUCTIONS.md says",
+    ].map(at);
+    expect(steps.every((x, i) => x > 0 && (i === 0 || x > steps[i - 1]!)), JSON.stringify(steps)).toBe(true);
+  };
+
+  it("gives the generic aepm steps with the shown version's digest, and the recipe's own Building it section under them", async () => {
+    await publishRecipe((e) => (e.page.description = "Poker Night.\n\n## Building it\n\nWhen the server runs on Cloudflare: deploy the server with `npm run deploy`, then the web client.\n\n```\n# not a heading\n```\n\n### Repository\n\nPush it.\n\n## Status\n\nTested."));
+    const view = (await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView;
+    const page = await (await get("/recipes/poker-night.txt")).text();
+    generic(page, view.digest);
+    const own = page.indexOf('From the recipe (its description, "Building it")');
+    expect(own).toBeGreaterThan(page.indexOf("--trusted"));
+    expect(own).toBeLessThan(page.indexOf("Questions ("));
+    expect(page).toContain("When the server runs on Cloudflare: deploy the server with `npm run deploy`, then the web client.\n\n```\n# not a heading\n```\n\n### Repository\n\nPush it.\n\nQuestions");
+    expect(page.slice(own)).not.toContain("Tested.");
+    expect(page).not.toContain("cd app/server && npm ci");
+  });
+
+  it("gives only the generic steps when the description has no Building it section, and cuts a long one", async () => {
+    await publishRecipe();
+    const view = (await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView;
+    const page = await (await get("/recipes/poker-night.txt")).text();
+    generic(page, view.digest);
+    expect(page).not.toContain("From the recipe");
+    const long = recipeText({ ...view, description: `## Building it\n\n${"step and step again ".repeat(2000)}` }, BASE);
+    expect(long).toContain(`The rest: ${BASE}/recipes/poker-night/details.txt?version=0.1.0`);
+    expect(long.length).toBeLessThan(60_000);
   });
 });

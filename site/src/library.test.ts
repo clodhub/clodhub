@@ -6,12 +6,11 @@ import { storeFrame } from "./pages/public.js";
 import { html } from "./html.js";
 
 describe("library query", () => {
-  it("reads filters, search and paging and ignores the rest", () => {
-    expect(readQuery("?q=poker&category=games&target=ios&tag=cards&offset=24&x=1")).toEqual({ q: "poker", category: "games", target: "ios", tag: "cards", offset: 24 });
+  it("reads filters, search, sort and cursor and ignores the rest", () => {
+    expect(readQuery("?q=poker&category=games/cards&platform=ios&quality=reviewed&certified=true&channel=security&secure=true&licence=MIT&sort=trending&cursor=abc&x=1")).toEqual({ q: "poker", category: "games/cards", platform: "ios", quality: "reviewed", certified: "true", channel: "security", secure: "true", licence: "MIT", sort: "trending", cursor: "abc" });
     expect(readQuery("?provides=ae/card-deck&requires=ae/random-source")).toEqual({ provides: ["ae/card-deck"], requires: ["ae/random-source"] });
     expect(readQuery("")).toEqual({});
-    expect(readQuery("?offset=-3&category=%20")).toEqual({});
-    expect(readQuery("?offset=abc")).toEqual({});
+    expect(readQuery("?category=%20&certified=maybe&secure=false")).toEqual({});
   });
 
   it("reads the deprecated filter and ignores include and unknown values", () => {
@@ -25,14 +24,13 @@ describe("library query", () => {
 
   it("writes a canonical query string", () => {
     expect(queryString({})).toBe("");
-    expect(queryString({ category: "games", q: "poker night", offset: 24 })).toBe("?q=poker+night&category=games&offset=24");
+    expect(queryString({ category: "games", q: "poker night", cursor: "x1" })).toBe("?q=poker+night&category=games&cursor=x1");
     expect(queryString({ provides: ["ae/card-deck"] })).toBe("?provides=ae%2Fcard-deck");
     expect(queryString({ provides: ["ae/card-deck", "ae/seating"] })).toBe("?provides=ae%2Fcard-deck&provides=ae%2Fseating");
-    expect(queryString({ offset: 0 })).toBe("");
   });
 
   it("changes one filter, toggles it off and restarts paging", () => {
-    expect(withFilter({ category: "games", offset: 24 }, "target", "ios")).toEqual({ category: "games", target: "ios" });
+    expect(withFilter({ category: "games", cursor: "x1" }, "platform", "ios")).toEqual({ category: "games", platform: "ios" });
     expect(withFilter({ category: "games" }, "category", "games")).toEqual({});
     expect(withFilter({ category: "games", q: "x" }, "category", undefined)).toEqual({ q: "x" });
     expect(withFilter({ provides: ["ae/card-deck"] }, "provides", "ae/seating")).toEqual({ provides: ["ae/card-deck", "ae/seating"] });
@@ -94,8 +92,19 @@ describe("public copy", () => {
     const text = termsBody().html;
     expect(text).toContain("public recipe library and component catalogue");
     expect(text).toContain("it does not keep the packages");
-    expect(text).toContain("Recipes and components you publish");
+    expect(text).toContain("Recipes, components and classes you publish");
     expect(text).toContain(`Version ${TERMS_VERSION}`);
+  });
+
+  it("terms list the organisation memberships read at sign-in, in a version after they were first stored", () => {
+    const text = termsBody().html;
+    expect(text).toContain("The GitHub organisations you are an active member of, read at each sign-in");
+    expect(text).not.toContain("public profile only");
+    expect(TERMS_VERSION >= "2026-11-20").toBe(true);
+    expect(text).toContain("Build reports the catalogue's curators publish about a recipe");
+    expect(text).not.toContain("name no person");
+    expect(text).toContain("until the end of that day (UTC); it is deleted within the following hour");
+    expect(text).not.toContain("for that day only");
   });
 
   it("the terms version is a date", () => {

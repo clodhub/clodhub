@@ -29,7 +29,7 @@ The publisher calls `aepm.bundle.read_archive(reference, archive_bytes)` and der
 | Recipe `page` | Packaged description text, safe diagram text and screenshot addresses |
 | `source`, `bundle.asset` | Publisher release repository/tag and validated archive asset name |
 
-Component publication keys are `format,name,version,digest,description,category,tags,targets,guardians,provides,requires,settings,interfaceDigests,interfaceModules,dependencies,suitability,migration,source,bundle,foundations`. Recipe publication keys are `format,recipe,digest,source,bundle,page,foundations`. Catalogue titles, descriptions, categories, tags, guardian names and release pointers are publisher-provided presentation facts. `format` is `1`.
+Component publication keys are `format,name,version,digest,description,tags,targets,guardians,provides,requires,settings,interfaceDigests,interfaceModules,dependencies,suitability,migration,source,bundle,foundations,release,images,vulnerabilityWaivers` and, from the catalogue's curators only, `quality`. Recipe publication keys are `format,recipe,digest,source,bundle,page,foundations,release,images,vulnerabilityWaivers` and `quality`. `format` is `2`; the full contract is in CONTRACT.md, "Catalogue publish API". A component's listing category is the category of the class it implements. Descriptions, tags, guardian names and release pointers are publisher-provided presentation facts.
 
 ## Class schema example
 
@@ -37,17 +37,75 @@ This descriptor and its digest-bound reference are independent of any preferred 
 
 ```json
 {
-  "reference": {"name":"ourapps-ae/counter-class","version":"1.0.0","digest":"6a64a8ced4936b20db0cf0e54193b361e5922f8f013a71ab7ea885ffe3e8085d"},
+  "reference": {
+    "name": "ourapps-ae/counter-class",
+    "version": "1.0.0",
+    "digest": "0ca7e37debb58040c02df6755aae5ca1b88d67067de1236e3d4095a2f31d2dbb"
+  },
   "descriptor": {
-    "format":1,"name":"ourapps-ae/counter-class","version":"1.0.0",
-    "provides":[{"type":"counter","version":"1.0.0","path":"classes/counter/interface.json","modules":{"web":["counter.mjs"],"server":["counter.mjs"]}}],
-    "requires":[],
-    "settings":{"type":"object","properties":{},"required":[],"additionalProperties":false},
-    "inventory":[
-      {"path":"classes/counter/interface.json","digest":"316538fd92c18f09d76df05de128d1099d00d7cfbf34401f82b1bd56989ba0d2"},
-      {"path":"classes/counter/check.mjs","digest":"7b6a4b0a9ba601c7c2f058f62d46b4d349c8010bd6c3f9f5d28b762209735770"}
+    "format": 2,
+    "name": "ourapps-ae/counter-class",
+    "version": "1.0.0",
+    "title": "Counter",
+    "summary": "A number people can raise and lower together",
+    "category": "tools",
+    "presentation": "visual",
+    "provides": [
+      {
+        "type": "counter",
+        "version": "1.0.0",
+        "path": "classes/counter/interface.json",
+        "modules": {
+          "web": [
+            "counter.mjs"
+          ],
+          "server": [
+            "counter.mjs"
+          ]
+        }
+      }
     ],
-    "verification":[{"id":"behaviour","root":"package","argv":["node","classes/counter/check.mjs"],"cwd":".","prepare":[],"tools":{"node":"26"},"fixtures":["classes/counter/check.mjs"],"locks":[],"network":false,"timeoutSeconds":30,"expectedExit":0,"scope":"required-local","requirements":[]}]
+    "requires": [],
+    "settings": {
+      "type": "object",
+      "properties": {},
+      "required": [],
+      "additionalProperties": false
+    },
+    "inventory": [
+      {
+        "path": "classes/counter/interface.json",
+        "digest": "316538fd92c18f09d76df05de128d1099d00d7cfbf34401f82b1bd56989ba0d2"
+      },
+      {
+        "path": "classes/counter/check.mjs",
+        "digest": "7b6a4b0a9ba601c7c2f058f62d46b4d349c8010bd6c3f9f5d28b762209735770"
+      }
+    ],
+    "verification": [
+      {
+        "id": "behaviour",
+        "root": "package",
+        "argv": [
+          "node",
+          "classes/counter/check.mjs"
+        ],
+        "cwd": ".",
+        "prepare": [],
+        "tools": {
+          "node": "26"
+        },
+        "fixtures": [
+          "classes/counter/check.mjs"
+        ],
+        "locks": [],
+        "network": false,
+        "timeoutSeconds": 30,
+        "expectedExit": 0,
+        "scope": "required-local",
+        "requirements": []
+      }
+    ]
   }
 }
 ```
