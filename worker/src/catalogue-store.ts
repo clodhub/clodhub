@@ -27,8 +27,17 @@ export async function readDocument<T extends ComponentEntry | RecipeEntry>(env: 
   return JSON.parse(body) as T;
 }
 
+// Many documents at once are read from R2 only: Cache API calls share the 50 subrequests a Workers Free request has, and
+// a recipe names about 40 components.
 export async function readDocuments<T extends ComponentEntry | RecipeEntry>(env: Env, keys: (string | null)[]): Promise<(T | null)[]> {
-  return Promise.all(keys.map((k) => (k ? readDocument<T>(env, k) : Promise.resolve(null))));
+  return Promise.all(
+    keys.map(async (key) => {
+      if (!key) return null;
+      const object = await env.CATALOGUE.get(key);
+      if (!object) throw new HttpError(500, "a published version's document is missing");
+      return JSON.parse(await object.text()) as T;
+    }),
+  );
 }
 
 // ---------------------------------------------------------------- images

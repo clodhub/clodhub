@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { descriptorDigest, EXAMPLE_IMAGE, EXAMPLE_IMAGE_BYTES, exampleCategories, exampleClassEntries, pngHeader, webpHeader, SIGNATURES_NOTE, summariseFoundations, type Foundations, type PackageDetails, EXAMPLE_BUNDLE_DIGEST, EXAMPLE_INTERFACE_DIGEST, exampleComponentEntries, exampleComponentEntry, exampleRecipeEntry, type BundleLink, type BuildReportList, type BuildReportView, type ComponentList, type ComponentVersionView, type DeprecationReport, type RecipeList, type RecipeVersionView } from "@my/store-shared";
 import { Db } from "../src/db.js";
 import report060 from "./fixtures/ourpoker-0.6.0-2026-11-16.json";
@@ -264,6 +264,16 @@ describe("publishing a component", () => {
 });
 
 describe("publishing a recipe", () => {
+  it("reads the documents of the components a recipe names from R2 alone, so a 40-component recipe stays within a Workers Free request's 50 Cache API calls", async () => {
+    await publishParts();
+    const open = vi.spyOn(caches, "open");
+    const res = await post("/api/dev/recipes", recipe());
+    expect(res.status, await res.clone().text()).toBe(201);
+    expect((await get("/api/recipes/poker-night/0.1.0/components.svg")).status).toBe(200);
+    expect(open.mock.calls.filter(([name]) => name === "catalogue-documents").length).toBeLessThanOrEqual(1);
+    open.mockRestore();
+  });
+
   it("stores declared foundation facts: counts on the version, the lists on its details", async () => {
     await publishRecipe();
     const r = (await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView;
