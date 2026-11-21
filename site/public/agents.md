@@ -251,7 +251,9 @@ python3 -m aepm doctor <recipe>@<version> --store store --answers answers.json  
 python3 -m aepm resolve definition.json --catalogue store/catalogue.json --out lock.json
 # policy.json: Level N's release and guardian keys (https://ourapps.app/policy/levelnpolicy.json) plus your own owner key
 python3 -m aepm install definition.json --lock lock.json --store store --policy policy.json --target app
-python3 -m aepm verify app --policy policy.json --trusted
+# trustedExecution: the digest of each package in lock.json, so verify may run their checks
+python3 -c 'import json; p=json.load(open("policy.json")); p["trustedExecution"]=sorted(x["digest"] for x in json.load(open("lock.json"))["packages"]); json.dump(p, open("policy.json", "w"), indent=2)'
+python3 -m aepm verify app --policy policy.json --trusted --allow-network
 ```
 
 A recipe's .txt page adds, under these steps, the recipe's own "Building it" notes from its description (for example a deploy in two steps). `fetch` checks every archive's sha256 against the catalogue and downloads the release and guardian signatures. `design` applies the recipe's rules to the answers and fails with a list of what is missing. `install` checks every signature against the policy, copies the listed files and runs none of their code. The recipe archive's `INSTRUCTIONS.md` has the policy step in full and the build and run commands for each device (section "Build and run").
