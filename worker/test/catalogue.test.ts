@@ -1459,7 +1459,8 @@ describe("build steps on the recipe text page", () => {
       "add --install to install the missing ones it can",
       "python3 -m aepm resolve definition.json",
       "python3 -m aepm install definition.json --lock lock.json --store store --policy policy.json --target app",
-      "python3 -m aepm verify app --policy policy.json --trusted",
+      "p[\"trustedExecution\"]=sorted(x[\"digest\"] for x in json.load(open(\"lock.json\"))[\"packages\"])",
+      "python3 -m aepm verify app --policy policy.json --trusted --allow-network",
       "Build and run each target as INSTRUCTIONS.md says",
     ].map(at);
     expect(steps.every((x, i) => x > 0 && (i === 0 || x > steps[i - 1]!)), JSON.stringify(steps)).toBe(true);

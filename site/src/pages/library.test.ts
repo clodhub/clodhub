@@ -393,7 +393,8 @@ describe("build steps on the recipe page", () => {
     const at = (s: string) => html.indexOf(s);
     expect(at(`tar -xf store/objects/${v.digest.slice(7)}.tar INSTRUCTIONS.md`)).toBeGreaterThan(at("python3 -m aepm fetch poker-night@0.1.0"));
     expect(at("python3 -m aepm doctor poker-night@0.1.0 --store store --answers answers.json")).toBeGreaterThan(at("python3 -m aepm design"));
-    expect(at("python3 -m aepm verify app --policy policy.json --trusted")).toBeGreaterThan(at("python3 -m aepm install"));
+    expect(at("trustedExecution")).toBeGreaterThan(at("python3 -m aepm install"));
+    expect(at("python3 -m aepm verify app --policy policy.json --trusted --allow-network")).toBeGreaterThan(at("trustedExecution"));
     expect(at("<h3 class=\"mt\">From the recipe</h3>")).toBeGreaterThan(at("--trusted"));
     expect(at("<h3 class=\"mt\">From the recipe</h3>")).toBeLessThan(at("<h2>About</h2>"));
     expect(html).toContain("<code>npm run deploy</code>");
@@ -401,7 +402,7 @@ describe("build steps on the recipe page", () => {
 
   it("shows no recipe section when the description has no Building it", () => {
     const html = recipeBody(recipeView(), "latest").html;
-    expect(html).toContain("python3 -m aepm verify app --policy policy.json --trusted");
+    expect(html).toContain("python3 -m aepm verify app --policy policy.json --trusted --allow-network");
     expect(html).not.toContain("From the recipe");
   });
 });

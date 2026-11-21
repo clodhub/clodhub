@@ -449,7 +449,8 @@ export function recipeBuildSteps(v: { slug: string; version: string; digest: str
     { text: "Resolve the exact packages", command: "python3 -m aepm resolve definition.json --catalogue store/catalogue.json --out lock.json" },
     { text: `Make the owner policy: Level N's release and guardian keys from https://ourapps.app/policy/levelnpolicy.json plus your own owner key (python3 -m aepm.test_identities DIR makes a disposable one); ${file} shows how`, command: null },
     { text: "Install", command: "python3 -m aepm install definition.json --lock lock.json --store store --policy policy.json --target app" },
-    { text: "Run every package's checks on the installed application", command: "python3 -m aepm verify app --policy policy.json --trusted" },
+    { text: "Let verify run the installed packages' checks: the policy's trustedExecution lists the digest of each package in lock.json", command: `python3 -c 'import json; p=json.load(open("policy.json")); p["trustedExecution"]=sorted(x["digest"] for x in json.load(open("lock.json"))["packages"]); json.dump(p, open("policy.json", "w"), indent=2)'` },
+    { text: "Run every package's checks on the installed application; --allow-network lets the checks' npm ci download", command: "python3 -m aepm verify app --policy policy.json --trusted --allow-network" },
     { text: `Build and run each target as ${file} says`, command: null },
   ];
 }
