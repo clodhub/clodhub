@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SIGNATURES_NOTE, classDescriptor, exampleComponentEntry, exampleRecipeEntry, packageContents, slotClass, summariseFoundations, type ComponentSummary, type PackageDetails, type ComponentVersionView, type Deprecation, type RecipeSummary, type RecipeVersionView } from "@my/store-shared";
+import { SIGNATURES_NOTE, classDescriptor, exampleComponentEntry, exampleRecipeEntry, packageContents, summariseFoundations, type ComponentSummary, type PackageDetails, type ComponentVersionView, type Deprecation, type RecipeSummary, type RecipeVersionView } from "@my/store-shared";
 import { escapeHtml } from "../html.js";
 import { classBody, componentBody, componentCard, deprecationBanner, detailsBody, recipeBody, recipeCard, splitDescription } from "./library.js";
 
@@ -53,10 +53,9 @@ function recipeView(patch: Partial<RecipeVersionView> = {}): RecipeVersionView {
     contents: packageContents(e.foundations),
     components: r.components.map((c) => ({
       ...c,
-      declaration: slotClass(classDescriptor(c.class, e.foundations)!),
       classInfo: { title: classDescriptor(c.class, e.foundations)!.title, summary: classDescriptor(c.class, e.foundations)!.summary, url: `${origin}/classes/${c.class.name.split("/")[1]}` },
       preferred: { ...c.preferred, url: c.id === "deck" ? `${origin}/components/card-deck` : null },
-      catalogue: c.id === "deck" ? { description: "A shuffled deck.", suitability, guardians: ["Example Guardian Ltd"], quality: null, thumbnail: null } : null,
+      catalogue: c.id === "deck" ? { description: "A shuffled deck.", profiles: suitability.profiles.map(({ id, cost, load }) => ({ id, cost, load })), guardians: ["Example Guardian Ltd"], quality: null, thumbnail: null } : null,
       deprecation: null,
       alternatives: { count: c.id === "seats" ? 1 : 0, url: `${origin}/components?class=${encodeURIComponent(c.class.name)}` },
     })),
@@ -115,7 +114,7 @@ function componentView(patch: Partial<ComponentVersionView> = {}): ComponentVers
 describe("recipe page", () => {
   it("shows package facts as counts with one link to the lists, after what a reader needs first", () => {
     const text = recipeBody(recipeView(), "latest").html;
-    expect(text).toContain("ourapps-ae/card-deck-class"); expect(text).toContain("Behaviour suites: behaviour");
+    expect(text).toContain("ourapps-ae/card-deck-class"); expect(text).toContain("A deck that shuffles, deals and burns cards");
     expect(text).toContain("Package facts"); expect(text).toContain(escapeHtml(SIGNATURES_NOTE)); expect(text).not.toContain("verified record");
     expect(text).toContain('<a href="/recipes/poker-night/details?version=0.1.0">Sources and dependencies</a>');
     expect(text).toMatch(/\d+ upstream sources?, \d+ exact dependenc(y|ies), \d+ class(es)?, \d+ files?/);
@@ -149,7 +148,8 @@ describe("recipe page", () => {
     const html = recipeBody(recipeView(), "latest").html;
     expect(html).toContain("<th>Slot</th><th>What it is</th><th>Preferred component</th><th>Alternatives</th>");
     expect(html).toContain("<code>seats</code>");
-    expect(html).toContain("<p>Provides <code>ae/seating</code> 1.0.0</p><p>Requires <code>ae/card-deck</code> 1.0.0</p>");
+    expect(html).toContain('<span class="small faint"><code>ourapps-ae/seating-class</code> 1.0.0</span>');
+    expect(html).toContain("<summary>Where it runs and who reviewed it</summary>");
     expect(html).toContain('<a href="/components/card-deck">card-deck</a> <span class="small faint">0.1.0</span><br /><span class="small muted">A shuffled deck.</span>');
     expect(html).toContain('<a href="/classes/seating-class">Seating</a>');
     expect(html).toContain('<a href="/components?class=ourapps-ae%2Fseating-class">1 other</a>');

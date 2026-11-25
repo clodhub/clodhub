@@ -60,6 +60,7 @@ import {
   type RecipeList,
   type RecipeSummary,
   type RecipeVersionView,
+  type SlotDetails,
   type Sort,
   type VulnerabilityReport,
 } from "@my/store-shared";
@@ -245,6 +246,11 @@ async function versionCommon(env: Env, d: CatalogueDb, kind: Kind, e: SummaryRow
 }
 
 async function recipeView(env: Env, d: CatalogueDb, e: SummaryRow, v: VersionRow, doc: RecipeEntry): Promise<RecipeVersionView> {
+  return (await recipeParts(env, d, e, v, doc)).view;
+}
+
+// The recipe version's view, and what its details page adds to each slot.
+async function recipeParts(env: Env, d: CatalogueDb, e: SummaryRow, v: VersionRow, doc: RecipeEntry): Promise<{ view: RecipeVersionView; slots: SlotDetails[] }> {
   const recipe = doc.recipe;
   const [listed, [tree], common, alternatives, reports] = await Promise.all([
     d.catalogueFor(recipe.components.map((s) => s.preferred)),
@@ -253,7 +259,8 @@ async function recipeView(env: Env, d: CatalogueDb, e: SummaryRow, v: VersionRow
     Promise.all(recipe.components.map((s) => d.implementationCount(s.class.name, s.preferred.name))),
     d.buildReports(e.name, 20),
   ]);
-  return {
+  const slots: SlotDetails[] = recipe.components.map((s, i) => ({ id: s.id, declaration: slotClass(classDescriptor(s.class, doc.foundations)!), suitability: listed[i]?.row.suitability ?? null }));
+  const view: RecipeVersionView = {
     ...recipeSummary(env, asVersion(e, v), tree.notices),
     ...common,
     foundations: summariseFoundations(doc.foundations, `${env.PUBLIC_ORIGIN}/api/recipes/${e.slug}/${v.version}/details`),
@@ -266,10 +273,9 @@ async function recipeView(env: Env, d: CatalogueDb, e: SummaryRow, v: VersionRow
       const descriptor = classDescriptor(s.class, doc.foundations)!;
       return {
         ...s,
-        declaration: slotClass(descriptor),
         classInfo: { title: descriptor.title, summary: descriptor.summary, url: `${env.PUBLIC_ORIGIN}/classes/${splitName(s.class.name)!.slug}` },
         preferred: { ...s.preferred, url: found ? `${env.PUBLIC_ORIGIN}/components/${found.slug}` : null },
-        catalogue: found ? { description: found.row.description, suitability: found.row.suitability!, guardians: found.row.guardians, quality: found.row.quality, thumbnail: thumbnailUrl(env, found.row.listing.thumbnail) } : null,
+        catalogue: found ? { description: found.row.description, profiles: found.row.suitability!.profiles.map(({ id, cost, load }) => ({ id, cost, load })), guardians: found.row.guardians, quality: found.row.quality, thumbnail: thumbnailUrl(env, found.row.listing.thumbnail) } : null,
         deprecation: tree.notices.find((n) => n.name === s.preferred.name && n.version === s.preferred.version && n.via.includes(e.name)) ?? null,
         alternatives: { count: alternatives[i]!, url: `${env.PUBLIC_ORIGIN}/components?class=${encodeURIComponent(s.class.name)}` },
       };
@@ -282,6 +288,7 @@ async function recipeView(env: Env, d: CatalogueDb, e: SummaryRow, v: VersionRow
     instructions: recipe.instructions,
     buildReports: reports.map((r) => reportView(env, e.slug, r, e.latestVersion)),
   };
+  return { view, slots };
 }
 
 // ---------------------------------------------------------------- build reports
@@ -432,10 +439,10 @@ async function found(env: Env, d: CatalogueDb, kind: Kind, name: string, version
   return f;
 }
 
-async function recipeFull(env: Env, d: CatalogueDb, name: string, version: string): Promise<{ view: RecipeVersionView; details: PackageDetails; doc: RecipeEntry }> {
+async function recipeFull(env: Env, d: CatalogueDb, name: string, version: string): Promise<{ view: RecipeVersionView; slots: SlotDetails[]; details: PackageDetails; doc: RecipeEntry }> {
   const f = await found(env, d, "recipe", name, version);
   const doc = await readDocument<RecipeEntry>(env, f.row.document);
-  return { view: await recipeView(env, d, f.entry, f.row, doc), details: packageDetails(f.entry.name, f.row.version, doc.foundations), doc };
+  return { ...(await recipeParts(env, d, f.entry, f.row, doc)), details: packageDetails(f.entry.name, f.row.version, doc.foundations), doc };
 }
 
 async function componentFull(env: Env, d: CatalogueDb, name: string, version: string): Promise<{ view: ComponentVersionView; details: PackageDetails; doc: ComponentEntry }> {
@@ -735,8 +742,8 @@ async function detailsText(env: Env, what: "recipes" | "components", name: strin
   const d = db(env);
   const version = url.searchParams.get("version") ?? "latest";
   if (what === "recipes") {
-    const { view, details } = await recipeFull(env, d, name, version);
-    return plain(recipeDetailsText(view, details, env.PUBLIC_ORIGIN));
+    const { view, slots, details } = await recipeFull(env, d, name, version);
+    return plain(recipeDetailsText(view, slots, details, env.PUBLIC_ORIGIN));
   }
   const { view, details } = await componentFull(env, d, name, version);
   return plain(componentDetailsText(view, details, env.PUBLIC_ORIGIN));

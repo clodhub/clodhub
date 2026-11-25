@@ -1,6 +1,6 @@
 // Plain-text pages of the recipe library and component catalogue, for agents that read without a browser.
 import { ASK_HEADINGS, buildingItSection, groupHasMore, recipeBuildSteps, PACKAGE_CHECK, PACKAGE_WHERE, QUALITY_TEXT, SIGNATURES_NOTE, classSettings, deprecationLine, describeCondition, kindText, markdownSections, questionGroups, recipeUseSentence } from "@my/store-shared";
-import type { CategoryCount, ClassList, ClassVersionView, ClassInterface, ComponentList, ComponentSummary, ComponentVersionView, Condition, Deprecation, FoundationSummary, EntryPort, Foundations, ListQuery, PackageContents, PackageDetails, Port, Quality, RecipeList, RecipeQuestion, RecipeSlotView, RecipeSummary, RecipeVersionView, SettingDeclaration, Suitability, Targets } from "@my/store-shared";
+import type { CategoryCount, ClassList, ClassVersionView, ClassInterface, ComponentList, ComponentSummary, ComponentVersionView, Condition, Deprecation, FoundationSummary, EntryPort, Foundations, ListQuery, PackageContents, PackageDetails, Port, Quality, RecipeList, RecipeQuestion, RecipeSlotView, RecipeSummary, RecipeVersionView, SettingDeclaration, SlotDetails, Suitability, Targets } from "@my/store-shared";
 
 const COPYRIGHT = "Copyright Level N Ltd 2026";
 
@@ -202,16 +202,17 @@ function suitabilityLines(s: Suitability): string[] {
 }
 
 // One slot: its class (interfaces and the settings the recipe writes), its preferred component, and the others of its class.
-function slotLines(s: RecipeSlotView, recipe: string): string[] {
+function slotLines(s: RecipeSlotView, more: SlotDetails, recipe: string): string[] {
   const only = s.includedWhen ? ` (only when ${when(s.includedWhen)})` : "";
-  const settings = classSettings(s.declaration.settings).map((p) => `${p.id} ${p.kind ? kindText(p.kind) : "unknown"}${p.required ? ", always written" : ""}`);
+  const settings = classSettings(more.declaration.settings).map((p) => `${p.id} ${p.kind ? kindText(p.kind) : "unknown"}${p.required ? ", always written" : ""}`);
   const out = [
     `- slot ${s.id}${only}`,
-    `    class: ${s.class.name} ${s.class.version} ${s.class.digest}; provides ${interfaces(s.declaration.provides)}; requires ${interfaces(s.declaration.requires)}; settings ${list(settings)}`,
+    `    class: ${s.class.name} ${s.class.version} ${s.class.digest}; provides ${interfaces(more.declaration.provides)}; requires ${interfaces(more.declaration.requires)}; settings ${list(settings)}`,
     `    preferred: ${s.preferred.name} ${s.preferred.version}${s.preferred.url ? ` (${s.preferred.url}.txt)` : ", not listed in the catalogue"}`,
   ];
   if (s.deprecation) out.push(`    DEPRECATION WARNING: ${deprecationLine(s.deprecation)}`);
-  if (s.catalogue) out.push(`    guardians: ${list(s.catalogue.guardians)}`, `    suitable for jobs: ${list(s.catalogue.suitability.jobs)}`, ...suitabilityLines(s.catalogue.suitability));
+  if (s.catalogue) out.push(`    guardians: ${list(s.catalogue.guardians)}`);
+  if (more.suitability) out.push(`    suitable for jobs: ${list(more.suitability.jobs)}`, ...suitabilityLines(more.suitability));
   out.push(`    other components of this class (${s.alternatives.count}): ${s.alternatives.url}`, `    python3 -m aepm alternatives ${recipe} ${s.id} --store store`);
   return out;
 }
@@ -301,7 +302,7 @@ export function recipeText(v: RecipeVersionView, origin: string): string {
 }
 
 // The rest of a recipe: what the summary page leaves out.
-export function recipeDetailsText(v: RecipeVersionView, details: PackageDetails, origin: string): string {
+export function recipeDetailsText(v: RecipeVersionView, slots: SlotDetails[], details: PackageDetails, origin: string): string {
   return page(`${v.title} (${v.name}) ${v.version}: details`, [
     `The recipe page, with the build steps, questions, slots and components: ${origin}/recipes/${v.slug}.txt?version=${v.version}`,
     `Digest: ${v.digest}`,
@@ -312,7 +313,7 @@ export function recipeDetailsText(v: RecipeVersionView, details: PackageDetails,
     v.description,
     "",
     `Slot details (${v.components.length})`,
-    ...v.components.flatMap((s) => slotLines(s, `${v.slug}@${v.version}`)),
+    ...v.components.flatMap((s, i) => slotLines(s, slots[i]!, `${v.slug}@${v.version}`)),
     "",
     ...connectionLines(v),
     `Tested answer sets: default${v.tests.answerSets.length > 0 ? `, ${v.tests.answerSets.map((s) => s.id).join(", ")}` : ""}`,
