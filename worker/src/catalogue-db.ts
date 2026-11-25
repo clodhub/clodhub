@@ -426,7 +426,8 @@ export class CatalogueDb {
   }
 
   // Replaces what a component version's entry says, keeping its digest, downloads, vulnerability results and publication
-  // date: a version stored in an earlier entry format published again. Its quality stays unless the new entry sets one.
+  // date: the same version published again in a newer entry format or with other text. Its quality stays unless the new
+  // entry sets one.
   async replaceComponentVersion(entry: EntryRow, v: NewVersion, now: string): Promise<void> {
     const q = v.quality;
     const statements: D1PreparedStatement[] = [

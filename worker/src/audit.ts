@@ -19,7 +19,7 @@ export type AuditEvent =
   | "recipe-published"
   | "recipe-unlisted"
   | "component-published"
-  | "component-republished"
+  | "component-updated"
   | "component-unlisted"
   | "recipe-deprecated"
   | "recipe-undeprecated"
