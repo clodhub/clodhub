@@ -1,5 +1,5 @@
-// The OurPoker recipe as slots, and the catalogue entries of the 39 components it prefers, from what https://ourapps.app
-// served on 2026-11-10, with every port id the last segment of its type. Trimmed to the fields the diagrams read.
+// The OurPoker recipe as slots, and the catalogue entries of the 39 components it prefers, as the catalogue served them
+// on 2026-11-10, with every port id the last segment of its type. Trimmed to the fields the diagrams read.
 // Test data only.
 import type { ClassInterface, Port, Targets } from "../catalogue.js";
 import type { Condition } from "../conditions.js";

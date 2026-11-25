@@ -1047,7 +1047,7 @@ describe("page variants", () => {
         ...cardFull,
         upstream: Array.from({ length: 344 }, () => upstream),
         compatibility: { ...cardFull.compatibility, dependencies: Array.from({ length: 291 }, (_, i) => ({ isolation: "isolated", name: `pkg:maven/org.example/dependency-${i}`, version: "1.0.0" })) },
-        files: Array.from({ length: 468 }, (_, i) => ({ path: `android/src/main/java/app/ourapps/host/File${i}.kt`, executable: false })),
+        files: Array.from({ length: 468 }, (_, i) => ({ path: `android/src/main/java/app/clodhub/host/File${i}.kt`, executable: false })),
       };
       const large: ComponentVersionView = { ...card, foundations: summariseFoundations(largeFoundations, card.foundations.details) };
       const summary = componentText(large, BASE);
