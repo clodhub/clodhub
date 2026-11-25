@@ -507,7 +507,17 @@ export interface SettingDeclaration extends SettingKind {
 
 export type SettingValue = boolean | number | string;
 
-// An entry module an interface document declares in "x-ourapps-modules": its path (null when the document gives no
+// The interface-document keyword that declares entry modules by platform. Only this name is read.
+export const INTERFACE_MODULES_KEYWORD = "x-clodhub-modules";
+
+// The entry modules an interface document declares, platform to path; null when it declares none.
+export function documentModules(document: unknown): Record<string, unknown> | null {
+  if (!isRecord(document)) return null;
+  const modules = document[INTERFACE_MODULES_KEYWORD];
+  return isRecord(modules) ? modules : null;
+}
+
+// An entry module an interface document declares in "x-clodhub-modules": its path (null when the document gives no
 // text), and whether the component installs it (aepm's rule 4: the artefact destination components/<short name>/<path>,
 // or for the native platforms apple and android a destination inside that folder).
 export interface EntryModule {
@@ -1534,11 +1544,11 @@ function readInterfaceDigests(value: unknown, provides: Port[], errors: string[]
   return Object.fromEntries(keys.filter((k) => isDigest(value[k])).map((k) => [k, value[k] as string]));
 }
 
-// interfaceModules: for provided interfaces whose document declares x-ourapps-modules, platform to { path, installed }.
+// interfaceModules: for provided interfaces whose document declares x-clodhub-modules, platform to { path, installed }.
 function readInterfaceModules(value: unknown, provides: Port[], errors: string[]): Record<string, Record<string, EntryModule>> {
   const keys = provides.map(interfaceKey);
   if (!isRecord(value)) {
-    errors.push("interfaceModules must map type@version of a provided interface to its document's x-ourapps-modules: platform to { path, installed }");
+    errors.push("interfaceModules must map type@version of a provided interface to its document's x-clodhub-modules: platform to { path, installed }");
     return {};
   }
   const out: Record<string, Record<string, EntryModule>> = {};

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classDescriptor, canonical, descriptorDigest, graphProblems, selectedTargets, validLicence, validateFoundations, validateDescriptor, GRAMMAR_PATTERNS, componentFacts, fit, exampleComponentEntries, exampleComponentEntry, exampleAlternativeEntry, exampleRecipeEntry, exampleRecipeContext, isCatalogueName, isCatalogueSlug, isDigest, isPackagePath, isRepository, isSafeSvg, isVersion, compareVersions, newestVersion, propertyKind, settingSchema, validateRecipe, validateRecipeEntry, validateComponentEntry, validateSuitability, summariseMigration, parsePurl, exampleCategories, isPackageVersion, questionGroups, readReleaseChannel, validateCategories, validateClassEntry, validateQuality, versionLine } from "./index.js";
+import { classDescriptor, canonical, descriptorDigest, graphProblems, selectedTargets, validLicence, validateFoundations, validateDescriptor, GRAMMAR_PATTERNS, componentFacts, fit, exampleComponentEntries, exampleComponentEntry, exampleAlternativeEntry, exampleRecipeEntry, exampleRecipeContext, isCatalogueName, isCatalogueSlug, documentModules, INTERFACE_MODULES_KEYWORD, isDigest, isPackagePath, isRepository, isSafeSvg, isVersion, compareVersions, newestVersion, propertyKind, settingSchema, validateRecipe, validateRecipeEntry, validateComponentEntry, validateSuitability, summariseMigration, parsePurl, exampleCategories, isPackageVersion, questionGroups, readReleaseChannel, validateCategories, validateClassEntry, validateQuality, versionLine } from "./index.js";
 
 const patterns = Object.values(GRAMMAR_PATTERNS);
 const errors = (r: { ok: boolean; errors?: string[] }) => r.ok ? "" : r.errors!.join(" | ");
@@ -281,5 +281,15 @@ describe("package URLs", () => {
     expect(errors(validateComponentEntry(e))).toContain("upstream-provenance");
     e.foundations.upstream[0]!.purl = "pkg:npm/left-pad@1.3.0";
     expect(errors(validateComponentEntry(e))).toBe("");
+  });
+});
+
+describe("interface document entry modules", () => {
+  it("reads only x-clodhub-modules", () => {
+    expect(INTERFACE_MODULES_KEYWORD).toBe("x-clodhub-modules");
+    expect(documentModules({ type: "object", "x-clodhub-modules": { web: "index.mjs" } })).toEqual({ web: "index.mjs" });
+    expect(documentModules({ type: "object", ["x-ourapps" + "-modules"]: { web: "index.mjs" } })).toBeNull();
+    expect(documentModules({ "x-clodhub-modules": "index.mjs" })).toBeNull();
+    expect(documentModules(null)).toBeNull();
   });
 });

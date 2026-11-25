@@ -27,6 +27,7 @@ const bundled = await build({ entryPoints: [join(root, "shared/src/index.ts")], 
 const catalogue = (await import(`data:text/javascript;base64,${Buffer.from(bundled.outputFiles[0].text).toString("base64")}`)) as {
   validateRecipe: (input: unknown, context?: unknown) => { ok: true } | { ok: false; errors: string[] };
   validateFoundations: (input: unknown, kind: string, patterns: string[]) => string[];
+  documentModules: (document: unknown) => Record<string, unknown> | null;
   GRAMMAR_PATTERNS: Record<string, string>;
 };
 
@@ -81,7 +82,7 @@ function foundationsOf(manifest: any, folder: string) {
 const NATIVE = ["apple", "android"];
 
 // The fit facts of the provided interface documents, as a catalogue entry records them: the sha256 of each document
-// the manifest lists in `files`, and the entry modules each declares in "x-ourapps-modules", installed when an artefact
+// the manifest lists in `files`, and the entry modules each declares in "x-clodhub-modules", installed when an artefact
 // lands at components/<short name>/<path> (inside that folder for apple and android).
 function interfacesOf(manifest: any, folder: string) {
   const listed = new Set(list(manifest.files).map((f: any) => f?.path));
@@ -101,8 +102,8 @@ function interfacesOf(manifest: any, folder: string) {
     } catch {
       continue;
     }
-    const modules = document && typeof document === "object" ? document["x-ourapps-modules"] : null;
-    if (!modules || typeof modules !== "object") continue;
+    const modules = catalogue.documentModules(document);
+    if (!modules) continue;
     interfaceModules[key] = Object.fromEntries(
       Object.entries(modules).map(([platform, path]) => {
         if (typeof path !== "string") return [platform, { path: null, installed: false }];
