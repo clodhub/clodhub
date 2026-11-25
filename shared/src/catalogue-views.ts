@@ -401,7 +401,8 @@ export const PACKAGE_CHECK = "aepm checks the archive's sha256 fingerprint befor
 export interface ContentGroup {
   label: string;
   count: number;
-  // Up to six paths of the group, relative to the group's folder.
+  // What the group holds: its folders with how many files each ("android (52)"), or its file names when it has no folders;
+  // at most six.
   examples: string[];
 }
 
@@ -429,6 +430,21 @@ const CONTENT_LABELS: Record<string, string> = {
 };
 const CONTENT_ORDER = ["implementation", "tests", "fixtures", "interfaces", "classes", "examples", "assets", "locales", "rules", "page", "images", "visual", "scripts", "notices"];
 
+// A group's folders with their file counts, in order of first appearance, or its file names when it has no folders.
+function groupExamples(paths: string[]): string[] {
+  if (!paths.some((path) => path.includes("/"))) return paths.slice(0, 6);
+  const folders = new Map<string, number>();
+  for (const path of paths) {
+    const at = path.indexOf("/");
+    const key = at < 0 ? path : `${path.slice(0, at)}/`;
+    folders.set(key, (folders.get(key) ?? 0) + 1);
+  }
+  return [...folders.entries()].slice(0, 6).map(([folder, n]) => (folder.endsWith("/") ? `${folder} (${n})` : folder));
+}
+
+// Whether a group holds more than its examples show.
+export const groupHasMore = (g: ContentGroup): boolean => g.examples.reduce((n, x) => n + (Number(/\((\d+)\)$/.exec(x)?.[1]) || 1), 0) < g.count;
+
 export function packageContents(f: Pick<Foundations, "files" | "artefacts">): PackageContents {
   const groups = new Map<string, string[]>();
   for (const file of f.files) {
@@ -453,7 +469,7 @@ export function packageContents(f: Pick<Foundations, "files" | "artefacts">): Pa
     files: f.files.length,
     groups: [...groups.entries()]
       .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
-      .map(([key, paths]) => ({ label: key === "" ? "Documents and manifests" : (CONTENT_LABELS[key] ?? `${key}/`), count: paths.length, examples: paths.slice(0, 6) })),
+      .map(([key, paths]) => ({ label: key === "" ? "Documents and manifests" : (CONTENT_LABELS[key] ?? `${key}/`), count: paths.length, examples: groupExamples(paths) })),
     installed: { count: f.artefacts.length, root, folders: [...folders.entries()].map(([folder, count]) => ({ folder, count })) },
   };
 }

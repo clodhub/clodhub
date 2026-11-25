@@ -1,6 +1,6 @@
 // The recipe library and the component catalogue: browse, search, and read one entry.
 import type { BuildReportView, CategoryCount, ClassList, ClassVersionView, FoundationSummary, Foundations, ImageView, LineView, PackageDetails, Quality, VersionRef, VulnerabilityReport, VulnerabilitySummary } from "@my/store-shared";
-import { buildingItSection, markdownSections, recipeBuildSteps, recipeUseSentence, PACKAGE_CHECK, PACKAGE_WHERE, QUALITY_LEVELS, QUALITY_TEXT, SIGNATURES_NOTE, classSettings, questionGroups, settingTypeWords, type BundleLink, type ClassInterface, type EntryPort, type PackageContents, type ComponentList, type ComponentSummary, type ComponentVersionView, type Deprecation, type EntryStatus, type Profile, type RecipeList, type RecipeSlotView, type RecipeSummary, type RecipeVersionView, type SettingDeclaration } from "@my/store-shared";
+import { buildingItSection, groupHasMore, markdownSections, recipeBuildSteps, recipeUseSentence, PACKAGE_CHECK, PACKAGE_WHERE, QUALITY_LEVELS, QUALITY_TEXT, SIGNATURES_NOTE, classSettings, questionGroups, settingTypeWords, type BundleLink, type ClassInterface, type EntryPort, type PackageContents, type ComponentList, type ComponentSummary, type ComponentVersionView, type Deprecation, type EntryStatus, type Profile, type RecipeList, type RecipeSlotView, type RecipeSummary, type RecipeVersionView, type SettingDeclaration } from "@my/store-shared";
 import { ApiError, api, whoAmI } from "../api.js";
 import { html, mount, raw, type Raw } from "../html.js";
 import { svgFigure } from "../figures.js";
@@ -370,7 +370,7 @@ export function packageCard(v: { bundle: { asset: string }; digest: string; sour
             ${extra}
             <table class="table small mt-s">
               <tr><th>What</th><th>Files</th><th>For example</th></tr>
-              ${c.groups.map((g) => html`<tr><td>${g.label}</td><td>${fmtCount(g.count)}</td><td>${g.examples.map((x, i) => html`${i > 0 ? ", " : ""}<code>${x}</code>`)}${g.count > g.examples.length ? ", ..." : ""}</td></tr>`)}
+              ${c.groups.map((g) => html`<tr><td>${g.label}</td><td>${fmtCount(g.count)}</td><td class="small">${g.examples.map((x, i) => html`${i > 0 ? ", " : ""}<code>${x}</code>`)}${groupHasMore(g) ? ", ..." : ""}</td></tr>`)}
             </table>
             <p class="mt-s">Installing copies ${fmtCount(c.installed.count)} of them into your application${c.installed.root ? html` under <code>${c.installed.root}</code>` : ""}: ${c.installed.folders.map((f, i) => html`${i > 0 ? ", " : ""}${f.folder} ${f.count}`)}.</p>
             <p>Not included: ${notIncluded}.</p>
