@@ -22,7 +22,7 @@ The publisher calls `aepm.bundle.read_archive(reference, archive_bytes)` and der
 | Component `provides`, `requires` | Manifest ports projected to `{id,type,version}`; requirements retain `optional:true` |
 | Component `settings` | Each `manifest.collect` declaration projected to `{id,type,grammar,required,secret,hasDefault}`; `hasDefault` is key presence of `default` |
 | Component `interfaceDigests` | Provided document bytes keyed by `type@version`, hashed with `sha256:` prefix |
-| Component `interfaceModules` | Provided document module declarations keyed by `type@version`, with each platform's `{path,installed}` computed from artefact destinations |
+| Component `interfaceModules` | Each provided document's `x-clodhub-modules` keyed by `type@version`, with each platform's `{path,installed}` computed from artefact destinations |
 | Component `dependencies` | Manifest dependency names and exact versions |
 | Component `suitability`, `migration` | Packaged suitability document and migration summary |
 | Recipe `recipe` | Packaged `recipe.json` |

@@ -21,5 +21,5 @@
 - A recipe's `page.diagram` is SVG text served as an image from the Worker, never inserted into a page as markup.
 - SQLite CHECKs pass on NULL: `CHECK (a IS NOT NULL OR b = 'x')` accepts a NULL `b`; use `COALESCE(b, '')`.
 - Unauthenticated `api.github.com` asset requests return JSON metadata unless `Accept: application/octet-stream` is sent; `fetchUpstream` sets it.
-- Class references must be `clodhub/<name>` (`isClassReference` in `shared/src/foundations.ts`). Interface documents still declare entry modules under `x-ourapps-modules`, the key aepm and the library tools write.
+- Class references must be `clodhub/<name>` (`isClassReference` in `shared/src/foundations.ts`). Interface documents declare entry modules under `x-clodhub-modules` (`INTERFACE_MODULES_KEYWORD`, read through `documentModules` in `shared/src/catalogue.ts`); no other prefix is accepted.
 - Changing `docs/package-foundations.md`'s example descriptor changes its digest; the parity test in `shared/test/foundation-parity.test.mjs` checks it.

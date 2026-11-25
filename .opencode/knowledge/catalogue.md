@@ -42,7 +42,7 @@ The authority is the "Recipe evaluation rules" and "Recipe slots and component c
 - Scale: `scale.question` is a choice question and each of its options is a band id. A job's `overrideQuestion` is a choice or text question.
 - `RecipeContext` (second argument): `components` `{ source, find(name, version) }` giving `ComponentFacts`, and `application` (the recipe's own settings and ports). With `components`, secret settings take only `ref`, job candidate profiles must exist and their `settings` must fit. Without `application`, its ports and settings are unchecked. The publishing route passes the catalogue as `components`.
 - Component entries: a `requires` entry may carry `optional: true` (kept only when true); `provides` entries may not. Suitability profiles may carry `settings`.
-- File check with component data: `npm run validate-recipe -- <recipe.json> [--components <dir>] [--no-components]` (`scripts/validate-recipe-file.ts`; bundles `shared/src/catalogue.ts` with esbuild, reads `<dir>/*/component.json` (ports, `collect`, `files`, `artefacts`, the provided interface documents for digests and entry modules) and `suitability.json`, and the recipe folder's own `component.json` for `application`). Exit 0 valid, 1 errors, 2 unreadable.
+- File check with component data: `npm run validate-recipe -- <recipe.json> [--components <dir>] [--no-components]` (`scripts/validate-recipe-file.ts`; bundles `shared/src/catalogue.ts` with esbuild, reads `<dir>/*/component.json` (ports, `collect`, `files`, `artefacts`, the provided interface documents for digests and their `x-clodhub-modules` entry modules) and `suitability.json`, and the recipe folder's own `component.json` for `application`). Exit 0 valid, 1 errors, 2 unreadable.
 
 ## Deprecation and orphaning
 
