@@ -1,6 +1,6 @@
 // What the public recipe and component routes return. Never carries tokens or credentials.
 import type { BuildReportView } from "./build-reports.js";
-import type { BundlePointer, Channel, ClassInterface, ComponentDependency, MigrationSummary, Port, Quality, QualityLevel, Recipe, RecipeSlot, ReleaseChannel, ReleasePointer, EntryModule, SettingDeclaration, Suitability, Targets, VulnerabilityWaiver } from "./catalogue.js";
+import type { BundlePointer, Channel, ClassInterface, ComponentDependency, EntryPort, MigrationSummary, Quality, QualityLevel, Recipe, RecipeSlot, ReleaseChannel, ReleasePointer, EntryModule, SettingDeclaration, Suitability, Targets, VulnerabilityWaiver } from "./catalogue.js";
 import type { ClassDescriptor, ClassReference, Compatibility, Foundations, Presentation } from "./foundations.js";
 
 export const DEPRECATED_FILTERS = ["exclude", "include", "only"] as const;
@@ -135,6 +135,8 @@ interface VersionCommon {
 // class provides.
 export interface RecipeSlotView extends Omit<RecipeSlot, "preferred"> {
   declaration: SlotClass;
+  // The slot's class as its descriptor names it, and its catalogue page.
+  classInfo: { title: string; summary: string; url: string };
   preferred: { name: string; version: string; url: string | null };
   catalogue: { description: string; suitability: Suitability; guardians: string[]; quality: Quality | null; thumbnail: string | null } | null;
   deprecation: Deprecation | null;
@@ -150,6 +152,7 @@ export interface RecipeVersionView extends RecipeSummary, VersionCommon {
   bundle: BundlePointer & { url: string };
   description: string;
   diagram: string | null;
+  contents: PackageContents;
   components: RecipeSlotView[];
   jobs: Recipe["jobs"];
   scale: Recipe["scale"];
@@ -165,8 +168,13 @@ export interface RecipeVersionView extends RecipeSummary, VersionCommon {
 // `usedBy` lists the listed recipes whose newest version names this component in a slot, with each slot and whether the
 // component is the slot's preferred one or a job candidate.
 export interface ComponentVersionView extends ComponentSummary, VersionCommon {
-  provides: Port[];
-  requires: Port[];
+  // The page text (Markdown) the publisher wrote: what the component is, then sections under level-2 headings.
+  about: string;
+  // The class it implements: its summary, its page, and how many other listed components implement it.
+  classInfo: { summary: string; url: string; others: number; othersUrl: string };
+  contents: PackageContents;
+  provides: EntryPort[];
+  requires: EntryPort[];
   foundations: FoundationSummary;
   foundationEvidence: "publisher-declared";
   digest: string;
@@ -385,38 +393,99 @@ export interface BundleLink {
   deprecations: Deprecation[];
 }
 
-// What a downloaded package is, in one place: the site pages, the plain-text pages and the documents quote this.
-export interface PackageSummary {
-  headline: string;
-  parts: [label: string, text: string][];
-  where: string;
-  check: string;
+// Where a package's archive is and what installing it does, said the same way on every page.
+export const PACKAGE_WHERE = "The archive is a release file on the publisher's public GitHub repository; ourapps keeps this page and a pointer to the release, not the code.";
+export const PACKAGE_CHECK = "aepm checks the archive's sha256 fingerprint before anything is copied, and installing runs none of the package's code.";
+
+// What one package archive holds, from its file list: the files by kind, and where the installed ones go.
+export interface ContentGroup {
+  label: string;
+  count: number;
+  // Up to six paths of the group, relative to the group's folder.
+  examples: string[];
 }
 
-export const COMPONENT_PACKAGE: PackageSummary = {
-  headline: "The component itself: its source code in one archive file, not a link to code elsewhere.",
-  parts: [
-    ["Code", "The working implementation for each device or server it supports, as ordinary source files in those platforms' languages."],
-    ["Contract", "The interfaces it provides and requires, written as data, with its documentation and instructions for an agent."],
-    ["Tests", "The tests that prove it works, and the versions of the tools they need."],
-    ["Manifest", "component.json lists every file with its fingerprint and the place it takes in your application, so nothing is copied that is not listed."],
-    ["Not included", "The components it requires (each is a separate download), your settings, and any secret."],
-  ],
-  where: "The archive is a release file on the publisher's public GitHub repository. ourapps keeps this page's details and a pointer to the release; it does not hold or run the code.",
-  check: "The digest is the sha256 fingerprint of the archive. aepm checks it before anything is copied. Installing copies the listed files into your application and runs none of the package's code.",
-};
+export interface PackageContents {
+  files: number;
+  groups: ContentGroup[];
+  installed: { count: number; root: string; folders: { folder: string; count: number }[] };
+}
 
-export const RECIPE_PACKAGE: PackageSummary = {
-  headline: "The recipe itself: source code and a form, in one archive file, not a link to code elsewhere.",
-  parts: [
-    ["Recipe", "recipe.json holds the questions it asks, its slots (for each, the class of component it needs and the component it prefers, by exact version), the settings that connect them, the choice of providers by size, and the tested answer sets."],
-    ["Application code", "The recipe's own application-specific component: the screens, artwork, sounds, translated text, rules and end-to-end tests that belong to this application and to no other."],
-    ["Instructions", "INSTRUCTIONS.md tells an agent how to answer the questions and what each answer changes, and tells the developer which accounts are needed."],
-    ["Not included", "The components that fill its slots. Each is a separate download, fetched by exact version and checked against its digest."],
-  ],
-  where: "The archive is a release file on the publisher's public GitHub repository. ourapps keeps this page's details and a pointer to the release; it does not hold or run the code.",
-  check: "The digest is the sha256 fingerprint of the archive. aepm checks it before anything is copied. Installing copies the listed files into your application and runs none of the package's code.",
+const CONTENT_LABELS: Record<string, string> = {
+  implementation: "Source code",
+  tests: "Tests",
+  fixtures: "Test data",
+  interfaces: "Interface documents",
+  classes: "Class files: the class's interfaces and shared checks",
+  examples: "Examples",
+  visual: "Diagrams",
+  images: "Images of it as built",
+  notices: "Licence notices of upstream code",
+  page: "Page text and diagram",
+  assets: "Artwork and sounds",
+  locales: "Translations",
+  rules: "Rules",
+  scripts: "Scripts",
 };
+const CONTENT_ORDER = ["implementation", "tests", "fixtures", "interfaces", "classes", "examples", "assets", "locales", "rules", "page", "images", "visual", "scripts", "notices"];
+
+export function packageContents(f: Pick<Foundations, "files" | "artefacts">): PackageContents {
+  const groups = new Map<string, string[]>();
+  for (const file of f.files) {
+    const at = file.path.indexOf("/");
+    const key = at < 0 ? "" : file.path.slice(0, at);
+    groups.set(key, [...(groups.get(key) ?? []), at < 0 ? file.path : file.path.slice(at + 1)]);
+  }
+  const rank = (k: string) => (k === "" ? -1 : CONTENT_ORDER.includes(k) ? CONTENT_ORDER.indexOf(k) : CONTENT_ORDER.length);
+  const destinations = f.artefacts.map((a) => a.destination);
+  const first = destinations[0]?.split("/") ?? [];
+  // The deepest folder every installed file shares, at most components/<name>/.
+  let depth = 0;
+  while (depth < Math.min(2, first.length - 1) && destinations.every((d) => d.split("/")[depth] === first[depth])) depth++;
+  const root = depth === 0 ? "" : `${first.slice(0, depth).join("/")}/`;
+  const folders = new Map<string, number>();
+  for (const d of destinations) {
+    const rest = d.slice(root.length).split("/");
+    const folder = rest.length > 1 ? rest[0]! : "(top level)";
+    folders.set(folder, (folders.get(folder) ?? 0) + 1);
+  }
+  return {
+    files: f.files.length,
+    groups: [...groups.entries()]
+      .sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
+      .map(([key, paths]) => ({ label: key === "" ? "Documents and manifests" : (CONTENT_LABELS[key] ?? `${key}/`), count: paths.length, examples: paths.slice(0, 6) })),
+    installed: { count: f.artefacts.length, root, folders: [...folders.entries()].map(([folder, count]) => ({ folder, count })) },
+  };
+}
+
+const words = (items: string[]): string => (items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`);
+
+// How a recipe uses a component, in words: the slot of its class, what the recipe connects and the settings it writes.
+export function recipeUseSentence(v: { name: string; class: { name: string; version: string; title: string }; provides: { id: string }[]; requires: { id: string; optional?: boolean }[]; settings: { id: string; required: boolean; hasDefault: boolean }[] }): string {
+  const needed = v.requires.filter((r) => !r.optional).map((r) => r.id);
+  const optional = v.requires.filter((r) => r.optional).map((r) => r.id);
+  const always = v.settings.filter((s) => s.required && !s.hasDefault).map((s) => s.id);
+  const parts = [
+    `A recipe uses it through a slot of class ${v.class.title} (${v.class.name} ${v.class.version}), naming ${v.name} as the slot's preferred component or substituting it for another component of the class.`,
+    v.provides.length > 0 ? `The recipe connects what it provides (${words(v.provides.map((p) => p.id))}) to the slots that use ${v.provides.length === 1 ? "it" : "them"}.` : "",
+    needed.length > 0 ? `It fills what the component needs (${words(needed)}) from slots whose components provide ${needed.length === 1 ? "it" : "them"}${optional.length > 0 ? `; ${words(optional)} may stay unconnected` : ""}.` : optional.length > 0 ? `What it can use (${words(optional)}) may stay unconnected.` : "",
+    v.settings.length === 0 ? "It has no settings." : `The recipe sets ${words(v.settings.map((s) => s.id))}${always.length > 0 ? `; ${words(always)} ${always.length === 1 ? "has" : "have"} no default, so the recipe always sets ${always.length === 1 ? "it" : "them"}` : "; any it leaves out takes its default"}.`,
+  ];
+  return parts.filter(Boolean).join(" ");
+}
+
+// A page description in parts: the text before its first level-2 heading, then each level-2 section.
+export function markdownSections(markdown: string): { intro: string; sections: { heading: string; body: string }[] } {
+  const parts = `\n${markdown}`.split(/\n## /);
+  const intro = parts.shift()!.trim();
+  return {
+    intro,
+    sections: parts.map((part) => {
+      const at = part.indexOf("\n");
+      return { heading: (at < 0 ? part : part.slice(0, at)).trim(), body: at < 0 ? "" : part.slice(at + 1).trim() };
+    }),
+  };
+}
 
 // The recipe's questions in the three groups of their `ask`, in recipe order within each.
 export const ASK_HEADINGS = { required: "Ask the person", "unless-settled": "Ask unless the request settles it", default: "Defaults" } as const;

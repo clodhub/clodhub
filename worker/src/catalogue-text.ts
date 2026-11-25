@@ -1,6 +1,6 @@
 // Plain-text pages of the recipe library and component catalogue, for agents that read without a browser.
-import { ASK_HEADINGS, buildingItSection, recipeBuildSteps, COMPONENT_PACKAGE, QUALITY_TEXT, RECIPE_PACKAGE, SIGNATURES_NOTE, classSettings, deprecationLine, describeCondition, kindText, questionGroups } from "@my/store-shared";
-import type { CategoryCount, ClassList, ClassVersionView, ClassInterface, ComponentList, ComponentSummary, ComponentVersionView, Condition, Deprecation, FoundationSummary, Foundations, ListQuery, PackageDetails, PackageSummary, Port, Quality, RecipeList, RecipeQuestion, RecipeSlotView, RecipeSummary, RecipeVersionView, SettingDeclaration, Suitability, Targets } from "@my/store-shared";
+import { ASK_HEADINGS, buildingItSection, recipeBuildSteps, PACKAGE_CHECK, PACKAGE_WHERE, QUALITY_TEXT, SIGNATURES_NOTE, classSettings, deprecationLine, describeCondition, kindText, markdownSections, questionGroups, recipeUseSentence } from "@my/store-shared";
+import type { CategoryCount, ClassList, ClassVersionView, ClassInterface, ComponentList, ComponentSummary, ComponentVersionView, Condition, Deprecation, FoundationSummary, EntryPort, Foundations, ListQuery, PackageContents, PackageDetails, Port, Quality, RecipeList, RecipeQuestion, RecipeSlotView, RecipeSummary, RecipeVersionView, SettingDeclaration, Suitability, Targets } from "@my/store-shared";
 
 const COPYRIGHT = "Copyright Level N Ltd 2026";
 
@@ -10,7 +10,21 @@ const ports = (p: Port[]): string => list(p.map((x) => `${x.id} (${x.type} ${x.v
 const interfaces = (p: ClassInterface[]): string => list(p.map((x) => `${x.type} ${x.version}${x.optional ? " (optional)" : ""}`));
 
 const warnings = (deprecations: Deprecation[]): string[] => deprecations.map((d) => `DEPRECATION WARNING: ${deprecationLine(d)}`);
-const packageLines = (summary: PackageSummary): string[] => ["", "What you download", summary.headline, ...summary.parts.map(([label, text]) => `- ${label}: ${text}`), summary.where, summary.check];
+// What the archive holds, by kind of file, and where installing puts the files that go into the application.
+const packageLines = (v: { bundle: { asset: string }; source: { repository: string; tag: string }; contents: PackageContents }, notIncluded: string): string[] => {
+  const c = v.contents;
+  return [
+    "",
+    "What you download",
+    `${v.bundle.asset}, from release ${v.source.tag} of ${v.source.repository}: ${c.files} files`,
+    ...c.groups.map((g) => `- ${g.label} (${g.count}): ${g.examples.join(", ")}${g.count > g.examples.length ? ", ..." : ""}`),
+    `Installing copies ${c.installed.count} of them into the application${c.installed.root ? ` under ${c.installed.root}` : ""}: ${list(c.installed.folders.map((f) => `${f.folder} ${f.count}`))}`,
+    `Not included: ${notIncluded}`,
+    `${PACKAGE_WHERE} ${PACKAGE_CHECK}`,
+  ];
+};
+// A described interface: its id, type and version, then what its document says it is.
+const portLines = (p: EntryPort[], also: (p: EntryPort) => string): string[] => (p.length === 0 ? ["- none"] : p.flatMap((x) => [`- ${x.id} (${x.type} ${x.version}${x.optional ? ", optional" : ""})${x.description ? `: ${x.description}` : ""}`, `  ${also(x)}`]));
 // The steps an agent runs to build an application from this recipe with aepm, then the recipe's own "Building it".
 const buildSteps = (v: RecipeVersionView, origin: string): string[] => {
   const own = buildingItSection(v.description);
@@ -203,7 +217,7 @@ function slotLines(s: RecipeSlotView, recipe: string): string[] {
 }
 
 function settingLine(s: SettingDeclaration): string {
-  const traits = [s.required ? "required" : "optional", s.hasDefault ? "has a default" : "no default", ...(s.secret ? ["secret"] : [])];
+  const traits = [s.required ? "required" : "optional", s.hasDefault ? `default ${JSON.stringify(s.default)}` : "no default", ...(s.secret ? ["a secret reference"] : [])];
   return `- ${s.id}: ${kindText(s)}; ${traits.join(", ")}`;
 }
 
@@ -229,10 +243,14 @@ function foundationLines(f: Foundations): string[] {
   return ["", "Package foundations (publisher-declared)", `Signatures: ${SIGNATURES_NOTE}`, `Wrapper licence: ${f.licence}`, `Platforms: ${f.platforms.join(", ")}`, `Runtime requirements: ${JSON.stringify(f.compatibility.runtimes)}`, `Framework requirements: ${JSON.stringify(f.compatibility.frameworks)}`, `Exact dependencies: ${JSON.stringify(f.compatibility.dependencies)}`, `Styles: ${JSON.stringify(f.compatibility.styles)}`, `Maintainers: ${f.maintenance.owners.join(", ")}; ${f.maintenance.contact}`, `Maintenance repository: ${f.maintenance.repository}`, `Updates: ${f.maintenance.updates.source} (${f.maintenance.updates.strategy})`, ...f.upstream.map(u => `Upstream: ${u.name} ${u.version}; revision ${u.revision ?? "not supplied"}; ${u.repository}; ${u.purl}; licence ${u.licence}; notices ${u.notices.join(", ")}; delivery ${JSON.stringify(u.delivery)}`), ...f.classes.flatMap(c => [`Class: ${c.reference.name} ${c.reference.version} ${c.reference.digest}`, `Shared behaviour suites: ${c.descriptor.verification.map(s => s.id).join(", ")}`, `Class modules: ${JSON.stringify(c.descriptor.provides.map(p => ({ type: p.type, modules: p.modules })))}`, `Class interface and test inventory: ${JSON.stringify(c.descriptor.inventory)}`])];
 }
 
-// One line per slot: its class, its preferred component and when it is included.
+// One slot: what its class is, its preferred component and what that does, and when it is included.
 function slotLine(s: RecipeSlotView): string[] {
   const only = s.includedWhen ? `; only when ${when(s.includedWhen)}` : "";
-  return [`- ${s.id}: class ${s.class.name}@${s.class.version}; preferred ${s.preferred.name}@${s.preferred.version}${only}`, ...(s.deprecation ? [`  DEPRECATION WARNING: ${deprecationLine(s.deprecation)}`] : [])];
+  return [
+    `- ${s.id}: ${s.classInfo.title}, ${s.classInfo.summary.charAt(0).toLowerCase()}${s.classInfo.summary.slice(1)} (class ${s.class.name}@${s.class.version}, ${s.classInfo.url}.txt)${only}`,
+    `  preferred ${s.preferred.name}@${s.preferred.version}${s.catalogue ? `: ${s.catalogue.description}` : ", not listed in the catalogue"}`,
+    ...(s.deprecation ? [`  DEPRECATION WARNING: ${deprecationLine(s.deprecation)}`] : []),
+  ];
 }
 
 // Every component the recipe names, preferred or job candidate, once.
@@ -288,7 +306,7 @@ export function recipeDetailsText(v: RecipeVersionView, details: PackageDetails,
     `The recipe page, with the build steps, questions, slots and components: ${origin}/recipes/${v.slug}.txt?version=${v.version}`,
     `Digest: ${v.digest}`,
     `Bundle: ${v.bundle.asset} ${v.bundle.digest}`,
-    ...packageLines(RECIPE_PACKAGE),
+    ...packageLines(v, `the ${v.components.length} components of its slots; each is a separate download, fetched by exact version and checked against its digest`),
     "",
     "Description",
     v.description,
@@ -330,45 +348,60 @@ function recipeUseLines(v: ComponentVersionView): string[] {
   const slot = { id: v.slug, class: { name: c.name, version: c.version, digest: c.digest }, preferred: { name: v.name, version: v.version } };
   return [
     "How to use in a recipe",
+    recipeUseSentence(v),
     `- as a slot in recipe.json components: ${JSON.stringify(slot)}`,
     `- in place of another component of the class: python3 -m aepm fetch ${v.name}@${v.version} --store store --from https://ourapps.app, then python3 -m aepm design RECIPE@VERSION --store store --answers answers.json --substitute SLOT=${v.name}@${v.version} --out definition.json`,
   ];
 }
 
-// The component page an agent reads first. Upstream sources, dependency pins, file inventories and the package
-// explanation are on the details page (componentDetailsText).
+// The component page an agent reads first: what it is, its class, what it provides and needs, its settings and how a
+// recipe uses it. Upstream sources, dependency pins and file lists are on the details page (componentDetailsText).
 export function componentText(v: ComponentVersionView, origin: string): string {
   const f = v.foundations;
+  const about = markdownSections(v.about);
+  const section = (heading: string) => about.sections.find((s) => s.heading === heading)?.body;
+  const examples = section("Examples");
+  const settings = section("Settings");
+  const more = about.sections.filter((s) => s.heading !== "Examples" && s.heading !== "Settings");
   return page(`${v.name} ${v.version}`, [
     ...(v.deprecations.length > 0 ? [...warnings(v.deprecations), `Deprecation tree: ${origin}/api/components/${v.slug}/${v.version}/deprecations`, ""] : []),
     v.description,
+    ...(about.intro && about.intro !== v.description ? ["", about.intro] : []),
+    ...(examples ? ["", "Examples", examples] : []),
+    "",
+    `Class: ${v.class.title} (${v.class.name}@${v.class.version}): ${v.classInfo.summary}. Any component of this class can fill a recipe slot that asks for it. Category ${v.category}; ${v.classInfo.url}.txt; ${v.classInfo.others} other component${v.classInfo.others === 1 ? "" : "s"} of this class: ${v.classInfo.othersUrl.replace("/components?", "/components.txt?")}`,
+    "",
+    `Provides (${v.provides.length})`,
+    ...portLines(v.provides, (p) => `components that use it: ${origin}/components.txt?requires=${encodeURIComponent(p.type)}`),
+    `Requires (${v.requires.length})`,
+    ...portLines(v.requires, (p) => `components that provide it: ${origin}/components.txt?provides=${encodeURIComponent(p.type)}`),
+    "",
+    `Settings (${v.settings.length})`,
+    ...(settings ? [settings] : []),
+    ...v.settings.map(settingLine),
+    `Depends on components: ${list(v.dependencies.map((x) => `${x.name} ${x.version}`))}`,
+    "",
+    ...recipeUseLines(v),
+    `Used by recipes: ${list(v.usedBy.map((r) => `${r.name} ${r.version} (${r.slots.map((s) => `slot ${s.id}${s.preferred ? "" : " as a job candidate"}`).join(", ")})`))}`,
+    ...more.flatMap((s) => ["", s.heading, s.body]),
     "",
     `Tags: ${list(v.tags)}`,
     `Targets: ${targets(v.targets)}`,
     publisherLine(v.publisher),
     `Guardians: ${list(v.guardians)}`,
     `Source: ${v.source.repository} release ${v.source.tag}; digest ${v.digest}`,
-    `Class: ${v.class.name}@${v.class.version} (${v.class.title}); category ${v.category}; ${origin}/classes/${v.class.name.split("/")[1]}.txt`,
     ...releaseLines(v, "components", origin),
     `Bundle download: GET ${v.bundle.url} returns a link valid for one hour${v.status === "orphaned" ? "; with no publisher the link exists only while the release is public, otherwise the status is bundle-unavailable" : ""}`,
     "",
     ...classLines(f),
-    `Provides: ${ports(v.provides)}`,
-    `Requires: ${ports(v.requires)}`,
     ...requirementLines(f),
-    "",
-    `Settings (${v.settings.length})`,
-    ...v.settings.map(settingLine),
-    `Depends on components: ${list(v.dependencies.map((x) => `${x.name} ${x.version}`))}`,
     "",
     `Suitable for jobs: ${list(v.suitability.jobs)}`,
     ...suitabilityLines(v.suitability),
     ...(v.suitability.notes ? [`Notes: ${v.suitability.notes}`] : []),
     v.migration ? `Data migration: stores ${list(v.migration.stores.map((s) => `${s.id} (${s.schema.name} ${s.schema.version})`))}; formats ${list(v.migration.formats)}; requires stop ${v.migration.requiresStop ? "yes" : "no"}; retention ${v.migration.retentionDays ?? "unspecified"} days` : "Data migration: this component keeps no data",
-    "",
-    ...recipeUseLines(v),
-    `Used by recipes: ${list(v.usedBy.map((r) => `${r.name} ${r.version} (${r.slots.map((s) => `slot ${s.id}${s.preferred ? "" : " as a job candidate"}`).join(", ")})`))}`,
     `Maintainers: ${f.maintenance.owners.join(", ")}; ${f.maintenance.contact}; updates ${f.maintenance.updates.source} (${f.maintenance.updates.strategy})`,
+    ...packageLines(v, componentsNotIncluded(v)),
     "",
     "Versions",
     ...versions(v),
@@ -379,6 +412,10 @@ export function componentText(v: ComponentVersionView, origin: string): string {
   ]);
 }
 
+// What a component's archive leaves out: the components that provide what it requires, and the application's settings.
+const componentsNotIncluded = (v: ComponentVersionView): string =>
+  `${v.requires.length === 0 ? "" : `the components that provide what it requires (${v.requires.map((r) => r.type).join(", ")}), each a separate download; `}the values of its settings, which the recipe writes; any secret`;
+
 // The rest of a component: what the summary page leaves out.
 export function componentDetailsText(v: ComponentVersionView, details: PackageDetails, origin: string): string {
   const f = details.foundations;
@@ -386,7 +423,7 @@ export function componentDetailsText(v: ComponentVersionView, details: PackageDe
     `The component page, with its class, interfaces, settings and how to use it in a recipe: ${origin}/components/${v.slug}.txt?version=${v.version}`,
     `Digest: ${v.digest}`,
     `Bundle: ${v.bundle.asset} ${v.bundle.digest}`,
-    ...packageLines(COMPONENT_PACKAGE),
+    ...packageLines(v, componentsNotIncluded(v)),
     ...foundationLines(f),
     "",
     `Files (${f.files.length})`,

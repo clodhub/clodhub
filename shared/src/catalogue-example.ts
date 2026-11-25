@@ -1,5 +1,5 @@
 // An invented recipe and components for documentation and tests. Never a real application.
-import { GRAMMAR_PATTERNS, componentFacts, interfaceKey, type CategoryNode, type ClassEntry, type ComponentEntry, type PackageImage, type Port, type RecipeContext, type RecipeEntry, type SettingDeclaration, type Suitability } from "./catalogue.js";
+import { GRAMMAR_PATTERNS, componentFacts, interfaceKey, type CategoryNode, type ClassEntry, type ComponentEntry, type EntryPort, type PackageImage, type Port, type RecipeContext, type RecipeEntry, type SettingDeclaration, type SettingValue, type Suitability } from "./catalogue.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
 import { descriptorDigest, type ClassDescriptor, type Foundations } from "./foundations.js";
@@ -175,13 +175,20 @@ export function exampleRecipeEntry(): RecipeEntry {
 
 const LIBRARY: Suitability = { format: 1, jobs: ["library"], profiles: [{ id: "any", load: {}, cost: "none", regions: ["any"], compliance: [], provider: null, notes: "" }], notes: "" };
 
-const setting = (id: string, type: SettingDeclaration["type"], grammar: string, more: Partial<SettingDeclaration> = {}): SettingDeclaration => ({ id, type, grammar, required: false, secret: false, hasDefault: true, ...more });
+const DEFAULTS: Record<string, SettingValue> = { integer: 2, boolean: false, slug: "standard", label: "Standard", identifier: "standard", qualified: "com.example", environment: "STANDARD", address: "https://example.com" };
+
+const setting = (id: string, type: SettingDeclaration["type"], grammar: string, more: Partial<SettingDeclaration> = {}): SettingDeclaration => {
+  const s: SettingDeclaration = { id, type, grammar, required: false, secret: false, hasDefault: true, ...more };
+  return s.hasDefault ? { default: DEFAULTS[type === "string" ? grammar : type], ...s } : s;
+};
+
+const described = (ports: Port[]): EntryPort[] => ports.map((p) => ({ ...p, description: `The ${p.type} interface: what a ${p.id.replace(/-/g, " ")} offers the application.` }));
 
 function component(slug: string, description: string, provides: Port[], requires: Port[], settings: SettingDeclaration[], suitability: Suitability = LIBRARY): ComponentEntry {
   const foundations = exampleFoundations(slug);
   return {
     foundations,
-    format: 2,
+    format: 3,
     release: { channel: "features", fixes: [] },
     images: foundations.classes[0]!.descriptor.presentation === "visual" ? [exampleImage()] : [],
     vulnerabilityWaivers: [],
@@ -190,11 +197,12 @@ function component(slug: string, description: string, provides: Port[], requires
     version: "0.1.0",
     digest: EXAMPLE_DIGEST,
     description,
+    page: { description: `${description}\n\n## Examples\n\nA club night uses it at every table.\n\n## Settings\n\nEach setting has a default that suits a club night.\n\n## How it is checked\n\n\`node --test tests/web.test.ts\` checks it.` },
     tags: [],
     targets: { client: ["web"], server: [] },
     guardians: [],
-    provides,
-    requires,
+    provides: described(provides),
+    requires: described(requires),
     settings,
     interfaceDigests: Object.fromEntries(provides.map((p) => [interfaceKey(p), EXAMPLE_INTERFACE_DIGEST])),
     interfaceModules: {},

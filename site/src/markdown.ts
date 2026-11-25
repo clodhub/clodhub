@@ -6,7 +6,8 @@ import { escapeHtml } from "./html.js";
 
 const SAFE_LINK = /^(https?:\/\/|\/(?!\/))/;
 
-function inline(source: string): string {
+// One line of Markdown (code, emphasis, links) with no paragraph around it.
+export function inline(source: string): string {
   const stash: string[] = [];
   let text = escapeHtml(source).replace(/`([^`]+)`/g, (_m, code: string) => {
     stash.push(`<code>${code}</code>`);

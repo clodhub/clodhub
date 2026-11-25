@@ -37,7 +37,7 @@ async function seed(): Promise<void> {
     const cls = classes[i]!;
     const e: ComponentEntry = {
       foundations: { ...exampleFoundations(), classes: [cls], implements: [cls.reference] },
-      format: 2,
+      format: 3,
       release: { channel: "features", fixes: [] },
       images: [],
       vulnerabilityWaivers: [],
@@ -46,11 +46,12 @@ async function seed(): Promise<void> {
       version: c.version,
       digest: EXAMPLE_DIGEST,
       description: c.name,
+      page: { description: c.name },
       tags: [],
       targets: c.targets,
       guardians: [],
-      provides: c.provides,
-      requires: c.requires,
+      provides: c.provides.map((p) => ({ ...p, description: "" })),
+      requires: c.requires.map((p) => ({ ...p, description: "" })),
       settings: [],
       interfaceDigests: Object.fromEntries(c.provides.map((p) => [interfaceKey(p), EXAMPLE_DIGEST])),
       interfaceModules: {},

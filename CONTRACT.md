@@ -434,7 +434,7 @@ A recipe or a component is published from its own GitHub repository. ourapps kee
 
 ### Catalogue publish API
 
-The publish tool sends these requests with a `manage` API key (`Authorization: Bearer oa_...`) or a signed-in session. Every body is JSON unless stated; every error is `{ "error": "<what is wrong>" }`. Entry bodies are format 2: a body with `format: 1` is refused with 400 `invalid entry: format-refused: ...`, and the version is published again with the current tool.
+The publish tool sends these requests with a `manage` API key (`Authorization: Bearer oa_...`) or a signed-in session. Every body is JSON unless stated; every error is `{ "error": "<what is wrong>" }`. Component entries are format 3, recipe and class entries format 2. A body in an earlier format is refused with 400 `invalid entry: format-refused: ...`, and the version is published again with the current tool.
 
 Order for one package version: upload its images, publish the class it implements (once per class version), then publish the component or recipe.
 
@@ -484,12 +484,13 @@ Content-Type: image/png | image/webp
 ```
 POST /api/dev/components
 {
-  "format": 2,
+  "format": 3,
   "name": "acme/card-deck", "version": "0.1.0", "digest": "sha256:<archive>",
-  "description": "...", "tags": ["cards"], "targets": { "client": ["web"], "server": [] }, "guardians": ["Level N Ltd (guardian key 08775f20)"],
-  "provides": [{ "id": "card-deck", "type": "ae/card-deck", "version": "1.0.0" }],
-  "requires": [{ "id": "random-source", "type": "ae/random-source", "version": "1.0.0", "optional": true }],
-  "settings": [{ "id": "seed", "type": "string", "grammar": "label", "required": false, "secret": false, "hasDefault": true }],
+  "description": "...", "page": { "description": "<markdown>" },
+  "tags": ["cards"], "targets": { "client": ["web"], "server": [] }, "guardians": ["Level N Ltd (guardian key 08775f20)"],
+  "provides": [{ "id": "card-deck", "type": "ae/card-deck", "version": "1.0.0", "description": "Playing cards: create, shuffle, deal and burn ..." }],
+  "requires": [{ "id": "random-source", "type": "ae/random-source", "version": "1.0.0", "description": "...", "optional": true }],
+  "settings": [{ "id": "seed", "type": "string", "grammar": "label", "required": false, "secret": false, "hasDefault": true, "default": "Table one" }],
   "interfaceDigests": { "ae/card-deck@1.0.0": "sha256:<hex>" }, "interfaceModules": { "ae/card-deck@1.0.0": { "web": { "path": "web/index.ts", "installed": true } } },
   "dependencies": [], "suitability": <suitability.json>, "migration": null,
   "source": { "repository": "acme/card-deck", "tag": "v0.1.0" }, "bundle": { "asset": "card-deck-0.1.0.tar", "digest": "sha256:<asset>" },
@@ -501,8 +502,12 @@ POST /api/dev/components
 }
 -> 201 { "status": "published", "name": "acme/card-deck", "version": "0.1.0", "url": "https://ourapps.app/components/card-deck", "api": "https://ourapps.app/api/components/card-deck/0.1.0" }
 -> 200 the same with "status": "unchanged" for the same version and digest again
+-> 200 the same with "status": "republished" for the same version and digest when that version is stored in an earlier component entry format: the stored entry is replaced, and its downloads, vulnerability results, publication date and (unless the body sets one) quality stay
 ```
 
+- `page.description` is Markdown of at most 20,000 characters, shown on the component's page: what the component is first, then sections under level-2 headings. A section headed `Examples` is shown with the opening text, one headed `Settings` above the settings table, and the others under "More about it". The Level N publish tool takes them from the archive's `CONTRACT.md`: "Purpose and facilities", then "Scenarios and presentation" as Examples, "User inputs" as Settings, and "Integration", "Infrastructure", "Verification" and "Updates and removal".
+- Each of `provides` and `requires` carries `description` (at most 2,000 characters, may be empty): the description its interface document gives (`info.description` of an OpenRPC document).
+- Each setting carries `default` exactly when `hasDefault` is true: the value aepm writes when the recipe leaves the setting out, a boolean, a 32-bit integer or a string of the setting's grammar.
 - `version` is `MAJOR.MINOR.PATCH`, or `MAJOR.MINOR.PATCH-preview.N` (N a positive integer) for the preview channel. No other pre-release form is accepted.
 - `release` comes from the verified manifest. `channel` is `security` (patch above 0; `fixes` lists one or more OSV, GHSA or CVE ids; a features release of the same name on the same `MAJOR.MINOR` line must be published already), `features` (patch 0; `fixes` empty) or `preview` (`-preview.N`; `fixes` empty).
 - `foundations.implements` names exactly one class, and that class's descriptor is in `foundations.classes`. That class name and version must be published (POST /api/dev/classes first) with the same digest; otherwise 400. The component's class, listing category and presentation come from the published class; the body has no `category` field.
@@ -510,7 +515,7 @@ POST /api/dev/components
 - `images`: at most 12, read from the verified archive, each uploaded first (with its thumbnail) with the width and height stated. A component whose class has `presentation: "visual"` needs at least one. The first image is the main image. `caption` is at most 140 characters; `platform` is one of `foundations.platforms`.
 - `vulnerabilityWaivers` is `[]` when none; each `reason` is at most 500 characters.
 - `quality` is null or left out, except from a curator (by numeric GitHub id): `level` is `packaged`, `reviewed`, `integration-tested` or `live-tested` (each includes the ones before it), `certified` is true when the guardian signature is Level N's, `liveTested` is `{ at: "<ISO date>", platform }` for `live-tested` and null otherwise. Quality from anyone else gets 403.
-- The other fields are as before this format: ports, settings, interface facts and dependencies from `aepm.bundle.read_archive`; `foundations` copied from the manifest (`licence` is `identity.licence`).
+- Ports, settings, interface facts and dependencies come from `aepm.bundle.read_archive`; `foundations` is copied from the manifest (`licence` is `identity.licence`).
 - The full entry is stored as a document; the listing keeps a summary of the newest listed version. The newest listed version is the highest that is not a preview, or the highest preview while nothing else is listed.
 
 #### Recipes

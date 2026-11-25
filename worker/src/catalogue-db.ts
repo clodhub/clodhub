@@ -425,6 +425,27 @@ export class CatalogueDb {
     await this.batch(statements);
   }
 
+  // Replaces what a component version's entry says, keeping its digest, downloads, vulnerability results and publication
+  // date: a version stored in an earlier entry format published again. Its quality stays unless the new entry sets one.
+  async replaceComponentVersion(entry: EntryRow, v: NewVersion, now: string): Promise<void> {
+    const q = v.quality;
+    const statements: D1PreparedStatement[] = [
+      this.d1
+        .prepare(
+          `UPDATE component_versions SET description = ?, guardians = ?, suitability = ?, class_name = ?, class_version = ?, class_digest = ?, licence = ?, platforms = ?, channel = ?, fixes = ?, images = ?, waivers = ?, source_repo = ?, source_tag = ?, bundle_asset = ?, bundle_digest = ?, document = ?, listing = ?${q ? ", quality = ?, certified = ?, live_tested_at = ?, live_tested_platform = ?" : ""} WHERE component_id = ? AND version = ? AND digest = ?`,
+        )
+        .bind(v.description!, JSON.stringify(v.guardians ?? []), JSON.stringify(v.suitability), v.listing.className, v.listing.classVersion, v.classDigest!, v.listing.licence, ` ${v.listing.platforms.join(" ")} `, v.channel, JSON.stringify(v.fixes), JSON.stringify(v.images), JSON.stringify(v.waivers), v.source.repository, v.source.tag, v.bundle.asset, v.bundle.digest, v.document, JSON.stringify(v.listing), ...(q ? [qualityNumber(q), q.certified ? 1 : 0, q.liveTested?.at ?? null, q.liveTested?.platform ?? null] : []), entry.id, v.version, v.digest),
+      this.d1.prepare("DELETE FROM component_interfaces WHERE component_id = ? AND version = ?").bind(entry.id, v.version),
+      this.d1.prepare("DELETE FROM component_dependencies WHERE component_id = ? AND version = ?").bind(entry.id, v.version),
+    ];
+    for (const [direction, ports] of [["provides", v.provides ?? []], ["requires", v.requires ?? []]] as const) {
+      for (const p of ports) statements.push(this.d1.prepare("INSERT INTO component_interfaces (component_id, version, direction, port_id, type, interface_version) VALUES (?, ?, ?, ?, ?, ?)").bind(entry.id, v.version, direction, p.id, p.type, p.version));
+    }
+    for (const dep of v.dependencies ?? []) statements.push(this.d1.prepare("INSERT INTO component_dependencies (component_id, version, dependency_name, dependency_version) VALUES (?, ?, ?, ?)").bind(entry.id, v.version, dep.name, dep.version));
+    statements.push(...(await this.refreshStatements("component", entry, entry, now, { version: v.version, channel: v.channel, listing: v.listing })));
+    await this.batch(statements);
+  }
+
   // Lists a version again after it was unlisted.
   async relist(kind: Kind, entry: EntryRow, version: string, now: string): Promise<void> {
     const t = TABLES[kind];
@@ -479,7 +500,7 @@ export class CatalogueDb {
     const t = TABLES[kind];
     const old = before ? await this.first(this.d1.prepare(`SELECT seq, category, ${kind === "component" ? "class_name" : "NULL AS class_name"}, latest_version FROM ${t.entries} WHERE id = ?`).bind(target.id)) : null;
     const listed = await this.all(this.d1.prepare(`SELECT version, channel, listing FROM ${t.versions} WHERE ${t.fk} = ? AND (unlisted_at IS NULL OR version = ?)`).bind(target.id, relisting ?? ""));
-    const candidates = listed.map((r) => ({ version: r.version as string, channel: r.channel as Channel, listing: parse<Listing>(r.listing, null as unknown as Listing) }));
+    const candidates = listed.filter((r) => r.version !== adding?.version).map((r) => ({ version: r.version as string, channel: r.channel as Channel, listing: parse<Listing>(r.listing, null as unknown as Listing) }));
     if (adding) candidates.push(adding);
     const stable = candidates.filter((c) => c.channel !== "preview");
     const pool = stable.length > 0 ? stable : candidates;

@@ -371,7 +371,7 @@ describe("publishing a recipe", () => {
     await publishParts();
     githubFor(release("acme/seating", "v0.2.0", "seating-0.2.0.tar", 32));
     const seating = exampleComponentEntries()[1]!;
-    const unfit = { ...seating, version: "0.2.0", digest: digest("2"), settings: [], requires: [...seating.requires, { id: "audit", type: "ae/audit", version: "1.0.0" }], source: { repository: "acme/seating", tag: "v0.2.0" }, bundle: { ...seating.bundle, asset: "seating-0.2.0.tar" } };
+    const unfit = { ...seating, version: "0.2.0", digest: digest("2"), settings: [], requires: [...seating.requires, { id: "audit", type: "ae/audit", version: "1.0.0", description: "The ae/audit interface." }], source: { repository: "acme/seating", tag: "v0.2.0" }, bundle: { ...seating.bundle, asset: "seating-0.2.0.tar" } };
     expect((await post("/api/dev/components", unfit)).status).toBe(201);
     const res = await post("/api/dev/recipes", recipe((e) => (e.recipe.components[1].preferred.version = "0.2.0")));
     expect(res.status).toBe(400);
@@ -424,7 +424,7 @@ describe("publishing a recipe", () => {
       return post("/api/dev/components", component((e) => ((e.name = `acme/${slug}`), (e.source = { repository: `acme/${slug}`, tag: "v0.1.0" }), (e.bundle.asset = `${slug}-0.1.0.tar`), patch(e))));
     };
     expect((await other("fancy-deck", 61)).status).toBe(201);
-    expect((await other("strict-deck", 62, (e) => (e.requires = [{ id: "audit", type: "ae/audit", version: "1.0.0" }]))).status).toBe(201);
+    expect((await other("strict-deck", 62, (e) => (e.requires = [{ id: "audit", type: "ae/audit", version: "1.0.0", description: "The ae/audit interface." }]))).status).toBe(201);
     const view = (await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView;
     expect(view.components.find((s) => s.id === "deck")!.alternatives).toEqual({ count: 2, url: `${BASE}/components?class=ourapps-ae%2Fcard-deck-class` });
     expect(view.components.find((s) => s.id === "seats")!.alternatives.count).toBe(0);
@@ -704,19 +704,65 @@ describe("components", () => {
     expect((await post("/api/dev/components/card-deck/0.1.0/quality", live)).status).toBe(403);
   });
 
+  it("refuses a component entry in format 2, without page text, or with defaults that do not fit their settings", async () => {
+    const old = await post("/api/dev/components", component((e) => (e.format = 2)));
+    expect(old.status).toBe(400);
+    expect(((await old.json()) as { error: string }).error).toContain("format-refused: the component entry format is 3; a format 2 component entry is refused, publish the version again with the current publish tool");
+    const pageless = await post("/api/dev/components", component((e) => delete e.page));
+    expect(((await pageless.json()) as { error: string }).error).toContain("page must be an object with description");
+    const settings = [
+      { id: "decks", type: "integer", grammar: "integer", required: false, secret: false, hasDefault: true, default: "one" },
+      { id: "jokers", type: "boolean", grammar: "boolean", required: false, secret: false, hasDefault: false, default: false },
+      { id: "theme", type: "string", grammar: "slug", required: false, secret: false, hasDefault: true, default: "Not A Slug" },
+    ];
+    const error = ((await (await post("/api/dev/components", component((e) => (e.settings = settings)))).json()) as { error: string }).error;
+    expect(error).toContain("settings[0].default must be the setting's default value: an integer");
+    expect(error).toContain("settings[1].default is given only when hasDefault is true");
+    expect(error).toContain("settings[2].default must be the setting's default value: a string of grammar slug");
+  });
+
+  it("replaces the entry of a version stored in an earlier format when it is published again with the same digest", async () => {
+    await publishCard();
+    expect((await post("/api/dev/components/card-deck/0.1.0/quality", { level: "integration-tested", certified: true, liveTested: null })).status).toBe(200);
+    await env.DB.prepare("UPDATE component_versions SET downloads = 7").run();
+    // The stored document as an earlier format left it: format 2, no page text, no interface descriptions.
+    const row = (await env.DB.prepare("SELECT document FROM component_versions").first<{ document: string }>())!;
+    const stored = JSON.parse(await (await env.CATALOGUE.get(row.document))!.text());
+    stored.format = 2;
+    delete stored.page;
+    for (const p of [...stored.provides, ...stored.requires]) delete p.description;
+    const earlier = row.document.replace(/[0-9a-f]{64}\.json$/, `${"2".repeat(64)}.json`);
+    await env.CATALOGUE.put(earlier, JSON.stringify(stored));
+    await env.DB.prepare("UPDATE component_versions SET document = ?").bind(earlier).run();
+    expect(((await (await get("/api/components/card-deck")).json()) as ComponentVersionView).about).toBe("");
+
+    expect(((await (await post("/api/dev/components", component())).json()) as { status: string }).status).toBe("republished");
+    const v = (await (await get("/api/components/card-deck")).json()) as ComponentVersionView;
+    expect(v.about).toContain("A club night uses it at every table.");
+    expect(v.provides[0]!.description).toContain("what a card deck offers");
+    expect(v.quality).toMatchObject({ level: "integration-tested", certified: true });
+    expect(v.versionDownloads).toBe(7);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM component_versions").first<{ n: number }>())!.n).toBe(1);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM component_interfaces").first<{ n: number }>())!.n).toBe(2);
+
+    // In the current format the same version again is unchanged, and another digest is still refused.
+    expect(((await (await post("/api/dev/components", component())).json()) as { status: string }).status).toBe("unchanged");
+    expect((await post("/api/dev/components", component((e) => (e.digest = digest("9"))))).status).toBe(409);
+  });
+
   it("keeps optional requirements and profile settings through publication, reads and text", async () => {
     await publishCard((e) => {
-      e.requires = [{ id: "random-source", type: "ae/random-source", version: "1.0.0", optional: true }, { id: "audit", type: "ae/audit", version: "1.0.0" }];
+      e.requires = [{ id: "random-source", type: "ae/random-source", version: "1.0.0", description: "The ae/random-source interface.", optional: true }, { id: "audit", type: "ae/audit", version: "1.0.0", description: "The ae/audit interface." }];
       e.dependencies = [{ name: "acme/random-pool", version: "0.1.0" }];
       e.suitability.profiles[0].settings = { plan: "eco", capacity: 10, durable: true };
     });
     const view = (await (await get("/api/components/card-deck")).json()) as ComponentVersionView;
-    expect(view.requires).toEqual([{ id: "random-source", type: "ae/random-source", version: "1.0.0", optional: true }, { id: "audit", type: "ae/audit", version: "1.0.0" }]);
+    expect(view.requires).toEqual([{ id: "random-source", type: "ae/random-source", version: "1.0.0", description: "The ae/random-source interface.", optional: true }, { id: "audit", type: "ae/audit", version: "1.0.0", description: "The ae/audit interface." }]);
     expect(view.dependencies).toEqual([{ name: "acme/random-pool", version: "0.1.0" }]);
     expect(view.suitability.profiles[0].settings).toEqual({ plan: "eco", capacity: 10, durable: true });
     const text = await (await get("/components/card-deck.txt")).text();
-    expect(text).toContain("Requires: random-source (ae/random-source 1.0.0, optional), audit (ae/audit 1.0.0)");
-    expect(text).toContain("Class: ourapps-ae/card-deck-class@1.0.0 (Card deck); category games/cards");
+    expect(text).toContain("Requires (2)\n- random-source (ae/random-source 1.0.0, optional): The ae/random-source interface.\n  components that provide it: https://ourapps.app/components.txt?provides=ae%2Frandom-source\n- audit (ae/audit 1.0.0): The ae/audit interface.");
+    expect(text).toContain("Class: Card deck (ourapps-ae/card-deck-class@1.0.0): A deck that shuffles, deals and burns cards. Any component of this class can fill a recipe slot that asks for it. Category games/cards; https://ourapps.app/classes/card-deck-class.txt");
     expect(text).toContain("settings plan \"eco\", capacity 10, durable true");
     const bad = await post("/api/dev/components", nextComponent("0.2.0", digest("e"), (e) => (e.requires[0].optional = "yes")));
     expect(bad.status).toBe(400);
@@ -881,8 +927,8 @@ describe("page variants", () => {
     expect(page).toContain("Line 0.1: no security releases");
     expect(page).toContain("Known vulnerabilities: none known");
     expect(page).toContain("Slots (5): each needs a component of its class");
-    expect(page).toContain("- deck: class ourapps-ae/card-deck-class@1.0.0; preferred acme/card-deck@0.1.0");
-    expect(page).toContain("- apple: class ourapps-ae/apple-shell-class@1.0.0; preferred acme/apple-host@0.1.0; only when (targets includes ios) or (targets includes macos)");
+    expect(page).toContain("- deck: Card deck, a deck that shuffles, deals and burns cards (class ourapps-ae/card-deck-class@1.0.0, https://ourapps.app/classes/card-deck-class.txt)\n  preferred acme/card-deck@0.1.0: A shuffled deck of 52 cards that deals and burns cards.");
+    expect(page).toMatch(/- apple: .* \(class ourapps-ae\/apple-shell-class@1\.0\.0, https:\/\/ourapps\.app\/classes\/apple-shell-class\.txt\); only when \(targets includes ios\) or \(targets includes macos\)\n  preferred acme\/apple-host@0\.1\.0: The iPhone, iPad and Mac shell\./);
     expect(page).toContain("python3 -m aepm alternatives poker-night@0.1.0 SLOT --store store lists the components that fit, then add --substitute SLOT=NAME@VERSION to design");
     expect(page).toContain("sets host.targets to the answer");
     expect(page).toContain("range: 100 to 1000000");
@@ -942,11 +988,11 @@ describe("page variants", () => {
     expect(components).toContain("- acme/card-deck 0.1.0: A shuffled deck of 52 cards that deals and burns cards.\n  class ourapps-ae/card-deck-class@1.0.0 (Card deck); category games/cards");
     expect(components).toContain("5 components match; this page shows 5, sorted by downloads.");
     const one = await (await get("/components/card-deck.txt")).text();
-    expect(one).toContain("Provides: card-deck (ae/card-deck 1.0.0)");
+    expect(one).toContain("Provides (1)\n- card-deck (ae/card-deck 1.0.0): The ae/card-deck interface: what a card deck offers the application.");
     expect(one).toContain("Used by recipes: acme/poker-night 0.1.0 (slot deck)");
     expect(one).toContain("Settings (0)");
     const host = await (await get("/components/server-host.txt")).text();
-    expect(host).toContain("Settings (3)\n- targets: string (label); required, no default\n- expectedPeople: integer; optional, has a default\n- accountReference: string (slug); optional, no default, secret");
+    expect(host).toContain("Settings (3)\nEach setting has a default that suits a club night.\n- targets: string (label); required, no default\n- expectedPeople: integer; optional, default 2\n- accountReference: string (slug); optional, no default, a secret reference");
     expect(one).toContain("Data migration: this component keeps no data");
     expect(((await (await get("/components/card-deck.json")).json()) as ComponentVersionView).name).toBe("acme/card-deck");
     {
@@ -956,8 +1002,8 @@ describe("page variants", () => {
       expect(one).toContain("--substitute SLOT=acme/card-deck@0.1.0");
       expect(one).toContain(`${BASE}/components/card-deck/details.txt?version=0.1.0`);
       expect(one).not.toContain("Package foundations");
-      // An agent reads in this order: the class and interfaces, settings, how to use it, versions, links.
-      const order = ["Implements:", "Provides:", "Platforms:", "Toolchains:", "Settings (", "How to use in a recipe", "Versions", "Links"].map((h) => one.indexOf(h));
+      // An agent reads in this order: what it is, the class and interfaces, settings, how to use it, the rest, versions, links.
+      const order = ["Examples", "Class: Card deck", "Provides (", "Requires (", "Settings (", "How to use in a recipe", "How it is checked", "Implements:", "Platforms:", "What you download", "Versions", "Links"].map((h) => one.indexOf(h));
       expect(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1]))).toBe(true);
 
       const details = await get("/components/card-deck/details.txt");
@@ -1046,7 +1092,7 @@ const POOL = (patch: (e: Mutable) => void = () => {}) =>
     e.name = "acme/random-pool";
     e.description = "A pool of random numbers.";
     e.tags = ["random"];
-    e.provides = [{ id: "random-source", type: "ae/random-source", version: "1.0.0" }];
+    e.provides = [{ id: "random-source", type: "ae/random-source", version: "1.0.0", description: "The ae/random-source interface." }];
     e.requires = [];
     e.interfaceDigests = { "ae/random-source@1.0.0": EXAMPLE_INTERFACE_DIGEST };
     e.interfaceModules = {};
