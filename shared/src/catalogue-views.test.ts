@@ -18,7 +18,8 @@ describe("what a package holds", () => {
       ["Artwork and sounds", 1],
       ["Licence notices of upstream code", 1],
     ]);
-    expect(c.groups[1]!.examples).toEqual(["server/deck.ts", "web/cards.ts"]);
+    expect(c.groups[1]!.examples).toEqual(["server/ (1)", "web/ (1)"]);
+    expect(c.groups[0]!.examples).toEqual(["CONTRACT.md", "LICENCE"]);
     expect(c.installed).toEqual({ count: 2, root: "components/card-deck/", folders: [{ folder: "server", count: 1 }, { folder: "web", count: 1 }] });
   });
 

@@ -1,5 +1,5 @@
 // Plain-text pages of the recipe library and component catalogue, for agents that read without a browser.
-import { ASK_HEADINGS, buildingItSection, recipeBuildSteps, PACKAGE_CHECK, PACKAGE_WHERE, QUALITY_TEXT, SIGNATURES_NOTE, classSettings, deprecationLine, describeCondition, kindText, markdownSections, questionGroups, recipeUseSentence } from "@my/store-shared";
+import { ASK_HEADINGS, buildingItSection, groupHasMore, recipeBuildSteps, PACKAGE_CHECK, PACKAGE_WHERE, QUALITY_TEXT, SIGNATURES_NOTE, classSettings, deprecationLine, describeCondition, kindText, markdownSections, questionGroups, recipeUseSentence } from "@my/store-shared";
 import type { CategoryCount, ClassList, ClassVersionView, ClassInterface, ComponentList, ComponentSummary, ComponentVersionView, Condition, Deprecation, FoundationSummary, EntryPort, Foundations, ListQuery, PackageContents, PackageDetails, Port, Quality, RecipeList, RecipeQuestion, RecipeSlotView, RecipeSummary, RecipeVersionView, SettingDeclaration, Suitability, Targets } from "@my/store-shared";
 
 const COPYRIGHT = "Copyright Level N Ltd 2026";
@@ -17,7 +17,7 @@ const packageLines = (v: { bundle: { asset: string }; source: { repository: stri
     "",
     "What you download",
     `${v.bundle.asset}, from release ${v.source.tag} of ${v.source.repository}: ${c.files} files`,
-    ...c.groups.map((g) => `- ${g.label} (${g.count}): ${g.examples.join(", ")}${g.count > g.examples.length ? ", ..." : ""}`),
+    ...c.groups.map((g) => `- ${g.label} (${g.count}): ${g.examples.join(", ")}${groupHasMore(g) ? ", ..." : ""}`),
     `Installing copies ${c.installed.count} of them into the application${c.installed.root ? ` under ${c.installed.root}` : ""}: ${list(c.installed.folders.map((f) => `${f.folder} ${f.count}`))}`,
     `Not included: ${notIncluded}`,
     `${PACKAGE_WHERE} ${PACKAGE_CHECK}`,
