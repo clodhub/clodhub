@@ -394,20 +394,16 @@ const listText = (items: string[]): string => (items.length === 0 ? "none declar
 const runtimesText = (f: FoundationSummary): string => listText(Object.entries(f.runtimes).map(([name, range]) => `${name} ${range}`));
 const frameworksText = (f: FoundationSummary): string => listText(Object.entries(f.frameworks).map(([role, x]) => `${role}: ${x.name} ${x.range}`));
 
-// One slot: its id and condition, its class, the preferred component and the other components of its class. The class's
-// interfaces and settings and the preferred component's suitability open on request.
+// One slot: its id and condition, its class (its interfaces and settings are on the class page), the preferred component
+// with what it does, where it runs and its guardians, and the other components of its class.
 function slotRow(s: RecipeSlotView): Raw {
-  const settings = classSettings(s.declaration.settings);
   return html`<tr>
     <td><code>${s.id}</code>${s.includedWhen ? html`<br /><span class="small muted">${includedWhenHtml(s)}</span>` : ""}</td>
-    <td><a href="${relative(s.classInfo.url)}">${s.classInfo.title}</a><br /><span class="small muted">${s.classInfo.summary}</span>
-      <details class="mt-s small"><summary>Interfaces and settings</summary>
-        <p>Class <code>${s.class.name}</code> ${s.class.version}</p>
-        <p>Provides ${interfaceList(s.declaration.provides)}</p><p>Requires ${interfaceList(s.declaration.requires)}</p>
-        <p class="muted">Settings ${settings.length === 0 ? "none" : settings.map((p, i) => html`${i > 0 ? ", " : ""}<code>${p.id}</code>${p.kind ? ` ${settingTypeWords(p.kind)}` : ""}`)}</p>
-        <p class="muted">Behaviour suites: ${s.declaration.suites.join(", ")}</p>
-        ${s.catalogue ? html`${s.catalogue.suitability.profiles.map((p) => html`<div><b>${p.id}</b>: ${costLabel(p.cost)}, ${loadText(p.load)}</div>`)}<p class="muted">Guardians: ${s.catalogue.guardians.length > 0 ? s.catalogue.guardians.join(", ") : "none recorded"}</p>` : ""}
-      </details></td>
+    <td><a href="${relative(s.classInfo.url)}">${s.classInfo.title}</a><br /><span class="small muted">${s.classInfo.summary}</span><br /><span class="small faint"><code>${s.class.name}</code> ${s.class.version}</span>
+      ${s.catalogue ? html`<details class="mt-s small"><summary>Where it runs and who reviewed it</summary>
+        ${s.catalogue.profiles.map((p) => html`<div><b>${p.id}</b>: ${costLabel(p.cost)}, ${loadText(p.load)}</div>`)}
+        <p class="muted">Guardians: ${s.catalogue.guardians.length > 0 ? s.catalogue.guardians.join(", ") : "none recorded"}</p>
+      </details>` : ""}</td>
     <td>${s.preferred.url ? html`<a href="${relative(s.preferred.url)}">${s.preferred.name.split("/")[1]}</a>` : s.preferred.name}${s.deprecation ? html` ${statusPill(s.deprecation.status, [s.deprecation])}` : none} <span class="small faint">${s.preferred.version}</span>${s.catalogue ? html`<br /><span class="small muted">${s.catalogue.description}</span>` : html`<br /><span class="small muted">Not in the catalogue.</span>`}</td>
     <td><a href="${relative(s.alternatives.url)}">${s.alternatives.count} other${s.alternatives.count === 1 ? "" : "s"}</a></td>
   </tr>`;

@@ -129,16 +129,14 @@ interface VersionCommon {
   versionDownloads: number;
 }
 
-// A recipe's slot with its preferred component (`url` is its catalogue page, null when that version is not listed),
-// what the catalogue says of that version, and the other catalogue components of its class: `count` of them that fit the
-// class by the fit rule (newest listed version of each), `url` the catalogue list of components providing every type the
-// class provides.
+// A recipe's slot with its class (title, summary and page; its interfaces and settings are on the class page and the
+// recipe's details), its preferred component (`url` is its catalogue page, null when that version is not listed), what the
+// catalogue says of that version (its profiles with cost and load), and the other catalogue components of its class:
+// `count` of them, `url` the catalogue list of components implementing the class.
 export interface RecipeSlotView extends Omit<RecipeSlot, "preferred"> {
-  declaration: SlotClass;
-  // The slot's class as its descriptor names it, and its catalogue page.
   classInfo: { title: string; summary: string; url: string };
   preferred: { name: string; version: string; url: string | null };
-  catalogue: { description: string; suitability: Suitability; guardians: string[]; quality: Quality | null; thumbnail: string | null } | null;
+  catalogue: { description: string; profiles: SlotProfile[]; guardians: string[]; quality: Quality | null; thumbnail: string | null } | null;
   deprecation: Deprecation | null;
   // Other listed components implementing the slot's class.
   alternatives: { count: number; url: string };
@@ -189,6 +187,19 @@ export interface ComponentVersionView extends ComponentSummary, VersionCommon {
   bundle: BundlePointer & { url: string };
   versions: VersionRef[];
   usedBy: { name: string; slug: string; title: string; version: string; url: string; slots: { id: string; preferred: boolean }[] }[];
+}
+
+export interface SlotProfile {
+  id: string;
+  cost: Suitability["profiles"][number]["cost"];
+  load: Record<string, number>;
+}
+
+// What the recipe details page adds to each slot: its class's declaration and the preferred component's full suitability.
+export interface SlotDetails {
+  id: string;
+  declaration: SlotClass;
+  suitability: Suitability | null;
 }
 
 // What a slot's class asks of a component: the interfaces, the settings schema the recipe writes, and the ids of the

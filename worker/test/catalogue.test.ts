@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { descriptorDigest, EXAMPLE_IMAGE, EXAMPLE_IMAGE_BYTES, exampleCategories, exampleClassEntries, pngHeader, webpHeader, SIGNATURES_NOTE, summariseFoundations, type Foundations, type PackageDetails, EXAMPLE_BUNDLE_DIGEST, EXAMPLE_INTERFACE_DIGEST, exampleComponentEntries, exampleComponentEntry, exampleRecipeEntry, type BundleLink, type BuildReportList, type BuildReportView, type ComponentList, type ComponentVersionView, type DeprecationReport, type RecipeList, type RecipeVersionView } from "@my/store-shared";
+import { descriptorDigest, EXAMPLE_IMAGE, EXAMPLE_IMAGE_BYTES, exampleCategories, exampleClassEntries, pngHeader, webpHeader, SIGNATURES_NOTE, summariseFoundations, type Foundations, type PackageDetails, EXAMPLE_BUNDLE_DIGEST, EXAMPLE_INTERFACE_DIGEST, exampleComponentEntries, exampleComponentEntry, exampleRecipeEntry, type BundleLink, type BuildReportList, type BuildReportView, type ComponentList, type ComponentVersionView, type DeprecationReport, type RecipeList, type RecipeVersionView, type SlotDetails } from "@my/store-shared";
 import { Db } from "../src/db.js";
 import report060 from "./fixtures/ourpoker-0.6.0-2026-11-16.json";
 import report080 from "./fixtures/ourpoker-0.8.0-2026-11-20.json";
@@ -286,8 +286,8 @@ describe("publishing a recipe", () => {
       for (const field of ["upstream", "compatibility", "classes", "files", "artefacts"]) expect(v.foundations).not.toHaveProperty(field);
     }
     expect(c.foundations.implements.map((x) => x.reference.name)).toEqual(["ourapps-ae/card-deck-class"]);
-    expect(r.components[0]!.declaration).not.toHaveProperty("inventory");
-    expect(r.components[0]!.declaration.suites.length).toBeGreaterThan(0);
+    expect(r.components[0]!).not.toHaveProperty("declaration");
+    expect(r.components[0]!.classInfo).toEqual({ title: "Card deck", summary: "A deck that shuffles, deals and burns cards", url: `${BASE}/classes/card-deck-class` });
     const details = await get(new URL(r.foundations.details).pathname);
     expect(details.status).toBe(200);
     expect(await details.json()).toEqual({ name: "acme/poker-night", version: "0.1.0", foundationEvidence: "publisher-declared", foundations: exampleRecipeEntry().foundations });
@@ -402,10 +402,10 @@ describe("publishing a recipe", () => {
     const view = (await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView;
     const deck = view.components.find((s) => s.id === "deck")!;
     expect(deck.class).toEqual(exampleRecipeEntry().recipe.components[0].class);
-    expect(deck.declaration.provides[0]).toMatchObject({ type: "ae/card-deck", version: "1.0.0" });
+
     expect(deck.preferred).toEqual({ name: "acme/card-deck", version: "0.1.0", url: `${BASE}/components/card-deck` });
     expect(deck.catalogue).toMatchObject({ description: "A shuffled deck of 52 cards that deals and burns cards.", guardians: ["Example Guardian Ltd"] });
-    expect(deck.catalogue!.suitability.profiles[0].cost).toBe("none");
+    expect(deck.catalogue!.profiles).toEqual([{ id: "any", cost: "none", load: {} }]);
     expect(deck.alternatives).toEqual({ count: 0, url: `${BASE}/components?class=ourapps-ae%2Fcard-deck-class` });
     expect(deck.catalogue!.quality).toBeNull();
     expect(deck.catalogue!.thumbnail).toBe(`${BASE}/images/${EXAMPLE_IMAGE.thumbnail.slice(7)}.webp`);
@@ -993,7 +993,8 @@ describe("page variants", () => {
       foundations: summariseFoundations(largeFoundations, json.foundations.details),
     };
     const summary = recipeText(large, BASE);
-    const rest = recipeDetailsText(large, { name: json.name, version: json.version, foundationEvidence: "publisher-declared", foundations: largeFoundations }, BASE);
+    const slots: SlotDetails[] = large.components.map((s) => ({ id: s.id, declaration: { provides: [{ type: "ae/card-deck", version: "1.0.0" }], requires: [], settings: { type: "object", properties: {}, required: [], additionalProperties: false }, suites: ["shared"] }, suitability: null }));
+    const rest = recipeDetailsText(large, slots, { name: json.name, version: json.version, foundationEvidence: "publisher-declared", foundations: largeFoundations }, BASE);
     expect(summary.length).toBeLessThan(60_000);
     expect(JSON.stringify(large).length).toBeLessThan(100_000);
     expect(JSON.stringify(large.foundations)).not.toContain("an-upstream-library-with-a-long-name");
