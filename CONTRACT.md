@@ -1,411 +1,14 @@
-# Contract for repositories
-
-What a repository must publish so ourapps can deliver its application to staff, members, customers and family on phones, computers and Apple TV, or in a browser, and what a recipe or component repository must publish to join the public library and catalogue.
-The tagline is: Delivering Our Applications, built from Our Recipes, using Our Agentically-Engineered Components.
-ourapps never looks at your source; for an app it reads one release asset and talks to one workflow.
-Served at https://ourapps.app/contract.md; the API reference for agents is at
-https://ourapps.app/agents.md. The store dashboard at /dev/agents carries a prompt that sets a
-repository up to this contract.
-
-## Target selection
-
-Each app has six independent switches: `ios` (iPhone and iPad together), `android`, `web` (`install.pwa`), `macos` (packages and TestFlight), `windows` and `tvos`. Existing and new apps default to all enabled when preferences are read successfully. A failed read must stop target work. Enabled does not imply declared, configured or ready to install.
-
-Before target work in every release, manual, repository-event or Apple platform job, read current preferences with the app's existing build token:
-
-```http
-GET /api/build/:app/targets
-Authorization: Bearer <STORE_BUILD_TOKEN>
-```
-
-The response is `200` with `Cache-Control: no-store` and exactly `{ "targets": { "ios": true, "android": true, "web": true, "macos": true, "windows": true, "tvos": true } }`. `:app` is `STORE_APP_ID`. Missing, invalid, cross-app or rotated tokens return 401. Read again inside a queued job before target work; do not reuse a dispatch-time snapshot. Validate all six booleans, skip disabled targets and stop affected work on malformed, unauthorized or failed reads. Tests-only jobs can run independently. Partial releases preserve disabled targets' artifacts and manifest declarations.
-
-The owner saves one switch with `PUT /api/dev/apps/:id/targets/:target`, using a signed-in browser or a developer key with `manage` scope. The body is exactly `{ "enabled": false }` or `{ "enabled": true }`; extra fields, other shapes and unknown targets are rejected. It returns the same six-boolean `targets` response, no-store. Read-only developer keys and app build tokens cannot save switches.
-
-Disabled targets are omitted from share pages, preview and update metadata. The iPhone/iPad compatibility invitation on Mac requires both `ios` and `macos` enabled. With all targets disabled, the listing and screenshots remain, with no install options. Setup, credentials, source manifests, artifacts and history are retained. Authenticated new setup, repair, build requests, signing GET/HEAD (including iPhone aliases), build-number reservations, new uploads, upload-operation retrieval and commit return 409 with exactly `{ "error": "Target is disabled." }`, no-store. Status/history reads and processing/review of already uploaded builds continue.
-
-Saving or re-enabling a switch dispatches no build or setup. Re-enabling restores currently available retained options; normal scheduled expiry renewal resumes while enabled. Selection does not revoke issued signing material, upload operations or download links, close Apple invitations, remove hosted addresses, or cancel external requests already in flight.
-
-## 1. Publish a release with `my-app.json`
-
-### Desktop package specification
-
-Publish desktop entries only after the actual package has passed download, installation and launch checks. Windows Application Control and other system policies can block unsigned executables after a successful installation; identify the restriction without asking users to change machine policy.
-
-Optional `install.macos` and `install.windows` are null or `{ "packages": [...] }`. Each non-empty package list describes verified release assets:
-
-```json
-"macos": { "packages": [{ "url": "https://api.github.com/repos/owner/app/releases/assets/123", "format": "dmg", "architectures": ["arm64", "x64"], "minOsVersion": "14.0", "signing": "signed", "notarization": "notarized" }] },
-"windows": { "packages": [{ "url": "https://api.github.com/repos/owner/app/releases/assets/124", "format": "exe", "architectures": ["x64"], "minOsVersion": "10.0.19045", "signing": "unsigned" }] }
-```
-
-- Every URL must use HTTPS; release assets use their private release-asset addresses and ourapps' signed-download delivery.
-- Architectures must be non-empty, unique and drawn from `arm64` and `x64`; separate architecture-specific installers are separate packages.
-- macOS accepts `dmg` only and requires `notarization`, either `notarized` or `not-notarized`; `unsigned` with `notarized` is rejected.
-- Windows accepts `exe` only and must omit `notarization`.
-- `signing` is `signed` or `unsigned`; unknown enum values are rejected. Minimum system and signing claims must match the verified package.
-- Missing or null targets offer no download. Optional `screenshotsByPlatform.macos` and `.windows` use the screenshot fallback rules below.
-- Signing and notarization describe the package; operating-system installation checks apply.
-
-### Apple platform specification
-
-Each Apple platform needs its own successful setup, signed export, upload, Apple processing and tester installation checks before delivery is considered verified.
-
-Optional `install.macos.testflight` is `{ "bundleId": "com.example.app.mac", "minOsVersion": "14.0", "architectures": ["arm64", "x64"] }`. The architecture list must be non-empty and unique, using only verified `arm64`/`x64` support. Mac `packages` may be empty only with a valid TestFlight declaration.
-
-Optional `install.tvos` is null or `{ "bundleId": "com.example.app.tv", "minOsVersion": "18.0" }`. Optional `screenshotsByPlatform.tvos` uses the screenshot fallback rules. Player and Board modes belong to the app, not the manifest.
-
-Apple signing, uploads, review progress, invitations and approved versions are stored separately for `ios`, `macos` and `tvos`.
-
-`/api/public/links/:id/latest` includes `apple: { ios, macos, tvos }`. Each key is null or `{ "version": "<available version>", "testflightUrl": "<open invitation>" }`. Non-null requires that platform's build to be available to external testers and its invitation to be open. A GitHub release version is not an approved Apple version. Top-level `testflightVersion` and `testflightUrl` are iOS-only aliases. Direct package updates use `macos` or `windows`, each null or `{ version, packages }`, with signed download URLs.
-
-Platform-specific build addresses:
-
-`release.apple` and `/latest.apple` also include `iosOnMac`, null or `{ version, testflightUrl }`. It describes the iPhone/iPad compatibility version for Macs with Apple silicon, independently of native/Catalyst `macos`. It requires a ready external iOS build and invitation plus Apple's beta-group `iosBuildsAvailableForAppleSiliconMac` flag set to true. A false, unknown or unavailable flag exposes no compatibility invitation. This is not an Intel Mac claim or a Mac signing-profile selection.
-
-```
-GET|HEAD /api/build/:app/:platform/signing
-POST /api/build/:app/:platform/testflight/upload
-POST /api/build/:app/:platform/testflight/commit
-POST /api/build/:app/:platform/testflight/reserve-build
-GET /api/build/:app/:platform/testflight/upload/:file/status
-GET /api/build/:app/:platform/testflight/distribution
-```
-
-Existing build addresses are iOS-only aliases. Unknown platforms fail explicitly; they never use iOS credentials as a fallback. A TestFlight declaration offers no install action until its platform's invitation is ready. Direct Mac downloads use Developer ID signing and notarization; Mac TestFlight uses its own distribution signing path.
-
-For read-only approved-build diagnosis, GET `testflight/distribution` with the app's build token. It reads current external build state, notification setting, membership in the configured group and a tester count, without notifications or local state changes. Status is complete or partial; failures report a static operation and Apple status while preserving independent evidence. Failed/incomplete evidence is null. A200 response is not an installation-readiness claim. It returns no tester identities or secrets; exact fields are in agents.md. The saved notification timestamp does not establish that Apple accepted the notification.
-
-For a manually started Mac/TV workflow without a reserved build input, POST `reserve-build` exactly once inside the executing job with the app's bearer build token and no body. Its no-store response is `{ "version": "0.5.0", "buildNumber": "8" }`, both strings. The service resolves the validated manifest version and atomically reserves above verified Apple/local build numbers; it dispatches no workflow and exposes no signing material. Use both returned values for archive, export and upload. A dashboard-dispatched workflow already has reserved version/build inputs and must skip this endpoint. Do not run both paths for the same execution. iOS reservation is unsupported; missing platform setup returns 409, invalid token 401, incomplete reconciliation 502. Reservations are consumed even if the later export/upload fails.
-
-To link an automatically reserved pair to its workflow, optionally send `{ "runId": "<GITHUB_RUN_ID>", "runAttempt": "<GITHUB_RUN_ATTEMPT>" }`. Both fields must be supplied together as positive decimal strings or safe positive integers. The service verifies repository, workflow file, run, attempt and platform title before recording the association. Revalidated retries of the same attempt reuse its pair; a different attempt reserves separately. Bodyless clients remain supported. Upload evidence requires the reserved platform/version/build and receipt time to match; without an identified pair, receipt is unconfirmed rather than absent. Send a descriptive application User-Agent on HTTP clients, such as `PokerNight-Build/1.0`.
-
-For read-only diagnosis of an existing upload, GET `upload/:file/status` with the same app build token. The file must belong to that app and platform. This reads Apple's existing upload file only: no reservation, upload, commit, token rewrite or credential rewrap. The no-store response contains `platform`, `version`, `buildNumber`, `uploadFileId`, `recordedState` and `appleFile`. The latter includes `assetDeliveryState`, optional `uploaded`, `fileSize`, `fileSizeType`, `operationCount`, `operationsTruncated`, bounded `operations` and `coverage`. Each operation exposes only method, offset/length and their types, HTTPS flag, hostname and header names; never addresses, header values or signing material. Coverage reports expected file size, numeric validity, sorted/original-order continuity, overlap, covered bytes and completeness. Unknown values are null. Apple lookup failure returns 502 with `{ "error": "Apple upload-file lookup failed", "appleStatus": 403 }` (status null when unavailable).
-
-### Continue an existing upload
-
-POST `/api/build/:app/:platform/testflight/upload/:file/operations` over HTTPS with the app's build token and `{ "version": "0.5.0", "buildNumber": "3", "fileSize": 23150820 }`. It requires an existing app/platform-owned file in local `uploading` state, exact recorded version/build, and Apple's `AWAITING_UPLOAD` state and recorded size. It reads the existing Apple file only, without reserving, uploading, committing or changing local credentials/records.
-
-The no-store response is `{ platform, version, buildNumber, fileSize, uploadFileId, operations }`. Operations contain `method`, `url`, numeric `offset`, numeric `length` and `requestHeaders` name/value pairs. These signed addresses and header values stay in memory only: never log, cache or save the response as an artifact. The service validates all ranges, HTTPS addresses and headers, then checks a sorted copy covers the full file without gaps/overlaps; returned operation order is unchanged.
-
-Before writing, the sole uploader verifies the preserved package's hash, size, signed identities, version and build, validates every operation and sorts a copy by offset. It writes those exact byte ranges without redirects or automatic retries, then commits the same existing `uploadFileId` using the package checksum. No new build reservation or archive is involved. Missing ownership returns404, mismatched state/version/build/size409, invalid body/HTTP400, failed Apple lookup or invalid operations502.
-
-Set up a platform in a signed-in browser using `POST /api/dev/apps/:id/testflight/:platform` with `{}`. Mac setup defaults to Catalyst (`MAC_CATALYST_APP_STORE`); native Mac setup uses `{ "nativeMac": true }` and `MAC_APP_STORE`. tvOS uses `TVOS_APP_STORE`. Mac setup provisions a separate encrypted `MAC_INSTALLER_DISTRIBUTION` certificate and private key with the saved Apple credentials. Apple may refuse issuance if the account lacks access or reaches its certificate limit; the console reports Apple's error.
-
-Explicit signing responses include `platform`, `profileType`, `upload` and `exportOptions`. Mac also receives `installerCertificate` and `installerPrivateKeyPem`; other platforms never receive these. Import both app and installer signing material into the temporary keychain, install the matching profile, and use the returned manual `app-store-connect` export options. Mac uploads require `.pkg` (`com.apple.pkg`, `MAC_OS`); tvOS requires `.ipa` (`com.apple.ipa`, `TV_OS`). Version and build-number fields match the iOS upload request below. Delete temporary key and response files after import and remove the keychain when the job ends.
-
-Every build publishes a GitHub Release (not a pre-release, not a draft) with these assets:
-
-| asset            | required for | content                                                     |
-|------------------|--------------|-------------------------------------------------------------|
-| `my-app.json`    | always       | schema 1 manifest (shape and rules in agents.md)             |
-| `icon.png`, `screenshot-*.png` | recommended | referenced from my-app.json `icon`, `screenshots` and `screenshotsByPlatform` |
-| `CHANGELOG.md`   | recommended  | Keep a Changelog file; the version's section is the release notes |
-| `<app>.apk`      | Android      | signed APK                                                  |
-
-Create the release as a draft, upload every asset with `my-app.json` last, then publish it
-(`gh release edit <tag> --draft=false`). A release that goes public first is "latest" while its
-files are still uploading, and install pages fail until `my-app.json` arrives. Asset ids, and so
-the asset API URLs, stay the same when a draft is published. Read a draft's asset ids by release
-id (`GET /repos/<owner>/<repo>/releases/<id>/assets`); the by-tag endpoint does not return
-drafts.
-
-The store resolves `GET /repos/<owner>/<repo>/releases/latest`, takes the asset named
-`my-app.json`, and follows the URLs inside it. Those URLs are the release-asset API URLs,
-for example `https://api.github.com/repos/<owner>/<repo>/releases/assets/<id>`, which the
-store fetches with the developer's GitHub token. The store rewrites them to short-lived signed
-links before the phone sees them, so private repositories work and nothing public is guessable.
-
-Repositories that publish elsewhere can set a direct `my-app.json` URL on the app in the
-dashboard instead; the artefact URLs then need to be HTTPS and unguessable.
-
-### Release notes become the revision history
-
-The install page shows a revision history built from the repository's releases: one entry per
-published (non-draft, non-pre-release) release, labelled with the version found in the release
-name or tag, dated from the release, and showing the commit the tag points at.
-
-Notes for each version come, in order of preference, from:
-
-1. The `CHANGELOG.md` asset on the latest release, in Keep a Changelog form: a
-   `## [1.2.0] - 2026-10-17` (or `## 1.2.0`, `## v1.2.0`) section per version, newest first.
-   `### Added`, `### Changed`, `### Fixed` subheadings become labels; bullets stay bullets.
-   An `[Unreleased]` section is ignored. One file covers every version.
-2. The release body.
-3. The commit message of the tagged commit.
-
-Keep `CHANGELOG.md` at the repository root, have the workflow upload it as a release asset
-and use the version's section as the release body, and fail the release when the section is
-missing. Write for the people who use the app. GitHub's generated "by @user in ..." and
-"Full Changelog" lines are stripped; links to GitHub appear only when the repository is
-public. A release named like "Poker Night 0.7.2 (build 53)" shows only the version; names that say
-more ("First table night") show as a title. The "What's new" section shows the latest
-release's notes and the "Updated" date is the release date; the dashboard's What's new field
-and listing edit date are used only when no release notes exist.
-
-### Screenshots per version
-
-`screenshots` is the general list. The optional `screenshotsByPlatform` object gives a version
-its own list, with keys `iphone`, `ipad`, `android` and `web` (each a list of https URLs; an
-empty list counts as not provided; unknown keys fail validation). Screenshots keep their own
-proportions on the page: portrait for phones, usually 3:4 for iPad, landscape for web.
-
-```json
-"screenshots": ["https://api.github.com/repos/you/app/releases/assets/11"],
-"screenshotsByPlatform": {
-  "ipad": ["https://api.github.com/repos/you/app/releases/assets/12"],
-  "web": ["https://api.github.com/repos/you/app/releases/assets/13"]
-}
-```
-
-For each version (iPhone, iPad, Android, Web) the install page shows the first list that exists: that version's list in the dashboard, that version's list in my-app.json, the general list in the dashboard, the general list in my-app.json, then the closest other version's list (so a single set covers every version), and generated previews in the version's shape only when no screenshots exist at all.
-On a phone or tablet the page shows the matching version; on a computer it shows a tab per version.
-
-## 2. iPhone and iPad through TestFlight
-
-People install iPhone and iPad apps through Apple's TestFlight app from a public invitation
-link, with nothing to change in Settings. ourapps holds the signing material, uploads go through
-ourapps, and ourapps puts each processed build in the testers' group and sends it for Apple's beta
-review (the first build of each version). A TestFlight build lasts 90 days; ourapps asks the
-repository for a fresh build before then (step 5), so people keep the app indefinitely.
-
-Once per app the developer adds it in App Store Connect; Apple offers no API for this. The
-TestFlight card on the app's page in ourapps lists every field of Apple's New App form, notices
-when the app is there, makes the App Store profile, the beta group and its public link, and sends
-the repository `my-store-release` (step 5) for the first build.
-
-The public link lets anyone with it join; nobody is invited one by one. Apple's page for the link
-refuses testers until a build in the group has passed beta review, so the install page offers
-the invitation only once ourapps has read that page and found it open; until then people on
-iPhone see "coming soon", with the web version when there is one.
-
-A universal app needs nothing extra: build one `.ipa` with `TARGETED_DEVICE_FAMILY` set to `1,2`.
-Optionally say which devices the build targets with `install.ios.devices`, any of `"iphone"` and
-`"ipad"` (for example `["iphone", "ipad"]`). It is display only: the install page says "for iPhone
-and iPad" or "for iPhone", and warns on the device a build was not made for, but never blocks an
-install. Absent, the page makes no claim.
-
-## 3. Get the certificate, key and profile
-
-The store holds the developer's Apple Distribution certificate, its private key and each app's
-App Store profile; the repository needs no Apple secrets. One call returns them:
-
-```
-GET https://ourapps.app/api/build/<STORE_APP_ID>/signing
-Authorization: Bearer $STORE_BUILD_TOKEN
-```
-
-Response: `{ "certificate": { "id", "name", "serialNumber", "expirationDate", "base64" },
-"privateKeyPem", "teamId", "storeProfile": { "profileName", "profileId", "uuid", "profileBase64" },
-"testflight": { "url" } }`. `certificate.base64` is the DER certificate, `privateKeyPem` a PKCS #8
-RSA key and `storeProfile` the app's App Store profile; `testflight.url` is null until Apple has
-made the invitation link. 404 until iPhone signing and TestFlight are set up for the app; `HEAD`
-gives the status without the key, so build for iPhone only when it is 200.
-
-On the macOS runner:
-
-```bash
-curl -sSf -H "Authorization: Bearer $STORE_BUILD_TOKEN" \
-  "https://ourapps.app/api/build/$STORE_APP_ID/signing" > "$RUNNER_TEMP/signing.json"
-KC="$RUNNER_TEMP/build.keychain-db"
-security create-keychain -p "" "$KC"
-security set-keychain-settings -lut 21600 "$KC"
-security unlock-keychain -p "" "$KC"
-jq -r .privateKeyPem "$RUNNER_TEMP/signing.json" > "$RUNNER_TEMP/key.pem"
-jq -r .certificate.base64 "$RUNNER_TEMP/signing.json" | base64 -d > "$RUNNER_TEMP/cert.cer"
-security import "$RUNNER_TEMP/key.pem" -k "$KC" -A
-security import "$RUNNER_TEMP/cert.cer" -k "$KC"
-rm "$RUNNER_TEMP/key.pem"
-security set-key-partition-list -S apple-tool:,apple: -s -k "" "$KC" >/dev/null
-security list-keychain -d user -s "$KC" login.keychain-db
-uuid=$(jq -r .storeProfile.uuid "$RUNNER_TEMP/signing.json")
-mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-jq -r .storeProfile.profileBase64 "$RUNNER_TEMP/signing.json" | base64 -d \
-  > ~/Library/MobileDevice/Provisioning\ Profiles/"$uuid".mobileprovision
-```
-
-Build with manual signing: identity `Apple Distribution` and the profile named
-`.storeProfile.profileName`, set on the app target only (in the project, for example XcodeGen's
-`project.yml`). Passed as `xcodebuild` overrides they also reach Swift package resource bundles,
-which then fail with "requires a development team". Export with `method` `app-store-connect`,
-`signingStyle` `manual`, `teamID` `.teamId` and `provisioningProfiles` mapping the bundle ID to
-that profile name. Set `ITSAppUsesNonExemptEncryption` to `false` in Info.plist. ourapps also gives Apple that
-answer for any build that arrives without it, so no build waits for export compliance; distribute
-through ourapps only apps that use no non-exempt encryption (the terms, section 5). `CFBundleVersion` must be higher on every upload.
-Delete the keychain and `signing.json` when the job ends, also on failure.
-
-## 4. Upload through ourapps
-
-ourapps reserves the upload at Apple and returns where to send the bytes; the workflow sends
-them straight to Apple, then tells ourapps the file's MD5. Any runner can do this step.
-
-```bash
-IPA=app.ipa
-SIZE=$(wc -c < "$IPA" | tr -d ' ')
-MD5=$(openssl dgst -md5 "$IPA" | awk '{print $NF}')
-API="https://ourapps.app/api/build/$STORE_APP_ID/testflight"
-jq -n --arg v "$VERSION" --arg b "$BUILD" --argjson s "$SIZE" --arg n "$NOTES" \
-  '{version: $v, buildNumber: $b, fileName: "app.ipa", fileSize: $s, whatsNew: $n}' |
-  curl -sSf -X POST -H "Authorization: Bearer $STORE_BUILD_TOKEN" -H "Content-Type: application/json" \
-    --data-binary @- "$API/upload" > upload.json
-jq -c '.operations[]' upload.json | while read -r op; do
-  args=(); while IFS= read -r h; do args+=(-H "$h"); done < <(jq -r '.requestHeaders[]? | "\(.name): \(.value)"' <<<"$op")
-  tail -c +$(( $(jq -r .offset <<<"$op") + 1 )) "$IPA" | head -c "$(jq -r .length <<<"$op")" |
-    curl -sSf -X "$(jq -r .method <<<"$op")" "${args[@]}" --data-binary @- "$(jq -r .url <<<"$op")"
-done
-jq -n --arg f "$(jq -r .uploadFileId upload.json)" --arg m "$MD5" '{uploadFileId: $f, md5: $m}' |
-  curl -sSf -X POST -H "Authorization: Bearer $STORE_BUILD_TOKEN" -H "Content-Type: application/json" \
-    --data-binary @- "$API/commit"
-```
-
-`whatsNew` is the version's release notes; TestFlight shows them to people. ourapps checks
-Apple every ten minutes: once the build is processed, it answers export compliance where the
-build has no answer, adds the build to the testers' group, sends it for beta review, makes it available to the group
-when Apple approves it (App Store Connect's "Notify Testers"), and reads the invitation page. The
-app's page in ourapps shows each step and what it waits for.
-
-## 5. Releases and fresh builds
-
-The console reads workflow runs using Actions read permission. iOS uses `release.yml`; Mac and Apple TV use only `apple-testflight.yml` with `run-name: Apple TestFlight ${{ inputs.platform }} ${{ inputs.version }} (${{ inputs.build }})`. That title identifies the platform; app/request association remains approximate. A successful workflow with no matching platform/version/build upload is shown as Finished without upload. Running progress estimates use successful same-platform workflow/job timings.
-
-Mac/Apple TV requests require Actions write and Contents read. They dispatch `apple-testflight.yml` on the repository's default branch with `platform`, validated manifest `version`, reserved numeric `build`, and `upload: "true"`. Build numbers are atomically reserved per app/platform/version, above known Apple and local builds; failed dispatches consume reservations. Coordinate all uploaders through this allocation path: uploads made elsewhere after Apple's lookup are outside that lock, and Apple can reject a duplicate build number. Missing workflow or permissions are explicit errors, never an iOS fallback. Private GitHub release-asset redirects are followed only to approved GitHub asset hosts without forwarding credentials.
-
-The release carries `my-app.json` with `install.ios` set to
-`{ "bundleId": "<bundle id>", "testflight": "<.testflight.url from step 3, or https://testflight.apple.com when null>" }`;
-ourapps shows its own invitation link in its place. The `.ipa` is not a release asset.
-
-ourapps asks the repository for a build when TestFlight is set up for the app, when the
-developer asks for one on the app's TestFlight card, and two weeks before the newest TestFlight
-build expires:
-
-```
-POST https://api.github.com/repos/<owner>/<repo>/dispatches
-{ "event_type": "my-store-release", "client_payload": { "app": "<STORE_APP_ID>", "reason": "<reason>" } }
-```
-
-`reason` is `testflight-set-up`, `requested` or `testflight-expiry`.
-
-Handle it like a manual release of the current version with a higher build number:
-
-```yaml
-on:
-  repository_dispatch:
-    types: [my-store-release]
-```
-
-## Secrets the app repository needs
-
-| secret               | from                                                    |
-|----------------------|---------------------------------------------------------|
-| `STORE_BUILD_TOKEN`  | shown once when the app is created in the dashboard     |
-| `STORE_APP_ID`       | the app's id in the dashboard                           |
-| Android keystore     | your own                                                |
-
-`STORE_BUILD_TOKEN` is per app. Rotate it from the app's page in the dashboard.
-
-## Optional: web apps
-
-`install.pwa` is the https address the install page opens. Put the built site on your own free
-Cloudflare account: Cloudflare serves plain files without a request limit or charge, your
-workflow deploys them, and ourapps never sees your Cloudflare token.
-
-### On your own Cloudflare account
-
-Once per Cloudflare account, in the dashboard:
-
-1. Create a free account at https://dash.cloudflare.com, or use one that runs nothing else you
-   care about: Cloudflare cannot limit the token to one Worker, so it can replace any Worker on
-   the account.
-2. Workers & Pages: choose a `workers.dev` subdomain. Sites are served at
-   `https://<worker name>.<subdomain>.workers.dev`.
-3. My Profile, API Tokens, Create Token, template "Edit Cloudflare Workers". Account
-   Resources: your account; Zone Resources: all zones from that account. Copy the token; it is
-   shown once.
-4. Copy the Account ID (Workers & Pages, Account details).
-
-Once per repository: Actions secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
-
-`wrangler.jsonc` in the repository describes a Worker with files only, under a name no other
-Worker on the account uses:
-
-```jsonc
-{
-  "name": "<app>-web",
-  "compatibility_date": "2026-10-01",
-  "assets": { "directory": "./web/dist", "not_found_handling": "single-page-application" },
-  "workers_dev": true,
-  "preview_urls": false
-}
-```
-
-The release workflow builds the site, deploys it and keeps the address for `install.pwa`:
-
-```yaml
-- name: Deploy the web app
-  env:
-    CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-    CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-  run: |
-    npx wrangler@4 deploy | tee "$RUNNER_TEMP/deploy.log"
-    echo "WEB_URL=$(grep -oE 'https://[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev' "$RUNNER_TEMP/deploy.log" | head -1)/" >> "$GITHUB_ENV"
-```
-
-Each deploy replaces the site in place, so the address stays the same from release to release.
-Fail the release when the deploy fails or `WEB_URL` is empty.
-
-In the build output:
-
-- `manifest.webmanifest` (name, `start_url` and `scope` of `./`, `display: "standalone"`, 192
-  and 512 pixel icons) and the `apple-mobile-web-app-capable`, `apple-mobile-web-app-title` and
-  `apple-touch-icon` tags, so the app runs from the home screen.
-- A copy of https://ourapps.app/web/install-banner.js, fetched at build time and loaded with
-  `<script src="install-banner.js" defer></script>`: the "add to home screen" banner the install
-  page tells people to expect. Copy it; do not link to ourapps.
-- `_headers` at the root: `X-Robots-Tag: noindex` for `/*`, and for threaded Unity or Godot
-  builds `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`.
-- No pre-compressed files. Cloudflare compresses `.html`, `.js`, `.css` and `.wasm` itself and
-  does not honour `Content-Encoding` from `_headers`, so a `.br` or `.gz` file reaches the browser
-  still compressed. Unity: Compression Format "Disabled", or Brotli with "Decompression Fallback".
-
-Free plan limits: 20,000 files per deploy, 25 MiB per file, 100 Workers per account.
-
-The address is public: anyone who has it can open the app, and revoking a share link does not
-stop them. Keep private data behind the app's own sign-in, and allow the address in your API's
-CORS. Storage, service workers and permissions belong to that address.
-
-An app that already runs its own Cloudflare Worker can serve the build from it instead, with an
-`assets` block in that Worker's settings, which puts the web app and its server on one address.
-
-### Served by the store from `web.zip`
-
-A release-asset URL whose asset is named exactly `web.zip` is a bundle of the built site that the store copies and serves at `https://<linkId>.ourapps.app/`,
-one origin per share link, nothing from the console shared with it. On the first request after a
-release the store fetches the zip, unpacks it once into its storage and serves single files from
-there; the release is re-checked at most once a minute. These requests count against ourapps'
-shared allowance; the developer's own Cloudflare account has no such limit. When the latest
-release has no `web.zip` and `install.pwa` names an address elsewhere, the link addresses
-redirect there, so home screen icons made from them open the app.
-
-- Limits: zip at most 25 MB, at most 32 MB unpacked, any file at most 24 MB, at most 2,000
-  files, at most 8 MB of compressed (deflated) content. Build it uncompressed:
-  `zip -0 -r web.zip .` (text is brotli-compressed on the way to the browser anyway).
-- Layout: `index.html` at the zip root or inside one top-level folder. Relative (`./`) or
-  root (`/`) paths both work because the app is served at the root of its own origin.
-  `manifest.webmanifest` with `start_url` and `scope` of `./`; service worker registered
-  with a relative path. Unknown paths without an extension get `index.html`.
-- Pre-compressed files (`.wasm.br`, `.js.gz`, `.data.br` and similar) are sent with
-  `Content-Encoding` and the inner content type, as Unity and Godot expect.
-- An optional `_headers` file (Cloudflare Pages format) may set
-  `Cross-Origin-Opener-Policy`, `Cross-Origin-Embedder-Policy`,
-  `Cross-Origin-Resource-Policy`, `Permissions-Policy`, `Content-Security-Policy` and
-  `Cache-Control`; anything else is ignored. Needed for threaded Unity and Godot builds.
-- Storage, service workers and permissions belong to each link's origin. Allow the link
-  origins (`^https://[0-9a-f]{16,64}\.ourapps\.app$`) in your API's CORS and use token
-  authentication, not cookies.
+# Contract for recipe and component repositories
+
+What a recipe or component repository must publish to join the ClodHub catalogue, and the requests that publish it.
+ClodHub never looks at your source; it keeps a catalogue entry and a pointer to your release.
+Served at https://clodhub.com/contract.md; the API reference for agents is at
+https://clodhub.com/agents.md. Delivering a finished application to people's devices is
+ourapps.app's contract: https://ourapps.app/contract.md.
 
 ## Recipe and component repositories
 
-A recipe or a component is published from its own GitHub repository. ourapps keeps a catalogue entry (name, version, digests, descriptions, declarations) and a pointer to the repository's release; the package itself stays in the release. The package is the source code: one archive file (`.tar`, made by `aepm pack`) holding the implementation, the contract, the tests and a manifest that lists every file with its fingerprint; a recipe's archive holds `recipe.json` and the recipe's own application code and text, and names its slots, each with the class of component it needs and the component it prefers by exact version, without including them.
+A recipe or a component is published from its own GitHub repository. ClodHub keeps a catalogue entry (name, version, digests, descriptions, declarations) and a pointer to the repository's release; the package itself stays in the release. The package is the source code: one archive file (`.tar`, made by `aepm pack`) holding the implementation, the contract, the tests and a manifest that lists every file with its fingerprint; a recipe's archive holds `recipe.json` and the recipe's own application code and text, and names its slots, each with the class of component it needs and the component it prefers by exact version, without including them.
 
 ### A component repository implements
 
@@ -434,7 +37,7 @@ A recipe or a component is published from its own GitHub repository. ourapps kee
 
 ### Catalogue publish API
 
-The publish tool sends these requests with a `manage` API key (`Authorization: Bearer oa_...`) or a signed-in session. Every body is JSON unless stated; every error is `{ "error": "<what is wrong>" }`. Component entries are format 3, recipe and class entries format 2. A body in an earlier format is refused with 400 `invalid entry: format-refused: ...`, and the version is published again with the current tool.
+The publish tool sends these requests with a `manage` API key (`Authorization: Bearer ch_...`) or a signed-in session. Every body is JSON unless stated; every error is `{ "error": "<what is wrong>" }`. Component entries are format 3, recipe and class entries format 2. A body in an earlier format is refused with 400 `invalid entry: format-refused: ...`, and the version is published again with the current tool.
 
 Order for one package version: upload its images, publish the class it implements (once per class version), then publish the component or recipe.
 
@@ -455,13 +58,13 @@ POST /api/dev/categories          classes/categories.json
 ```
 POST /api/dev/classes
 { "format": 2, "class": <class.json> }
--> 201 { "status": "published", "name": "ourapps-ae/card-deck-class", "version": "1.0.0", "digest": "sha256:<hex>", "url": "https://ourapps.app/classes/card-deck-class", "api": "https://ourapps.app/api/classes/card-deck-class/1.0.0" }
+-> 201 { "status": "published", "name": "clodhub/card-deck-class", "version": "1.0.0", "digest": "sha256:<hex>", "url": "https://clodhub.com/classes/card-deck-class", "api": "https://clodhub.com/api/classes/card-deck-class/1.0.0" }
 -> 200 the same with "status": "unchanged" when that version is already published with that digest
 ```
 
 - `class` is class.json itself (format 2; an earlier format is refused with `class-format-refused`): `{ format: 2, name, version, title, summary, category, presentation, provides, requires, settings, inventory, verification }`. `title` is at most 80 characters, `summary` at most 300, `category` a path that exists in the tree, `presentation` `visual` or `none`. The same four fields are required on every descriptor in a package's `foundations.classes`, and they are inside the descriptor digest.
 - The digest is computed by the catalogue (sha256 of the RFC 8785 canonical descriptor); the body carries none.
-- The scope of `name` (`ourapps-ae`) is a GitHub organisation, and the publisher must be an active member: by the memberships read at their last sign-in (sign-in asks for `read:org`), or else by their saved GitHub token. A token GitHub refuses for lack of scope gets 403 "the saved GitHub token cannot read organisation membership; sign in to ourapps.app again"; a non-member gets 403, and so does a member of an organisation that restricts third-party apps and has not granted ourapps access; the message says how to grant it. The first developer to publish a class in a scope keeps the scope; anyone else gets 409.
+- The scope of `name` (`clodhub`) is a GitHub organisation, and the publisher must be an active member: by the memberships read at their last sign-in (sign-in asks for `read:org`), or else by their saved GitHub token. A token GitHub refuses for lack of scope gets 403 "the saved GitHub token cannot read organisation membership; sign in to ourapps.app again"; a non-member gets 403, and so does a member of an organisation that restricts third-party apps and has not granted ourapps access; the message says how to grant it. The first developer to publish a class in a scope keeps the scope; anyone else gets 409.
 - 400 invalid class (the message lists the codes, for example `class: class-fields`) or a category outside the tree; 409 the name or scope belongs to another developer, or the version is published with another digest.
 
 #### Images
@@ -470,7 +73,7 @@ POST /api/dev/classes
 PUT /api/dev/images/<sha256 hex>
 Content-Type: image/png | image/webp
 <the image bytes>
--> 201 { "status": "stored", "digest": "sha256:<hex>", "type": "png", "width": 1280, "height": 800, "bytes": 482113, "url": "https://ourapps.app/images/<hex>.png" }
+-> 201 { "status": "stored", "digest": "sha256:<hex>", "type": "png", "width": 1280, "height": 800, "bytes": 482113, "url": "https://clodhub.com/images/<hex>.png" }
 -> 200 the same with "status": "unchanged" when that sha256 is already stored
 ```
 
@@ -500,7 +103,7 @@ POST /api/dev/components
   "vulnerabilityWaivers": [{ "id": "GHSA-xxxx-xxxx-xxxx", "reason": "the affected function is not reachable: ..." }],
   "quality": { "level": "reviewed", "certified": true, "liveTested": null }
 }
--> 201 { "status": "published", "name": "acme/card-deck", "version": "0.1.0", "url": "https://ourapps.app/components/card-deck", "api": "https://ourapps.app/api/components/card-deck/0.1.0" }
+-> 201 { "status": "published", "name": "acme/card-deck", "version": "0.1.0", "url": "https://clodhub.com/components/card-deck", "api": "https://clodhub.com/api/components/card-deck/0.1.0" }
 -> 200 the same with "status": "unchanged" for the same version and digest again
 -> 200 the same with "status": "updated" for the same version and digest when that version is stored in an earlier component entry format, or when the body differs from the stored entry only in `description`, `page` and `tags` (and `quality`): the stored entry is replaced, and its downloads, vulnerability results, publication date and (unless the body sets one) quality stay
 ```
@@ -523,7 +126,7 @@ POST /api/dev/components
 ```
 POST /api/dev/recipes
 { "format": 2, "recipe": <recipe.json format 2>, "digest", "source", "bundle", "page": { "description": "<markdown>", "diagram": "<svg>" | null }, "foundations", "release", "images", "vulnerabilityWaivers", "quality" }
--> 201 / 200 as for components, with "url": "https://ourapps.app/recipes/<name>"
+-> 201 / 200 as for components, with "url": "https://clodhub.com/recipes/<name>"
 ```
 
 - `recipe.category` is a category path in the tree. A recipe with any client target needs at least one image of the application as built.
@@ -544,7 +147,7 @@ Curators only (403 otherwise). It replaces the version's quality, for example wh
 
 ```
 POST /api/dev/recipes/:name/reports      a build report (tools/evidence/*.json), as the body
--> 201 { "status": "published", "id": "<32 hex>", "name": "ourapps-ae/ourpoker", "version": "0.8.0", "url": "https://ourapps.app/api/recipes/ourpoker/reports/<id>" }
+-> 201 { "status": "published", "id": "<32 hex>", "name": "clodhub/ourpoker", "version": "0.8.0", "url": "https://clodhub.com/api/recipes/ourpoker/reports/<id>" }
 -> 200 the same with "status": "unchanged" when that report is stored already
 GET  /api/recipes/:name/reports          -> { name, currentVersion, reports: [{ id, version, digest, date, publishedAt, current, agent: { harness, model }, activeMinutes, costUsd, results, problems, rating, url, report }] }, newest first
 GET  /api/recipes/:name/reports/:id      -> one of those
@@ -578,22 +181,5 @@ Deprecating a name flags every version; the catalogue then shows a warning on th
 `GET /api/{components,recipes}/:name/:version` (`:version` may be `latest`) returns, among the fields in agents.md, `versions: [{ version, digest, publishedAt, channel, fixes }]` for every listed version, `release: { channel, fixes }` of the shown version, `line: { line, securityReleases: [{ version, fixes, publishedAt }] }`, `quality`, `images`, `vulnerabilitySummary` and `vulnerabilityWaivers`. aepm's `outdated` reads `versions` and needs no archive. `GET .../vulnerabilities` returns `{ name, version, checkedAt, count, advisories: [{ id, summary, severity, affected: [purl], fixedIn, waived }], unqueryable: [purl] }`; the catalogue checks every published version's purls (from `foundations.upstream`) at OSV daily. `count` is null before the first check, and when OSV refused one of the purls (listed in `unqueryable`). The hourly check sends versions whole: versions OSV never refused share batches; a version in a batch OSV refused is sent alone from then on, and its refused purls are found by halving, at most 12 requests a run for at most 3 runs. After that its purls still without an answer are listed in `unqueryable` for that version only; other versions naming them are checked as usual.
 
 Public reads, bundle links and the plain-text and JSON variants are in agents.md.
-
-## Optional: in-app updates
-
-TestFlight updates iPhone apps itself. Android apps do not update by themselves; an app can poll
-`GET https://ourapps.app/api/public/links/<linkId>/latest` (any active share link; a dedicated
-"In-app updates" link is the convention), compare `version` with its own, and open
-`android.apkUrl` (or, on iPhone, compare with `testflightVersion`, the version TestFlight has, and open `testflightUrl`). The links inside expire after one hour. Bump
-`versionCode` / `CFBundleVersion` on every release and keep the Android signing key stable.
-
-## Limits to design around
-
-- TestFlight: up to 10,000 people per app through the public link; each build lasts 90 days
-  (ourapps asks for a fresh one before then); Apple reviews the first build of each version.
-- The Apple Distribution certificate lasts a year; replace it under Settings before it expires.
-  ourapps makes each app's App Store profile again with it, and the next build uses it.
-- macOS GitHub Actions minutes cost ten times Linux minutes against the free allowance;
-  keep the iOS job lean or document a local Xcode signing path.
 
 Copyright Level N Ltd 2026.

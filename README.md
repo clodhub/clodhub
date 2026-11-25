@@ -1,195 +1,73 @@
-# ourapps - Delivering Our Applications, built from Our Recipes, using Our Agentically-Engineered Components
+# ClodHub
 
-Our apps for our businesses, our club, our home, our shop. A small business, a club or society, a
-household, a shop or practice picks a recipe from the public library, or composes an application
-from catalogue components and may publish the recipe. An agent builds the application, and the
-developer sends a link or a QR code; staff, members, customers or family tap it and the app lands
-on their device. Share links are private and apps are not listed or searchable. No App Store, no
-Google Play, no accounts for the people you share with. The recipe library and component catalogue
-are public and described below.
+A catalogue of reviewed components and recipes that AI agents assemble into apps with aepm.
+Live at https://clodhub.com.
 
-- Fast: an application from a recipe in minutes rather than days of building.
-- Low cost: little AI spending; a clinic of fewer than ten people can run on free plans, and a
-  larger business pays only for the provider tier it needs, chosen from one answer about size.
-- Maintainable and safe: reviewed components, small updates you approve, security tests built in,
-  a record of what is inside, and data you can move.
-- Yours: your accounts and your data; your application's servers and databases run on your own
-  accounts, with no lock-in.
-- Delivered to staff, members and customers on phones, tablets, computers and televisions through
-  one link.
+- A **component** is a reviewed part of an application (a card deck, a seating plan, a video
+  call) with a contract: the interfaces it provides and requires, its settings, the devices it
+  runs on, who it suits and how its data moves.
+- A **class** is the contract a component fills; components of one class can stand in for each
+  other.
+- A **recipe** lists the slots an application needs, each filled by a component of a class, the
+  questions that choose between them and how they connect.
 
-- iPhone and iPad: Apple's TestFlight. The person gets Apple's free TestFlight app, opens the
-  invitation on the install page and taps Install. ourapps signs each build, the workflow uploads
-  it through ourapps, and ourapps sends it to the testers' group and asks for a fresh build before
-  the 90-day expiry.
-- Android: a direct APK download with a one-time walkthrough of the "allow from this
-  source" and Play Protect prompts.
-- Web apps: an "add to home screen" walkthrough when the app lists a web version.
+A coding agent reads a recipe, asks the person its questions and installs the application with
+aepm (https://github.com/clodhub/aepm), which checks every archive's digest and signatures and
+runs no package code while installing. Packages stay in their publishers' GitHub releases;
+ClodHub keeps the catalogue entry and a pointer.
 
-## Recipe library and component catalogue
+## What is here
 
-- `/recipes` and `/components` list, filter (category, device, tag) and search published recipes
-  and components. A recipe page shows its description, diagram, questions (with the condition that asks each), components with the condition that includes each and their
-  suitability and guardians, jobs, targets, tested answer sets and versions. Every public page has
-  a plain-text and a JSON variant (`/recipes/<name>.txt`, `.json`; a recipe's bulky parts are at
-  `/recipes/<name>/details.txt` and `/components/<name>/details.txt`) and the API is under
-  `/api/recipes` and `/api/components`.
-- Developers publish with `POST /api/dev/recipes` and `POST /api/dev/components` (signed in, or a
-  `manage` key). The database stores the entry and a pointer to the publisher's GitHub release;
-  the package stays in the release and is handed out through a signed one-hour link.
-- A developer can deprecate their own entry (`POST /api/dev/{recipes,components}/:name/deprecate`,
-  optional `replacement`, reversed by `undeprecate`). Deleting an account does not delete entries:
-  they lose their owner and are marked orphaned. Deprecated and orphaned entries stay listed and
-  downloadable (an orphaned bundle needs a public release). Every response and page for them, and
-  for anything that uses them, carries a `deprecations` array and a banner; lists filter with
-  `deprecated=exclude|include|only`, and `GET /api/recipes/:name/:version/deprecations` resolves
-  the whole tree.
-- What a recipe or component repository implements: `CONTRACT.md`. Storage and routes:
-  `.opencode/knowledge/recipes.md`.
+- `/recipes`, `/components`, `/classes`, `/categories`: browse, filter and search. Every page
+  has a plain-text and a JSON variant (`/recipes/<name>.txt`, `.json`, `/recipes/<name>/details.txt`).
+- `/api/...`: the read API, no key needed; `/api/dev/...`: publishing with a `ch_` API key or a
+  browser session. Every endpoint: `site/public/agents.md` (served at `/agents.md`).
+- `/dev`: sign in with GitHub, save the GitHub token publishing uses, make API keys.
+- `/guide`, `/small`, `/free-tiers.md`, `/cloud-assembly.md`, `/aepm-assemble.yml`,
+  `/policy/levelnpolicy.json` (Level N's release and guardian keys for aepm's owner policy).
+- `CONTRACT.md` (served at `/contract.md`): what a recipe or component repository implements,
+  and the publish API.
 
-## Two faces
-
-- The people you share with see an App Store style page at `/l/<id>`: icon, tagline, facts strip, screenshots,
-  about, what's new, privacy, information, share. Blank fields get generated placeholders so a
-  bare listing still looks finished. The page detects iPhone, Android, desktop and in-app
-  browsers and shows the right install steps.
-- Developers see a console at `/dev`: overview with a setup checklist and stats, apps, links to the
-  recipe library and component catalogue, share
-  links with QR codes, a TestFlight card per iPhone app, settings, an A to Z guide, and an agents page with API keys
-  and prompts. Signed-in developers see an owner bar on their own install pages.
-
-## Agents and the API
-
-Everything the console does is an API. Create a key on `/dev/agents` (shown once, `oa_...`),
-send it as `Authorization: Bearer`, and read https://ourapps.app/agents.md for every
-endpoint. `/dev/agents` also carries two prompts to paste into a coding agent: one sets up an
-app repository to the contract, one drives the console (register, check releases, set up
-TestFlight, share). `llms.txt` points agents at both documents.
-
-## Security and terms
-
-The guide's Security section (`/dev/guide#security`) explains how credentials, account access
-and app files are protected; nothing is recorded about the people you share with. Developers accept the terms and data
-statement (`/terms`, version in `shared/src/terms.ts`) at first sign-in and after any change;
-the accepted version is shown in the profile, which also offers account deletion (recipes and
-components stay, orphaned).
-
-Credentials are encrypted field by field (AES-256-GCM, key derived per developer from a Worker
-secret, authenticated data binding each field to its owner); API keys, build tokens and session
-ids are stored as keyed hashes; credential writes need a browser session; API keys have scopes
-and expiry; every security event is logged and visible under Settings. Rotation and incident
-steps: `SECURITY.md`.
+Delivering a finished application to people's devices is a separate service, https://ourapps.app
+(repository ourapps-app/ourapps).
 
 ## Layout
 
-| path       | what                                                            |
-|------------|-----------------------------------------------------------------|
-| `worker/`  | Cloudflare Worker: sign-in, dashboard API, TestFlight, build hooks, artefact proxy |
-| `site/`    | Vite + TypeScript site served by the worker                      |
-| `shared/`  | my-app.json validation, recipe and component validation, the terms version |
-| `site/public/agents.md` | API reference for agents, served at /agents.md            |
-| `site/public/cloud-assembly.md`, `aepm-assemble.yml` | Building from a recipe in GitHub Actions, served at /cloud-assembly.md |
-| `site/src/freeTiers.ts` | Free-service catalogue: guide section, /small, /free-tiers.md |
-| `CONTRACT.md` | what an app repository must implement                         |
-
-## What kinds of app
-
-Native iPhone and Android apps (and anything that compiles to them), and web apps and web games
-that the app's workflow deploys to the developer's own free Cloudflare account; the install page
-links to them. A `web.zip` release asset is served by ourapps at a per-link address. ourapps never hosts
-an app's API or database. Details and limits: `/reference` (source `site/src/pages/reference.ts`);
-the diagrams by app type are in `site/public/reference/` (PNG masters, WebP for the site),
-generated from the prompts in `docs/diagram-prompts.md`.
-
-## Live check
-
-`npm run smoke` checks the live site; with `OURAPPS_API_KEY` set to a manage key it walks every
-endpoint in agents.md on a throwaway app and cleans up (`scripts/smoke.mjs`).
-
-## Who does what
-
-Only a few steps need a human: signing in with GitHub, creating the GitHub token and the Apple
-App Store Connect key (saving it sets up iPhone signing: ourapps creates the distribution
-certificate; each app's App ID is made when the app is set up for TestFlight), the TestFlight review contact, adding each iPhone app once in App Store
-Connect, the Android keystore, creating an API key for the agent, and sending links to people. Everything else (registering the app, the release workflow, releases,
-share links, checks) is done by a coding agent with the prompts on `/dev/agents`. The guide's
-short list at `/dev/guide#tldr` is the definitive list.
-
-## Add an app
-
-1. Sign in with GitHub at `/dev`.
-2. Settings: paste your App Store Connect API key (issuer id, key id, `.p8` contents), your
-   Apple team id, and a GitHub fine-grained token with Contents read and write, plus Actions read
-   (read and write for Mac/Apple TV build requests), on the app's
-   repository. They are stored encrypted per account. Saving the Apple key sets up iPhone
-   signing (Settings, iPhone signing).
-3. Add the app: name, repository `owner/name`, the iPhone bundle ID, and the App Store style
-   details (tagline, description, screenshots, privacy summary). Copy the build token and app id
-   shown once into the repository secrets `STORE_BUILD_TOKEN` and `STORE_APP_ID`. For iPhone,
-   follow the TestFlight card on the app's page; its one manual step is adding the app in App
-   Store Connect, and it lists every field to fill in.
-4. Make the repository follow `CONTRACT.md`: publish releases with `my-app.json` and
-   `CHANGELOG.md` (its sections become the revision history your people see), fetch signing from
-   `/api/build/<app>/signing`, upload the iPhone build through ourapps, run on `my-store-release`.
-5. Create a share link for the app and send it, or show the QR code.
-
-The in-app guide at `/dev/guide` covers all of this with exact clicks, including how to create
-the Apple key and the GitHub token.
-
-## Share
-
-Each share link is `/l/<random id>`. Give it a label (who it is for), an optional expiry,
-and revoke it any time. The install page detects iPhone, Android or desktop and shows the
-right steps. In-app browsers (Instagram, Facebook, Gmail) cannot install; the page tells
-the person to open it in Safari or Chrome.
-
-Your public page `/<your-slug>` lists only apps you switch on, details only, no install
-links, and is marked noindex. The names `recipes`, `components` and `sitemap.xml` are not
-available as page names.
-
-## Limits you must know
-
-- TestFlight: up to 10,000 people per app; Apple's beta review checks the first build of each
-  version; builds last 90 days and ourapps asks the repository for a fresh one before then.
-- Android does not auto-update. People tap Update; an app can offer it by polling
-  `/api/public/links/<id>/latest` (see the guide, "Auto-update").
-- Install links for the APK are signed and last one hour; the install
-  page makes fresh ones every time it loads.
+| path | what |
+|---|---|
+| `worker/` | Cloudflare Worker: catalogue API, sign-in, API keys, bundle links, hourly checks; D1 and R2 |
+| `site/` | Vite and TypeScript site served by the Worker |
+| `shared/` | recipe, component and class validation, foundations, diagrams, the terms version |
+| `scripts/` | `smoke.mjs` (live check), `validate-recipe-file.ts`, `render-diagrams.ts` |
 
 ## Develop
 
 ```
 npm install
-npm test                       # shared, worker (vitest with the Cloudflare plugin), site
+npm test
 npm run typecheck
-cd worker && npx wrangler d1 migrations apply app-game-store --local
-npm run build -w site && npm run dev -w worker      # http://localhost:8787
+npm run build
+cd worker && npx wrangler d1 migrations apply clodhub --local
+npm run dev -w worker      # http://localhost:8787, after npm run build
 ```
 
-Copy `worker/.dev.vars.example` to `worker/.dev.vars` for local secrets. GitHub sign-in
-needs an OAuth App whose callback is `<PUBLIC_ORIGIN>/api/auth/callback`.
+Copy `worker/.dev.vars.example` to `worker/.dev.vars` for local secrets.
 
 ## Deploy
 
-The Cloudflare Worker and D1 database are named `app-game-store`
-and must keep that name: the Worker's secrets cannot be copied to a new one.
-
 ```
+npm run build
 cd worker
-npx wrangler d1 create app-game-store          # paste the id into wrangler.jsonc
-npx wrangler d1 migrations apply app-game-store --remote   # also after adding a migration
-npx wrangler secret put LINK_SECRET
-npx wrangler secret put MASTER_KEY             # openssl rand -hex 32; rotation in SECURITY.md
-npx wrangler secret put GITHUB_OAUTH_CLIENT_ID
-npx wrangler secret put GITHUB_OAUTH_CLIENT_SECRET
-npm run build -w site && npx wrangler deploy
+npx wrangler d1 migrations apply clodhub --remote   # after adding a migration, then deploy at once
+npx wrangler deploy
+npm run smoke                                       # from the root
 ```
 
-`PUBLIC_ORIGIN` in `wrangler.jsonc` is the deployed host (`https://ourapps.app`); sign-in callbacks
-and links are built from it.
+Worker secrets: `LINK_SECRET`, `MASTER_KEY`, `GITHUB_OAUTH_CLIENT_ID`,
+`GITHUB_OAUTH_CLIENT_SECRET` (`npx wrangler secret put <name>`). Rotation: `SECURITY.md`.
 
-Source: https://github.com/ourapps-ae/ourapps. The source is public for reading and
-review; it is not open source. All rights reserved, see `LICENSE`. Outside contributions are not
-accepted (`CONTRIBUTING.md`); report security problems privately (`SECURITY.md`).
+Source: https://github.com/clodhub/clodhub. The source is public for reading and review; it is
+not open source. All rights reserved, see `LICENSE`. Outside contributions are not accepted
+(`CONTRIBUTING.md`); report security problems privately (`SECURITY.md`).
 
 Copyright Level N Ltd 2026.
