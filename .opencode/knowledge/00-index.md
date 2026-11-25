@@ -1,96 +1,35 @@
-# ourapps - recipe library, component catalogue and link-only delivery
+# ClodHub - catalogue of reviewed components and recipes
 
-"Delivering Our Applications, built from Our Recipes, using Our Agentically-Engineered Components." is the tagline (constant `TAGLINE` in `site/src/pages/public.ts`; also in README, `site/index.html`, `llms.txt`, `agents.md`). Our Recipes and Our Components are the shared libraries at `/recipes` and `/components`. Audience: a small business, a club or society, a household, a shop or practice (a clinic, a restaurant, a sports club, a neighbourhood shop, a family), whose people are staff, members, customers and family; the landing hero opens with "Our apps for our businesses, our club, our home, our shop". Benefits stated up front on the landing page, the guide intro and the README: fast, low cost (free plans below ten people, a provider tier chosen from one size answer above), maintainable and safe, yours (own accounts, own data), delivered to every device through one link. The story every page and document tells: a developer starts from a recipe or composes from components (optionally publishing the recipe), an agent builds the application, and a private share link delivers it. Say "the people you share with", "your people", "staff, members, customers, family"; `site/src/library.test.ts` bans "friends and family". The Apple beta group keeps its stored name `Friends (ourapps)` (`BETA_GROUP`) because apps look it up by name. The guide (`site/src/pages/guide.ts`) opens with the sections `how-it-works`, `find-recipe`, `compose`, `publish` and `deprecation`, then the delivery steps.
+ClodHub (https://clodhub.com) is a catalogue of reviewed components and recipes that AI agents assemble into apps with aepm. Developers sign in with GitHub and publish from their own repositories; anyone reads the catalogue without a key. Delivery of finished apps to devices is ourapps.app (repository ourapps-app/ourapps), not this repository.
 
-Repo: github.com/ourapps-ae/ourapps (folder `ourapps/`; renamed from `app-game-store` on
-2026-10-18, GitHub forwards the old URL). Confirm with `git remote -v`. Cloudflare resources keep
-the name `app-game-store` (Worker, D1 database); see `gotchas.md`. Public repo;
-privacy comes from unlisted share links, not from the code being hidden. Product definition:
-`../../.opencode/knowledge/ourapps.md`.
-
-## What it is
-
-Developers sign in with GitHub, publish recipes and components to a public library and catalogue (`recipes.md`), add apps and create share links. The people a link is shared with tap `/l/<id>`
-and ends up with the app on their home screen. The store reads each app's `my-app.json`
-(schema 1, owned by `@my:orchestrator`, see `../../.opencode/knowledge/app-manifest.md`)
-from the latest GitHub Release and serves artefacts through signed one-hour links.
+Repo: github.com/clodhub/clodhub (folder `clodhub/`). Confirm with `git remote -v`. Public repo, all rights reserved. Package scope and GitHub organisation: `clodhub` (`clodhub/<name>`).
 
 ## Layout
 
-| path          | what                                                              |
-|---------------|-------------------------------------------------------------------|
-| `worker/`     | Cloudflare Worker: serves `site/dist`, `/api/*`, `/dl/*`; D1 data |
-| `site/`       | Vite + TypeScript, no framework, history routing                  |
-| `shared/`     | `validateManifest`, `validateRecipe`, `validateComponentEntry`, `TERMS_VERSION`, screenshot sets |
-| `CONTRACT.md` | what an app repo implements (signing, TestFlight upload, publish, `my-store-release`) |
-
-## Conventions
-
-- Every page, document and public file carries "Copyright Level N Ltd 2026" (site footers via
-  `storeFrame` and `shell`, plus README, CONTRACT.md, agents.md). Keep it when adding pages.
-- Public example content uses the invented "Poker Night" app (a club league night), never a real app name.
-- George's physical iPhones and iPads install and update through TestFlight only; Developer Mode is off. Do not install local builds on them. Simulator builds are separate.
-- User-facing text (site, guide, reference, agents.md, CONTRACT.md, README, SECURITY, messages) states only what is: no history, no "still", "older", "now", "no longer offered", no announced changes, no warnings about roads not taken. Changelogs and the example app's invented release notes are the exception. Owner's standing rule.
+| path | what |
+|---|---|
+| `worker/` | Cloudflare Worker `clodhub`: serves `site/dist`, `/api/*`, `/dl/*`, text and JSON page variants; D1 `clodhub`, R2 `clodhub-catalogue` |
+| `site/` | Vite and TypeScript, no framework, history routing |
+| `shared/` | `validateRecipe`, `validateComponentEntry`, class descriptors, foundations, conditions, diagrams, build reports, `TERMS_VERSION` |
+| `scripts/` | `smoke.mjs`, `validate-recipe-file.ts`, `render-diagrams.ts` |
+| `CONTRACT.md` | what a recipe or component repository implements, and the catalogue publish API |
 
 ## Where to change X
 
-- Recipe library and component catalogue (storage, publishing, reads, search, pages, bundle links, deprecation and orphaning): `recipes.md`.
+- Catalogue storage, publishing, reads, search, pages, bundle links, deprecation and orphaning, limits: `catalogue.md`.
+- Routes: `worker/src/index.ts`. Catalogue handlers: `worker/src/routes/catalogue.ts`; account and key handlers: `worker/src/routes/dev.ts`.
+- Sign-in, sessions, API keys (`ch_`), `developer_orgs` (read at sign-in with `read:org`): `worker/src/auth.ts`. Encrypted GitHub token: `worker/src/secrets.ts`, `worker/src/crypto.ts`. Audit log: `worker/src/audit.ts`. Queries for developers, sessions, keys: `worker/src/db.ts`.
+- Signed bundle links: `worker/src/links.ts`; GitHub fetches: `worker/src/upstream.ts`; vulnerability checks: `worker/src/vulnerabilities.ts`; hourly cron tasks: `scheduled` in `worker/src/index.ts`.
+- Schema: `worker/migrations/*.sql`.
+- Site pages: `site/src/pages/public.ts` (public frame `storeFrame`, home page), `site/src/pages/library.ts` (recipes, components, classes, categories, details), `site/src/pages/dev.ts` (developer page: profile, GitHub token, API keys, security, account deletion), `site/src/pages/guide.ts` (public guide, `/guide`), `site/src/pages/shell.ts` (signed-in frame and its `NAV`), `site/src/pages/terms.ts`, `site/src/pages/small.ts`, `site/src/pages/prompts.ts` (the recipe prompt). Paths: `site/src/router.ts`. Styles and both themes: `site/src/style.css`.
+- Terms: `site/src/pages/terms.ts`; version `shared/src/terms.ts` (bump to force re-acceptance); gate `requireTerms` in `worker/src/auth.ts`.
+- Agent documents: `site/public/agents.md`, `site/public/llms.txt`, `site/public/cloud-assembly.md` with `site/public/aepm-assemble.yml` (check with `actionlint`), `site/public/policy/levelnpolicy.json`. `CONTRACT.md` and `docs/package-foundations.md` are copied into `site/public/` by the site `prebuild`. `site/src/freeTiers.ts` is the single source for the guide's free-services section, `/small` and `/free-tiers.md` (generated by `site/scripts/free-tiers-md.ts`).
+- Drawn diagrams: kit `shared/src/diagram-kit.ts`, recipe and component diagrams `shared/src/diagram-recipe.ts`, `shared/src/diagram-component.ts`; the process overview `site/src/diagrams/cooking.ts`, written to `site/public/diagrams/cooking-a-recipe.svg` by `site/scripts/build-diagrams.ts` (a test fails when the committed file is stale).
 
-- iPhone/iPad Apple TV discovery: `televisionSetupLink` and `televisionPanel` in `site/src/desktop.ts`, rendered by `site/src/pages/public.ts`, keep the phone install path and add a TV setup shortcut only for a declared target with matching ready invitation. Absent/disabled targets are hidden; unconfirmed targets have no working TV action. Current TestFlight tvOS18 requirement is separate from the app's declared minimum; source https://testflight.apple.com/ checked2026-10-28.
+## Conventions
 
-- Approved-build error wording: `platformDeliveryStatus` in `site/src/pages/dev.ts` shows Availability unconfirmed when the latest approved build has a status-check error. `advanceBuild` in `worker/src/testflight.ts` clears stale errors after a successful approved-state read; neither change promotes approval to installable readiness.
+- Every page and public document carries "Copyright Level N Ltd 2026".
+- User-facing text states only what is: no history, no announced changes, no warnings about roads not taken.
+- Plain language, no em dashes anywhere.
 
-- Read-only Apple distribution diagnosis: `buildDistributionStatus` in `worker/src/routes/build.ts`, GET `/api/build/:app/:platform/testflight/distribution` with the app build token. Reads actual group membership, tester count and notification settings without identities/secrets or local/Apple writes; incomplete evidence is null. `worker/test/distribution-status.test.ts` covers ownership, disabled reads and no-rewrite guarantees.
-- Apple build membership is read through `/v1/betaGroups/{group}/relationships/builds`; the published Apple specification has no GET from a build to betaGroups, only POST/DELETE relationship operations in that direction. Check documented operations before attributing a403 to key roles.
-
-- Mac build-type saves: `site/src/pages/dev.ts` shares `saveMacBuildType` between Save changes and Save Mac build type; configured changes use owner-authorized profile repair and confirm persisted status before completion. `site/src/macBuildType.test.ts` covers unchanged, disabled, incomplete and retry cases. General app writes do not store `nativeMac`.
-
-- Target selection: `shared/src/targets.ts` defines `ios`, `android`, `web`, `macos`, `windows`, `tvos`; `web` maps to manifest `install.pwa`. Migration `worker/migrations/0018_target_selection.sql` adds six checked, default-enabled flags; `worker/src/db.ts` reads them and updates one flag. `site/src/targets.ts` renders switches, retains disabled section content and restores saved state after errors.
-- Target routes: owner session or manage key writes `PUT /api/dev/apps/:id/targets/:target` with exactly `{ enabled: boolean }`; `setTarget` in `worker/src/routes/dev.ts` checks ownership and changes selection only. `GET /api/build/:app/targets` in `worker/src/routes/build.ts` reads all six flags using that app's build token without token rehashing; it cannot write selection.
-- Public target delivery: `projectDelivery` in `worker/src/flow.ts` filters cloned declarations and Apple readiness before `worker/src/routes/public.ts` signs share-page and latest responses. `deliveryRevision` uses `sha256Hex` over version, unsigned install declarations and readiness; signed-address renewal leaves it stable. `deliveryChanged` in `site/src/pages/public.ts` compares version separately and then revision; all-disabled pages retain app details with no install options.
-- Disabled-target work: `requireTarget` in `worker/src/targets.ts` re-reads saved flags and rejects disabled work with status 409. Build routes and `worker/src/testflight.ts` guard signing, reservation and upload work, with late checks before Apple writes and GitHub dispatch in `worker/src/{apple,github}.ts`. Already uploaded builds continue processing; disabled expiry renewal is skipped. Selection changes retain setup/history and re-enabling requests no immediate build.
-
-- Existing upload continuation metadata: POST `/api/build/:app/:platform/testflight/upload/:file/operations`, `buildUploadFileOperations` and `worker/src/upload-operations.ts`. Requires HTTPS, app token, owned uploading record/version/build and Apple AWAITING_UPLOAD/size. Validates sorted-copy range coverage but preserves returned order. Signed URLs/header values are returned only to the authorized uploader, no-store and memory-only; this retrieval makes no writes/reservations/commit. The client sorts validated operations before byte writes and commits the same file.
-
-- Read-only upload diagnosis: `buildUploadFileStatus` in `worker/src/routes/build.ts`, `sanitiseUploadFile` in `worker/src/upload-diagnostic.ts`; GET `/api/build/:app/:platform/testflight/upload/:file/status` scopes app build token and existing upload ownership. Reads Apple metadata, exposes bounded state/method/offset/length/type/coverage plus host/header names only, and skips token rewrite and credential rewrap. It never resumes, reserves or commits an upload.
-
-- Verified workflow reservation associations are in migration0017 and the reservation/status helpers in `worker/src/github.ts` and `testflight.ts`. Optional runId/runAttempt metadata is checked against GitHub before allocation; same-attempt retries reuse the pair. Unknown upload receipt is null and the console must never label that as absent. Bodyless reservation clients remain valid.
-
-- Mac/TV workflows without dashboard-reserved inputs POST `/api/build/:app/:platform/testflight/reserve-build` with the existing app build token. `reservePlatformBuild` in `worker/src/testflight.ts` is shared with dashboard dispatch, returning version/buildNumber strings without dispatching. Migration0016 supplies atomic reservation; supplied dashboard inputs must skip the reservation call. Route tests cover cross-app rejection and concurrent dashboard/token allocations.
-
-- GitHub build status: `loadBuildStatus` in `worker/src/github.ts`, exposed as `buildStatus` by TestFlight views; `site/src/buildStatus.ts` refreshes every visible 30 seconds. iOS matches `release.yml`; Mac/TV require `apple-testflight.yml` and canonical `Apple TestFlight macos|tvos VERSION (BUILD)` titles. `platformVerified` identifies only the title's platform, not app/request identity. Successful runs without matching upload evidence display Finished without upload. Cache API stores sanitized status15s/timings15min. Mac/TV dispatch uses Actions write, iOS uses Contents write, status uses Actions read; atomic per-app/platform/version build reservations are in migration0016.
-
-- iPhone/iPad compatibility on Apple-silicon Mac is separate from Catalyst/native Mac. `release.apple.iosOnMac` and `/latest.apple.iosOnMac` require iOS readiness plus Apple's beta-group permission flag; `apps.ios_on_mac` and `ios_on_mac_checked_at` cache that flag for one minute (migration 0015). `site/src/desktop.ts` labels the compatibility invitation explicitly. No Intel claim or `macos` readiness fallback.
-
-- Apple platform routing: `worker/src/apple-platform.ts` validates `ios`, `macos`, `tvos`; explicit `/api/build/:app/:platform/signing` and `/testflight/{upload,commit}`. Legacy build routes are iOS-only aliases. `worker/migrations/0014_apple_platforms.sql` stores separate platform state and installer certificates; Mac installer keys use the encrypted `installerSigningKey` field. Mac setup defaults to Catalyst (`MAC_CATALYST_APP_STORE`); native Mac is `MAC_APP_STORE`; TV is `TVOS_APP_STORE`. Console setup/status: `/api/dev/apps/:id/testflight/:platform`. Real signed export/upload and tester availability require platform-specific verification.
-- Desktop delivery: `shared/src/desktop.ts` and `manifest.ts` validate package and Apple target declarations; `worker/src/flow.ts` signs `.dmg`/`.exe` downloads, `routes/public.ts` streams them; `download-filename.ts` preserves safe response filenames, falling back to a URL basename or generic name; `site/src/desktop.ts` renders package requirements and Apple TV instructions. `release.apple` and `/latest.apple` expose only each platform's approved version and open invitation. Declaring a target does not make TestFlight installable. Direct installer updates use `/latest.macos` and `.windows` package metadata, independently of TestFlight approval.
-
-- Routes: `worker/src/index.ts`. Handlers: `worker/src/routes/{public,build,dev}.ts`.
-- Sign-in and sessions: `worker/src/auth.ts`. Encrypted credentials: `worker/src/secrets.ts`, `worker/src/crypto.ts`.
-- Apple calls: `worker/src/apple.ts`, client from `appleClient` in `worker/src/flow.ts`; repository dispatch: `worker/src/github.ts`.
-- iPhone distribution is TestFlight only. Per-device Ad Hoc registration was removed on the owner's instruction (its builds need Developer Mode since iOS 16; migration 0011 dropped its tables); do not bring it back: `worker/src/testflight.ts` (set-up, upload broker, the 10-minute cron `tickTestflight` that distributes processed builds and sends `my-store-release` before the 90-day expiry), Apple calls in `worker/src/apple.ts`, migration 0010, routes `/api/dev/apps/:id/testflight`, `/api/dev/review-contact`, `/api/build/:app/testflight/{upload,commit}`; install page card `testflightSteps` in `site/src/pages/public.ts`; console card `testflightCard` in `site/src/pages/dev.ts` (a step list driven by `needs`; for `store-app` it lists Apple's New App form with the values in `storeApp` and checks with Apple every 15 seconds while visible, for up to 20 minutes; after set-up a second step list driven by `stage`, from the first build to an open invitation). Each build is followed to Apple's `externalBuildState` (`advanceBuild`); the invitation page at testflight.apple.com is read (`checkInvitation`) and the install page offers the link only when it is open (`openInvitation` in `worker/src/routes/public.ts`). Set-up sends `my-store-release` for the first build. Export compliance is answered automatically for every build (`usesNonExemptEncryption` false, owner's decision of 2026-10-22; the terms make it the developer's to keep true); there is no step or status for it. Apple has no API to create the App Store Connect app record; the developer adds it once.
-- iPhone signing: the browser makes the RSA key and CSR (`site/src/signing.ts`); `POST /api/dev/signing` (`setUpSigning` in `worker/src/routes/dev.ts`) gets an Apple Distribution certificate, stores the key as the `signingKey` secret and the certificate in `signing_certificates` (migration 0006), and makes the App Store profile again (`renewStoreProfile`, `worker/src/testflight.ts`) for apps already on TestFlight; builds fetch everything from `GET|HEAD /api/build/:app/signing` (`worker/src/routes/build.ts`), 404 until TestFlight is set up. Settings card in `site/src/pages/dev.ts`.
-- Schema: `worker/migrations/*.sql`; queries: `worker/src/db.ts`.
-- Example story and mock install page: `site/src/pages/example.ts` (routes `/example`, `/example/poker-night`).
-- Site pages: `site/src/pages/public.ts` (store theme: landing, developer page, install, preview; `storeFrame` carries the nav with Recipes and Components), `site/src/pages/library.ts` (recipes and components), `site/src/pages/dev.ts` (console: overview, apps, form, links, settings, agents), `site/src/pages/guide.ts` (A to Z guide, recipes and components first), `site/src/pages/shell.ts` (console frame; its sidebar `NAV` lists Recipes and Components), `site/src/pages/prompts.ts` (agent prompts).
-- Design tokens and both themes: `site/src/style.css` (`[data-theme="store"]`, `[data-theme="dev"]`, dark variants). Placeholders: `site/src/placeholders.ts`. Shared components and icons: `site/src/ui.ts`.
-- Terms and data statement: `site/src/pages/terms.ts`; version constant `shared/src/terms.ts` (bump to force re-acceptance); gate `requireTerms` in `worker/src/auth.ts`; acceptance stored on `developers`.
-- Security model and rotation: `SECURITY.md`. Crypto primitives: `worker/src/crypto.ts`; credential envelopes: `worker/src/secrets.ts`; audit log: `worker/src/audit.ts`.
-- API keys and bearer auth: `worker/src/auth.ts`, `worker/src/routes/dev.ts` (`listKeys`, `createKey`, `revokeKey`, `releaseStatus`, `previewApp`).
-- Screenshots per version: storage `apps.screenshots_by_platform` (migration 0005); sets built in `buildLinkPage` (`worker/src/routes/public.ts`); choice of list `pickScreenshots` (`shared/src/screenshots.ts`); versions, tabs and shapes `site/src/views.ts`; panels and carousels in `renderInstall` (`site/src/pages/public.ts`).
-- Revision history (releases, tags, commit fallback, 2 minute cache): `worker/src/history.ts`; rendering: `historyBlock` in `site/src/pages/public.ts`, notes to HTML in `site/src/notes.ts`.
-- Web apps: new ones are deployed by the app's workflow to the developer's own Cloudflare account (files-only Worker, contract.md "Web apps"); `install.pwa` holds that address, `webHosting` (`worker/src/webapp.ts`) reports it in the release status, and the banner is published from `worker/src/assets/install-banner.js` to `site/public/web/install-banner.js` by the site `prebuild`. Older `web.zip` hosting on `https://<linkId>.ourapps.app/`: `worker/src/webapp.ts` (host detection, limits `WEB_LIMITS`, unpack once per release into ~2 MB packs in KV `WEBAPP_FILES`, edge cache per file, `.br`/`.gz` encodings, `_headers` allowlist, SPA fallback); route `*.ourapps.app/*` in `worker/wrangler.jsonc` needs the wildcard proxied AAAA record on the zone.
-- Drawn diagrams (house style: flat SVG, orthogonal lines, legend; `check()` fails on overlapping cards or a line through a card): kit `shared/src/diagram-kit.ts`; recipe component diagram `shared/src/diagram-recipe.ts` served at `GET /api/recipes/:name/:version/components.svg`; component neighbourhood `shared/src/diagram-component.ts` at `GET /api/components/:name/:version/connections.svg` (handlers in `worker/src/routes/catalogue.ts`); process overview builder `site/src/diagrams/cooking.ts`, written to `site/public/diagrams/cooking-a-recipe.svg` by `site/scripts/build-diagrams.ts` in `prebuild` (a test fails when the committed file is stale), shown through `cookingFigure()` in `site/src/figures.ts`. `npm run render-diagrams -- <dir>` writes the OurPoker fixture diagrams (`shared/src/fixtures/`) for inspection.
-- Technical reference page (public, `/reference`): `site/src/pages/reference.ts`; inline SVG architecture diagram as fallback; generated diagrams in `site/public/reference/` as PNG masters plus WebP copies (`cwebp -q 92 -m 6`), shown through `diagram()` with a full-size link; prompts in `docs/diagram-prompts.md`. The guide overview reuses `architecture`. Keep the page's limits in step with `WEB_LIMITS`.
-- Agent documents: `site/public/agents.md`, `site/public/llms.txt`, `site/public/cloud-assembly.md` (building from a recipe in GitHub Actions; guide section `cloud`) with the workflow `site/public/aepm-assemble.yml` (check with `actionlint`); `CONTRACT.md` is copied to `site/public/contract.md` by the site `prebuild` script. `site/src/freeTiers.ts` is the single source for the guide's free-services section, `/small` and `site/public/free-tiers.md` (generated by `site/scripts/free-tiers-md.ts` in `prebuild`, gitignored).
-- Platform and in-app browser detection: `site/src/platform.ts`. Paths: `site/src/router.ts`.
-
-## Build, test, run
-
-- `npm install` at the root (workspaces `shared`, `worker`, `site`).
-- `npm test` runs all three; `npm run typecheck` likewise.
-- Local: `cd worker && npx wrangler d1 migrations apply app-game-store --local`, then
-  `npm run build -w site && npm run dev -w worker` on http://localhost:8787.
-- Deploy: `npm run build -w site && cd worker && npx wrangler deploy`. See `workflow.md`.
-
-Details: `workflow.md`, `gotchas.md`.
+Details: `workflow.md` (build, test, deploy), `gotchas.md`, `catalogue.md`.

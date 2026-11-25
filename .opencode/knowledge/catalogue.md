@@ -1,10 +1,10 @@
-# Recipe library and component catalogue
+# Catalogue: recipes, components and classes
 
-Authority for formats: `../../../.opencode/knowledge/component-standard.md` (recipe.json, suitability.json, migration.json) and the paper's Sections 2.4, 3.9, 3.10. What a recipe or component repository implements: `CONTRACT.md`. Routes for agents: `site/public/agents.md`.
+Authority for formats: `../../../.opencode/knowledge/component-standard.md` (in the workspace above this repository) (recipe.json, suitability.json, migration.json) and the paper's Sections 2.4, 3.9, 3.10. What a recipe or component repository implements: `CONTRACT.md`. Routes for agents: `site/public/agents.md`.
 
 ## Storage
 
-Migration `worker/migrations/0022_catalogue_scale.sql` sets the layout for millions of entries. Component entries are format 3 (`COMPONENT_ENTRY_FORMAT`: `page.description`, interface `description`, setting `default`), recipe and class entries format 2 (`ENTRY_FORMAT`). The same version and digest published again replaces the entry when the stored document has an earlier format or differs only in description, page text and tags (`textOnlyChange`; `replaceComponentVersion` in `catalogue-db.ts`, status `updated`), keeping downloads, vulnerability results, publication date and quality.
+`worker/migrations/0001_schema.sql` holds the layout, sized for millions of entries. Component entries are format 3 (`COMPONENT_ENTRY_FORMAT`: `page.description`, interface `description`, setting `default`), recipe and class entries format 2 (`ENTRY_FORMAT`). The same version and digest published again replaces the entry when the stored document has an earlier format or differs only in description, page text and tags (`textOnlyChange`; `replaceComponentVersion` in `catalogue-db.ts`, status `updated`), keeping downloads, vulnerability results, publication date and quality.
 
 - `components`, `recipes`: one row per name, and the listing: the row holds the summary of its newest listed version (description or title and summary, class, category, `category_top`, platforms as " web ios ", licence, quality 0 to 3, certified, channel, vulnerabilities, thumbnail, published_at) plus `downloads` (30 days) and `trending`. `seq` is the full-text rowid and the keyset tie-breaker. Indexes: one per sort, per category, top category, class, licence and publisher with a sort, and partial indexes of the default sort for quality levels, platforms, channels, certified and no known vulnerabilities. `list` in `worker/src/catalogue-db.ts` names its index with `INDEXED BY`, checks other filters on at most `SCAN_BUDGET` (20,000) index rows, and pages by cursor; search orders the best `SEARCH_DEPTH` (1,000) FTS5 matches.
 - `component_versions`, `recipe_versions`: what pages read without the document (channel, fixes, images, waivers, quality, vulnerabilities, downloads, release pointer, `listing` JSON for the entry row) and `document`, the R2 key of the full entry (`documents/<kind>/<slug>/<version>/<sha256 of the document>.json`, written by `putDocument` in `worker/src/catalogue-store.ts`, cached by the Cache API).
@@ -51,21 +51,27 @@ The authority is the "Recipe evaluation rules" and "Recipe slots and component c
 - `deprecated=exclude|include|only` (default `include`) filters lists and search on the entry's own flag only. A recipe that uses a flagged component is `active` with a non-empty `deprecations`.
 - The component entry's optional `dependencies` (`{name, version}`, at most 50) is the only link from a component to other components; component.json `dependencies` must be sent by the publishing tool.
 - Orphaned bundle: `releaseAsset` in `routes/catalogue.ts` reads the release with no token; a public release returns a `/dl/` link whose payload `dev` is empty (`serveArtefact` then sends no token); a 404 release or missing asset returns `status: "bundle-unavailable"` (200, `url` null). GitHub errors other than 404 are 502. `fetchUpstream` asks `api.github.com` for the raw asset (`Accept: application/octet-stream`) with or without a token.
-- Site: `deprecationBanner` and `statusPill` in `site/src/pages/library.ts`, `deprecated` filter in `site/src/library.ts`. Terms version bumps with the account-deletion wording.
+- Site: `deprecationBanner` and `statusPill` in `site/src/pages/library.ts`, `deprecated` filter in `site/src/library.ts`.
 
 ## Rules
 
 - A name's scope equals its repository owner (lowercase). A name belongs to its first developer and repository; another developer gets 409. Publishing needs no approval and no guardian and has no queue; the per-developer limits below apply.
 - A version is bound to its digest: same version, same digest is a no-op (200), same version with another digest is 409. Unlisted versions keep their digest and are listed again by publishing them again.
 - Publishing checks with the publisher's saved GitHub token that the token can push to the repository and that release `source.tag` holds `bundle.asset` (GitHub's `digest` field for the asset must equal `bundle.digest` when GitHub gives one). Without a saved token: 409.
-- Bundle route (`/api/{recipes,components}/:name/:version/bundle`) re-reads the release with the publisher's token and returns a `/dl/` link of kind `bundle` (`worker/src/links.ts`, `serveArtefact`). The asset address and token never appear in a response.
-- Public responses carry the publisher's slug and display name only. `SECRET_PATTERN` in `routes/catalogue.ts` refuses private key blocks, GitHub tokens, ourapps API keys and AWS key identifiers in an entry.
+- Bundle route (`/api/{recipes,components}/:name/:version/bundle`) re-reads the release with the publisher's token and returns a `/dl/` link of kind `bundle` (`worker/src/links.ts`; `serveArtefact` in `routes/catalogue.ts` streams it). The asset address and token never appear in a response.
+- Public responses carry the publisher's slug and display name only. `SECRET_PATTERN` in `routes/catalogue.ts` refuses private key blocks, GitHub tokens, API keys and AWS key identifiers in an entry.
 - Diagrams are checked by `isSafeSvg`, stored in D1, served from `/api/recipes/:name/:version/diagram.svg` with a sandboxing Content Security Policy, shown through `<img>`.
 - Short names are unique across scopes. Scoped URLs (`/recipes/<scope>/<name>`) are to be revisited after collaborators have reviewed the library (George's decision).
 - Limits: 50 recipes, 200 components per developer; 200 versions per name; recipe.json 200,000 characters.
-- `/recipes`, `/components` and `sitemap.xml` are in `RESERVED_SLUGS` (`worker/src/auth.ts`); the site router tests path shape with `isCatalogueSlug`, so `search` is not a name.
-- Public wording (terms, footer, guide) says the library and catalogue are public and share links are private; any change to the terms text bumps `TERMS_VERSION`.
+- The site router tests path shape with `isCatalogueSlug`, so `search` is not a name. Developer slugs are publisher names only (no public developer page); `RESERVED_SLUGS` in `worker/src/auth.ts` still keeps site paths out.
+- Public wording (terms, footer, guide) says the catalogue is public; any change to the terms text bumps `TERMS_VERSION` (`shared/src/terms.ts`).
+
+## Limits
+
+- Workers Free allows 50 subrequests (calls to other services and the Cache API) per request. Batch document reads go to R2 alone (`readDocuments` in `catalogue-store.ts`) so a 40-component recipe stays inside it; a test checks it.
+- A recipe version response stays under 100,000 bytes and a component's under 30,000; recipe `.txt` pages under 60,000 and component ones under 30,000. `npm run smoke` checks every listed entry.
+- Per developer: 50 recipes, 200 components; 200 versions per name; recipe.json 200,000 characters; 300 image uploads a day (`IMAGE_UPLOADS_PER_DAY`); 60 bundle links a minute per address (`BUNDLE_LINKS_PER_MINUTE`).
 
 ## Tests
 
-`shared/src/catalogue.test.ts`, `shared/test/validate-recipe-file.test.mjs` (runs the script), `worker/test/catalogue.test.ts` (GitHub stubbed with `fakeFetch`; D1 is the real test database with migrations applied), `site/src/library.test.ts`, `site/src/pages/library.test.ts`, `site/src/router.test.ts`.
+`shared/src/catalogue.test.ts`, `shared/test/validate-recipe-file.test.mjs` (runs the script), `worker/test/catalogue.test.ts`, `worker/test/catalogue-round.test.ts`, `worker/test/diagrams.test.ts` (GitHub stubbed with `fakeFetch`; D1 is the real test database with migrations applied), `site/src/library.test.ts`, `site/src/pages/library.test.ts`, `site/src/router.test.ts`.
