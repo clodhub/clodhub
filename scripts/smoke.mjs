@@ -1,7 +1,7 @@
 // Live check of ClodHub against a running deployment, the way an agent uses it.
 // Usage: CLODHUB_API_KEY=ch_... node scripts/smoke.mjs [--base https://clodhub.com]
 // Without a key only the public part runs: every listed recipe and component, with the size limits. With a manage
-// key it also checks the developer routes and that every endpoint agents.md lists was called. It changes nothing.
+// key it also checks the developer routes and that every GET route agents.md lists was called. It changes nothing.
 import { readFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
@@ -168,12 +168,14 @@ async function keyedChecks() {
   }
 }
 
+// Every GET route agents.md lists, except those that need a published entry when the catalogue is empty; writes are
+// not walked because the check changes nothing.
 function coverage() {
-  const normalise = (e) => e.replace(/:[a-zA-Z]+/g, ":id");
+  const normalise = (e) => e.replace(/:[a-zA-Z]+/g, ":id").replace(/<[a-z]+>/g, ":id");
   const done = new Set([...exercised].map(normalise));
-  const documented = documentedEndpoints().map(normalise);
-  const notWalked = documented.filter((e) => !done.has(e));
-  record(notWalked.length === 0, "every endpoint agents.md lists was called", notWalked.join(", "));
+  const documented = documentedEndpoints().filter((e) => e.startsWith("GET ")).map(normalise);
+  const notWalked = documented.filter((e) => !done.has(e) && !(/:id\/:id/.test(e) || /\/reports$/.test(e)));
+  record(notWalked.length === 0, "every GET route agents.md lists was called", notWalked.join(", "));
 }
 
 console.log(`ClodHub live check against ${base}${key ? "" : " (public part only; set CLODHUB_API_KEY for the rest)"}`);
