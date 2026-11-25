@@ -113,12 +113,12 @@ describe("independent class fit", () => {
     ["setting", (c: Mutable) => c.settings = [], "setting:minimumPlayers"],
     ["setting type", (c: Mutable) => { c.settings[0].type = "string"; c.settings[0].grammar = "slug"; }, "setting-type:minimumPlayers"],
     ["required default", (c: Mutable) => c.settings.push({ id: "extra", type: "integer", grammar: "integer", required: true, secret: false, hasDefault: false }), "unset-setting:extra"],
-    ["implementation", (c: Mutable) => c.foundations.implements = [], "class-implementation:ourapps-ae/seating-class"],
+    ["implementation", (c: Mutable) => c.foundations.implements = [], "class-implementation:clodhub/seating-class"],
     ["platform", (c: Mutable) => c.foundations.platforms = ["server"], "platform:web"],
     ["module", (c: Mutable) => c.foundations.artefacts = [], "module:web:index.mjs"],
   ] as [string, (c: Mutable) => void, string][])("rejects candidate %s", (_, patch, reason) => { const c = candidate(); patch(c); expect(fit(reference(), c, authority())).toContain(reason); });
-  it("rejects altered descriptor under the same reference", () => { const c = candidate(); c.foundations.classes[0].descriptor.provides[0].modules.web = ["changed.mjs"]; expect(fit(reference(), c, authority())).toContain("class-digest:ourapps-ae/seating-class"); });
-  it("reports absent independent authority", () => expect(fit(reference(), candidate(), null)).toEqual(["class-unavailable:ourapps-ae/seating-class"]));
+  it("rejects altered descriptor under the same reference", () => { const c = candidate(); c.foundations.classes[0].descriptor.provides[0].modules.web = ["changed.mjs"]; expect(fit(reference(), c, authority())).toContain("class-digest:clodhub/seating-class"); });
+  it("reports absent independent authority", () => expect(fit(reference(), candidate(), null)).toEqual(["class-unavailable:clodhub/seating-class"]));
   it("checks selected target modules and retains server", () => {
     const c = candidate(); c.foundations.platforms = ["server"]; expect(fit(reference(), c, authority(), ["server"])).toEqual([]);
     expect(selectedTargets(authority(), { targets: ["web"] })).toEqual(["server", "web"]);

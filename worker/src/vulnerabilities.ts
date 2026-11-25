@@ -31,7 +31,7 @@ export const VERSION_CALLS = 12;
 export const VERSION_RUNS = 3;
 export const DUE_VERSIONS = 5000;
 
-const HEADERS = { "Content-Type": "application/json", "User-Agent": "ourapps-catalogue (+https://ourapps.app)" };
+const HEADERS = { "Content-Type": "application/json", "User-Agent": "clodhub (+https://clodhub.com)" };
 
 // Versions are checked whole. Each version's purls not checked for a day go to OSV: versions never refused go together
 // in batches of at most OSV_BATCH purls; a batch OSV refuses (400) marks its versions `osv_alone`, and from then on each

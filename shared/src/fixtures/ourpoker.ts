@@ -9,7 +9,7 @@ export interface FixtureComponent { name: string; version: string; category: str
 export interface FixtureSlot { id: string; class: { provides: ClassInterface[]; requires: ClassInterface[] }; preferred: { name: string; version: string }; includedWhen: Condition | null }
 
 export const OURPOKER_RECIPE: { name: string; version: string; title: string; components: FixtureSlot[]; connections: { source: { instance: string; port: string }; target: { instance: string; port: string } }[] } = {
- "name": "ourapps-ae/ourpoker",
+ "name": "clodhub/ourpoker",
  "version": "0.3.3",
  "title": "OurPoker",
  "components": [
@@ -30,7 +30,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/web-host",
+    "name": "clodhub/web-host",
     "version": "0.3.0"
    },
    "includedWhen": "'web' in targets"
@@ -52,7 +52,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/apple-host",
+    "name": "clodhub/apple-host",
     "version": "0.4.0"
    },
    "includedWhen": "'ios' in targets || 'macos' in targets || 'tvos' in targets"
@@ -74,7 +74,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/android-host",
+    "name": "clodhub/android-host",
     "version": "0.3.0"
    },
    "includedWhen": "'android' in targets"
@@ -91,7 +91,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/windows-desktop",
+    "name": "clodhub/windows-desktop",
     "version": "0.4.0"
    },
    "includedWhen": "'windows' in targets"
@@ -117,7 +117,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/server-host",
+    "name": "clodhub/server-host",
     "version": "0.4.0"
    },
    "includedWhen": null
@@ -134,7 +134,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/ourapps-release",
+    "name": "clodhub/ourapps-release",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -151,7 +151,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/store-update",
+    "name": "clodhub/store-update",
     "version": "0.4.0"
    },
    "includedWhen": "updates"
@@ -177,7 +177,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/realtime-rooms",
+    "name": "clodhub/realtime-rooms",
     "version": "0.5.0"
    },
    "includedWhen": null
@@ -199,7 +199,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/room-directory",
+    "name": "clodhub/room-directory",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -216,7 +216,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/guest-identity",
+    "name": "clodhub/guest-identity",
     "version": "0.4.0"
    },
    "includedWhen": null
@@ -238,7 +238,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/presence",
+    "name": "clodhub/presence",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -255,7 +255,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/invitations",
+    "name": "clodhub/invitations",
     "version": "0.1.1"
    },
    "includedWhen": null
@@ -272,7 +272,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/private-views",
+    "name": "clodhub/private-views",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -289,7 +289,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/display-mode",
+    "name": "clodhub/display-mode",
     "version": "0.4.0"
    },
    "includedWhen": null
@@ -306,7 +306,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/video-calls",
+    "name": "clodhub/video-calls",
     "version": "0.4.0"
    },
    "includedWhen": "video"
@@ -323,7 +323,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/preferences",
+    "name": "clodhub/preferences",
     "version": "0.1.1"
    },
    "includedWhen": null
@@ -378,7 +378,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/turn-engine",
+    "name": "clodhub/turn-engine",
     "version": "0.4.0"
    },
    "includedWhen": null
@@ -395,7 +395,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/game-clock",
+    "name": "clodhub/game-clock",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -417,7 +417,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/seating",
+    "name": "clodhub/seating",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -434,7 +434,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/fair-shuffle",
+    "name": "clodhub/fair-shuffle",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -456,7 +456,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/card-deck",
+    "name": "clodhub/card-deck",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -486,7 +486,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/computer-players",
+    "name": "clodhub/computer-players",
     "version": "0.4.0"
    },
    "includedWhen": "computerPlayers != 'none'"
@@ -503,7 +503,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/chip-ledger",
+    "name": "clodhub/chip-ledger",
     "version": "0.4.0"
    },
    "includedWhen": null
@@ -520,7 +520,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/level-schedule",
+    "name": "clodhub/level-schedule",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -550,7 +550,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/tournament",
+    "name": "clodhub/tournament",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -567,7 +567,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/round-history",
+    "name": "clodhub/round-history",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -584,7 +584,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/rules-settings",
+    "name": "clodhub/rules-settings",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -606,7 +606,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/poker-hand-ranking",
+    "name": "clodhub/poker-hand-ranking",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -632,7 +632,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/poker-odds",
+    "name": "clodhub/poker-odds",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -670,7 +670,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/holdem-rules",
+    "name": "clodhub/holdem-rules",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -696,7 +696,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/poker-strategy",
+    "name": "clodhub/poker-strategy",
     "version": "0.3.0"
    },
    "includedWhen": "computerPlayers != 'none'"
@@ -713,7 +713,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/theme",
+    "name": "clodhub/theme",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -735,7 +735,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/controls",
+    "name": "clodhub/controls",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -761,7 +761,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/table-layout",
+    "name": "clodhub/table-layout",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -783,7 +783,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/card-graphics",
+    "name": "clodhub/card-graphics",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -805,7 +805,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/chip-graphics",
+    "name": "clodhub/chip-graphics",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -827,7 +827,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/sound-cues",
+    "name": "clodhub/sound-cues",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -857,7 +857,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     ]
    },
    "preferred": {
-    "name": "ourapps-ae/guided-tour",
+    "name": "clodhub/guided-tour",
     "version": "0.3.0"
    },
    "includedWhen": "lessons"
@@ -874,7 +874,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
     "requires": []
    },
    "preferred": {
-    "name": "ourapps-ae/translations",
+    "name": "clodhub/translations",
     "version": "0.4.0"
    },
    "includedWhen": null
@@ -1536,7 +1536,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
 
 export const OURPOKER_CATALOGUE: FixtureComponent[] = [
  {
-  "name": "ourapps-ae/android-host",
+  "name": "clodhub/android-host",
   "version": "0.3.0",
   "category": "delivery",
   "targets": {
@@ -1567,7 +1567,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/apple-host",
+  "name": "clodhub/apple-host",
   "version": "0.4.0",
   "category": "delivery",
   "targets": {
@@ -1600,7 +1600,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/card-deck",
+  "name": "clodhub/card-deck",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -1635,7 +1635,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/card-graphics",
+  "name": "clodhub/card-graphics",
   "version": "0.3.0",
   "category": "presentation",
   "targets": {
@@ -1670,7 +1670,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/chip-graphics",
+  "name": "clodhub/chip-graphics",
   "version": "0.3.0",
   "category": "presentation",
   "targets": {
@@ -1705,7 +1705,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/chip-ledger",
+  "name": "clodhub/chip-ledger",
   "version": "0.4.0",
   "category": "game-framework",
   "targets": {
@@ -1728,7 +1728,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/computer-players",
+  "name": "clodhub/computer-players",
   "version": "0.4.0",
   "category": "game-framework",
   "targets": {
@@ -1767,7 +1767,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/controls",
+  "name": "clodhub/controls",
   "version": "0.3.0",
   "category": "presentation",
   "targets": {
@@ -1802,7 +1802,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/display-mode",
+  "name": "clodhub/display-mode",
   "version": "0.4.0",
   "category": "rooms",
   "targets": {
@@ -1838,7 +1838,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/fair-shuffle",
+  "name": "clodhub/fair-shuffle",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -1861,7 +1861,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/game-clock",
+  "name": "clodhub/game-clock",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -1890,7 +1890,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/guest-identity",
+  "name": "clodhub/guest-identity",
   "version": "0.4.0",
   "category": "rooms",
   "targets": {
@@ -1919,7 +1919,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/guided-tour",
+  "name": "clodhub/guided-tour",
   "version": "0.3.0",
   "category": "presentation",
   "targets": {
@@ -1964,7 +1964,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/holdem-rules",
+  "name": "clodhub/holdem-rules",
   "version": "0.3.0",
   "category": "poker",
   "targets": {
@@ -2019,7 +2019,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/invitations",
+  "name": "clodhub/invitations",
   "version": "0.1.1",
   "category": "rooms",
   "targets": {
@@ -2048,7 +2048,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/level-schedule",
+  "name": "clodhub/level-schedule",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -2071,7 +2071,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/ourapps-release",
+  "name": "clodhub/ourapps-release",
   "version": "0.3.0",
   "category": "delivery",
   "targets": {
@@ -2094,7 +2094,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/poker-hand-ranking",
+  "name": "clodhub/poker-hand-ranking",
   "version": "0.3.0",
   "category": "poker",
   "targets": {
@@ -2123,7 +2123,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/poker-odds",
+  "name": "clodhub/poker-odds",
   "version": "0.3.0",
   "category": "poker",
   "targets": {
@@ -2157,7 +2157,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/poker-strategy",
+  "name": "clodhub/poker-strategy",
   "version": "0.3.0",
   "category": "poker",
   "targets": {
@@ -2191,7 +2191,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/preferences",
+  "name": "clodhub/preferences",
   "version": "0.1.1",
   "category": "rooms",
   "targets": {
@@ -2220,7 +2220,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/presence",
+  "name": "clodhub/presence",
   "version": "0.3.0",
   "category": "rooms",
   "targets": {
@@ -2249,7 +2249,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/private-views",
+  "name": "clodhub/private-views",
   "version": "0.3.0",
   "category": "rooms",
   "targets": {
@@ -2278,7 +2278,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/realtime-rooms",
+  "name": "clodhub/realtime-rooms",
   "version": "0.5.0",
   "category": "rooms",
   "targets": {
@@ -2329,7 +2329,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/room-directory",
+  "name": "clodhub/room-directory",
   "version": "0.3.0",
   "category": "rooms",
   "targets": {
@@ -2367,7 +2367,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/round-history",
+  "name": "clodhub/round-history",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -2395,7 +2395,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/rules-settings",
+  "name": "clodhub/rules-settings",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -2420,7 +2420,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/seating",
+  "name": "clodhub/seating",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -2455,7 +2455,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/server-host",
+  "name": "clodhub/server-host",
   "version": "0.4.0",
   "category": "delivery",
   "targets": {
@@ -2500,7 +2500,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/sound-cues",
+  "name": "clodhub/sound-cues",
   "version": "0.3.0",
   "category": "presentation",
   "targets": {
@@ -2535,7 +2535,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/store-update",
+  "name": "clodhub/store-update",
   "version": "0.4.0",
   "category": "delivery",
   "targets": {
@@ -2564,7 +2564,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/table-layout",
+  "name": "clodhub/table-layout",
   "version": "0.3.0",
   "category": "presentation",
   "targets": {
@@ -2604,7 +2604,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/theme",
+  "name": "clodhub/theme",
   "version": "0.3.0",
   "category": "presentation",
   "targets": {
@@ -2633,7 +2633,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/tournament",
+  "name": "clodhub/tournament",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -2678,7 +2678,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/translations",
+  "name": "clodhub/translations",
   "version": "0.4.0",
   "category": "presentation",
   "targets": {
@@ -2707,7 +2707,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/turn-engine",
+  "name": "clodhub/turn-engine",
   "version": "0.4.0",
   "category": "game-framework",
   "targets": {
@@ -2777,7 +2777,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/video-calls",
+  "name": "clodhub/video-calls",
   "version": "0.4.0",
   "category": "rooms",
   "targets": {
@@ -2821,7 +2821,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/web-host",
+  "name": "clodhub/web-host",
   "version": "0.3.0",
   "category": "delivery",
   "targets": {
@@ -2852,7 +2852,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "ourapps-ae/windows-desktop",
+  "name": "clodhub/windows-desktop",
   "version": "0.4.0",
   "category": "delivery",
   "targets": {

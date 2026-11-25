@@ -89,7 +89,7 @@ export function exampleFoundations(slug = "card-deck"): Foundations {
   const properties: ClassDescriptor["settings"]["properties"] = type === "seating" ? { minimumPlayers: { type: "integer" } } : type === "server-host" ? { targets: { type: "string", pattern: GRAMMAR_PATTERNS.label }, expectedPeople: { type: "integer" }, accountReference: { type: "string", pattern: GRAMMAR_PATTERNS.slug } } : type === "guided-tour" ? { length: { type: "string", pattern: GRAMMAR_PATTERNS.slug } } : {};
   const required = type === "seating" ? ["minimumPlayers"] : type === "server-host" ? ["targets", "expectedPeople"] : type === "guided-tour" ? ["length"] : [];
   const descriptor: ClassDescriptor = {
-    format: 2, name: `ourapps-ae/${type}-class`, version: "1.0.0", ...CLASS_FACTS[type]!,
+    format: 2, name: `clodhub/${type}-class`, version: "1.0.0", ...CLASS_FACTS[type]!,
     provides: [{ ...v1(`ae/${type}`), path: `classes/${type}/interface.json`, modules: { web: ["index.mjs"], server: ["index.mjs"] } }],
     requires: type === "seating" ? [v1("ae/card-deck")] : [],
     settings: { type: "object", properties, required, additionalProperties: false },

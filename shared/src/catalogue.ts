@@ -63,7 +63,7 @@ export function isCatalogueName(value: unknown): value is string {
   return splitName(value) !== null;
 }
 
-// "ourapps-ae/seating" -> { scope: "ourapps-ae", slug: "seating" }
+// "clodhub/seating" -> { scope: "clodhub", slug: "seating" }
 export function splitName(value: unknown): { scope: string; slug: string } | null {
   if (typeof value !== "string") return null;
   const parts = value.split("/");

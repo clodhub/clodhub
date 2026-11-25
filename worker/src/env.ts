@@ -1,6 +1,5 @@
 export interface Env {
   DB: D1Database;
-  WEBAPP_FILES: KVNamespace;
   CATALOGUE: R2Bucket;
   // Numeric GitHub user ids, comma-separated, who may set quality and publish the category tree.
   CATALOGUE_CURATORS?: string;
@@ -11,10 +10,8 @@ export interface Env {
   BUNDLE_LINKS_PER_MINUTE?: string;
   ASSETS?: Fetcher;
   PUBLIC_ORIGIN: string;
-  APPLE_API_BASE: string;
   GITHUB_API_BASE: string;
   GITHUB_OAUTH_BASE: string;
-  GOOGLE_SITE_VERIFICATION?: string;
   LINK_SECRET?: string;
   MASTER_KEY?: string;
   MASTER_KEY_PREVIOUS?: string;

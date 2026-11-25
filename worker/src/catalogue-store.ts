@@ -1,6 +1,6 @@
 // R2 holds what the listing tables leave out: each published version's full entry (a document that never changes)
 // and the images by sha256.
-import type { ComponentEntry, RecipeEntry } from "@my/store-shared";
+import type { ComponentEntry, RecipeEntry } from "@clodhub/shared";
 import type { Env } from "./env.js";
 import { HttpError } from "./http.js";
 

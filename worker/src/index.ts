@@ -1,17 +1,13 @@
-import { TERMS_VERSION } from "@my/store-shared";
+import { TERMS_VERSION } from "@clodhub/shared";
 import { currentDeveloper, finishLogin, logout, logoutEverywhere, oauthConfigured, requireDeveloper, requireTerms, startLogin } from "./auth.js";
 import { defaultDeps, type Deps, type Env } from "./env.js";
 import { randomId } from "./crypto.js";
 import { HttpError, json } from "./http.js";
-import { buildTargets, buildSigning, buildTestflight, buildUploadFileOperations, buildUploadFileStatus, buildDistributionStatus } from "./routes/build.js";
-import { tickTestflight } from "./testflight.js";
 import * as dev from "./routes/dev.js";
-import { devPage, linkLatest, linkPage, linkQr, serveArtefact } from "./routes/public.js";
 import * as catalogue from "./routes/catalogue.js";
 import { CatalogueDb } from "./catalogue-db.js";
 import { checkVulnerabilities } from "./vulnerabilities.js";
 import { removeUnclaimedImages } from "./routes/catalogue.js";
-import { serveWebApp, webAppLinkId } from "./webapp.js";
 
 // Sent on every response so browsers and scanners see a locked-down site.
 export const SECURITY_HEADERS: Record<string, string> = {
@@ -39,9 +35,6 @@ export function errorResponse(request: Request, err: unknown): Response {
 }
 
 export async function handle(request: Request, env: Env, deps: Deps = defaultDeps): Promise<Response> {
-  // Per-link app hosts get the bundle and nothing else; they set their own headers.
-  const webLink = webAppLinkId(request, env);
-  if (webLink) return serveWebApp(request, env, deps, webLink);
   let res: Response;
   try {
     res = await route(request, env, deps);
@@ -58,16 +51,12 @@ async function route(request: Request, env: Env, deps: Deps): Promise<Response> 
   const parts = url.pathname.split("/").filter(Boolean);
   const m = request.method;
 
-  if (parts[0] === "dl" && parts.length === 2 && m === "GET") return serveArtefact(env, deps, parts[1]);
+  if (parts[0] === "dl" && parts.length === 2 && m === "GET") return catalogue.serveArtefact(env, deps, parts[1]!);
   if (parts[0] !== "api") {
     if (m === "GET" && parts.length === 1 && parts[0] === "sitemap.xml") return catalogue.sitemap(env);
     if (m === "GET" && parts.length === 2 && parts[0] === "images") return catalogue.image(env, parts[1]!);
     const variant = m === "GET" ? catalogue.pageVariant(env, parts, url, request) : null;
     if (variant) return variant;
-    const verification = env.GOOGLE_SITE_VERIFICATION;
-    if (verification && parts.length === 1 && parts[0] === verification && m === "GET") {
-      return new Response(`google-site-verification: ${verification}`, { headers: { "Content-Type": "text/html" } });
-    }
     if (env.ASSETS) return env.ASSETS.fetch(request);
     throw new HttpError(404, "not found");
   }
@@ -76,7 +65,7 @@ async function route(request: Request, env: Env, deps: Deps): Promise<Response> 
   if (p[0] === "health" && m === "GET") return json({ ok: true, oauth: oauthConfigured(env), links: Boolean(env.LINK_SECRET), secrets: Boolean(env.MASTER_KEY) });
 
   if (p[0] === "auth") {
-    if (p[1] === "github" && m === "GET") return startLogin(env);
+    if ((p[1] === "github" || p[1] === "login") && m === "GET") return startLogin(env);
     if (p[1] === "callback" && m === "GET") return finishLogin(request, env, deps);
     // The site asks who is signed in on every page; a visitor gets null, not an error.
     if (p[1] === "session" && m === "GET") {
@@ -85,13 +74,6 @@ async function route(request: Request, env: Env, deps: Deps): Promise<Response> 
     }
     if (p[1] === "logout" && m === "POST") return logout(request, env, deps);
     if (p[1] === "logout-everywhere" && m === "POST") return logoutEverywhere(request, env, deps, await requireDeveloper(request, env, deps));
-  }
-
-  if (p[0] === "public") {
-    if (p[1] === "dev" && p.length === 3 && m === "GET") return devPage(env, p[2]);
-    if (p[1] === "links" && p.length === 3 && m === "GET") return linkPage(env, deps, p[2]);
-    if (p[1] === "links" && p.length === 4 && p[3] === "qr.svg" && m === "GET") return linkQr(env, deps, p[2]);
-    if (p[1] === "links" && p.length === 4 && p[3] === "latest" && m === "GET") return linkLatest(env, deps, p[2]);
   }
 
   if ((p[0] === "recipes" || p[0] === "components") && m === "GET") {
@@ -115,15 +97,6 @@ async function route(request: Request, env: Env, deps: Deps): Promise<Response> 
   }
   if (p[0] === "categories" && p.length === 1 && m === "GET") return catalogue.categories(env);
 
-  if (p[0] === "build" && p.length === 3 && p[2] === "targets" && m === "GET") return buildTargets(request, env, p[1]);
-  if (p[0] === "build" && p.length === 5 && p[3] === "testflight" && p[4] === "distribution" && m === "GET") return buildDistributionStatus(request, env, deps, p[1], p[2]);
-  if (p[0] === "build" && p.length === 3 && p[2] === "signing" && (m === "GET" || m === "HEAD")) return buildSigning(request, env, p[1]);
-  if (p[0] === "build" && p.length === 4 && p[3] === "signing" && (m === "GET" || m === "HEAD")) return buildSigning(request, env, p[1], p[2]);
-  if (p[0] === "build" && p.length === 7 && p[3] === "testflight" && p[4] === "upload" && p[6] === "status" && m === "GET") return buildUploadFileStatus(request, env, deps, p[1], p[2], p[5]);
-  if (p[0] === "build" && p.length === 7 && p[3] === "testflight" && p[4] === "upload" && p[6] === "operations" && m === "POST") return buildUploadFileOperations(request, env, deps, p[1], p[2], p[5]);
-  if (p[0] === "build" && p.length === 5 && p[3] === "testflight" && (p[4] === "upload" || p[4] === "commit" || p[4] === "reserve-build") && m === "POST") return buildTestflight(request, env, deps, p[1], p[4], p[2]);
-  if (p[0] === "build" && p.length === 4 && p[2] === "testflight" && (p[3] === "upload" || p[3] === "commit") && m === "POST") return buildTestflight(request, env, deps, p[1], p[3]);
-
   if (p[0] === "dev") {
     const me = await requireDeveloper(request, env, deps);
     if (p[1] === "me" && m === "GET") return dev.me(env, me);
@@ -132,26 +105,6 @@ async function route(request: Request, env: Env, deps: Deps): Promise<Response> 
     if (p[1] === "me" && m === "DELETE") return dev.deleteAccount(request, env, deps, me);
     if (p[1] === "me" && m === "PUT") return dev.updateMe(request, env, me);
     if (p[1] === "secrets" && m === "PUT") return dev.updateSecrets(request, env, deps, me);
-    if (p[1] === "signing" && p.length === 2 && m === "POST") return dev.setUpSigning(request, env, deps, me);
-    if (p[1] === "review-contact" && p.length === 2 && m === "PUT") return dev.updateReviewContact(request, env, me);
-    if (p[1] === "apps") {
-      if (p.length === 2 && m === "GET") return dev.listApps(env, deps, me);
-      if (p.length === 2 && m === "POST") return dev.createApp(request, env, deps, me);
-      if (p.length === 3 && m === "GET") return dev.getApp(env, me, p[2]);
-      if (p.length === 3 && m === "PUT") return dev.updateApp(request, env, deps, me, p[2]);
-      if (p.length === 3 && m === "DELETE") return dev.deleteApp(request, env, deps, me, p[2]);
-      if (p.length === 5 && p[3] === "targets" && m === "PUT") return dev.setTarget(request, env, me, p[2], p[4]);
-      if (p.length === 4 && p[3] === "build-token" && m === "POST") return dev.rotateBuildToken(request, env, deps, me, p[2]);
-      if (p.length === 4 && p[3] === "release" && m === "GET") return dev.releaseStatus(env, deps, me, p[2]);
-      if (p.length === 4 && p[3] === "preview" && m === "GET") return dev.previewApp(env, deps, me, p[2]);
-      if (p.length === 4 && p[3] === "links" && m === "POST") return dev.createLink(request, env, deps, me, p[2]);
-      if (p.length === 4 && p[3] === "testflight" && m === "GET") return dev.testflightStatus(env, me, p[2], "ios", deps);
-      if (p.length === 4 && p[3] === "testflight" && m === "POST") return dev.setUpAppTestflight(request, env, deps, me, p[2]);
-      if (p.length === 5 && p[3] === "testflight" && p[4] === "build" && m === "POST") return dev.requestAppBuild(env, deps, me, p[2]);
-      if (p.length === 5 && p[3] === "testflight" && m === "GET") return dev.testflightStatus(env, me, p[2], p[4], deps);
-      if (p.length === 5 && p[3] === "testflight" && m === "POST") return dev.setUpAppTestflight(request, env, deps, me, p[2], p[4]);
-      if (p.length === 6 && p[3] === "testflight" && p[5] === "build" && m === "POST") return dev.requestAppBuild(env, deps, me, p[2], p[4]);
-    }
     if (p[1] === "recipes" || p[1] === "components") {
       const recipes = p[1] === "recipes";
       if (p.length === 2 && m === "GET") return catalogue.listMine(env, me, recipes ? "recipe" : "component");
@@ -164,9 +117,6 @@ async function route(request: Request, env: Env, deps: Deps): Promise<Response> 
     if (p[1] === "classes" && p.length === 2 && m === "POST") return catalogue.publishClass(request, env, deps, me);
     if (p[1] === "categories" && p.length === 2 && m === "POST") return catalogue.publishCategories(request, env, deps, me);
     if (p[1] === "images" && p.length === 3 && m === "PUT") return catalogue.uploadImage(request, env, deps, me, p[2]!);
-    if (p[1] === "links" && p.length === 4 && p[3] === "revoke" && m === "POST") return dev.revokeLink(env, deps, me, p[2], false);
-    if (p[1] === "links" && p.length === 3 && m === "DELETE") return dev.revokeLink(env, deps, me, p[2], true);
-    if (p[1] === "links" && p.length === 3 && m === "PUT") return dev.renameLink(request, env, me, p[2]);
     if (p[1] === "keys") {
       if (p.length === 2 && m === "GET") return dev.listKeys(env, me);
       if (p.length === 2 && m === "POST") return dev.createKey(request, env, deps, me);
@@ -183,27 +133,23 @@ export default {
   scheduled: (event: ScheduledController, env: Env, ctx: ExecutionContext) => ctx.waitUntil(scheduled(event.cron, env, defaultDeps)),
 } satisfies ExportedHandler<Env>;
 
-// The cron triggers in wrangler.jsonc.
+// The cron trigger in wrangler.jsonc, hourly: the vulnerability check, the next chunks of the day's download refresh,
+// the images nobody named within a day, the download address hashes of past days, and old listing totals. Each runs
+// whatever the others do; a failure is logged.
 export async function scheduled(cron: string, env: Env, deps: Deps): Promise<void> {
-  // Hourly: the vulnerability check, the next chunks of the day's download refresh, the images nobody named within a
-  // day, the download address hashes of past days, and old listing totals. Each runs whatever the others do; a failure is logged.
-  if (cron === "7 * * * *") {
-    const tasks: [string, () => Promise<unknown>][] = [
-      ["vulnerability check", () => checkVulnerabilities(env, deps)],
-      ["download refresh", () => new CatalogueDb(env.DB).refreshDownloads(deps.now().toISOString().slice(0, 10))],
-      ["image clean-up", () => removeUnclaimedImages(env, deps)],
-      ["download address clean-up", () => new CatalogueDb(env.DB).forgetVisitors(deps.now())],
-      ["listing totals clean-up", () => new CatalogueDb(env.DB).pruneListingTotals()],
-    ];
-    for (const [name, task] of tasks) {
-      try {
-        await task();
-      } catch (e) {
-        console.error(`hourly ${name} failed: ${e instanceof Error ? e.message : String(e)}`);
-      }
+  if (cron !== "7 * * * *") return;
+  const tasks: [string, () => Promise<unknown>][] = [
+    ["vulnerability check", () => checkVulnerabilities(env, deps)],
+    ["download refresh", () => new CatalogueDb(env.DB).refreshDownloads(deps.now().toISOString().slice(0, 10))],
+    ["image clean-up", () => removeUnclaimedImages(env, deps)],
+    ["download address clean-up", () => new CatalogueDb(env.DB).forgetVisitors(deps.now())],
+    ["listing totals clean-up", () => new CatalogueDb(env.DB).pruneListingTotals()],
+  ];
+  for (const [name, task] of tasks) {
+    try {
+      await task();
+    } catch (e) {
+      console.error(`hourly ${name} failed: ${e instanceof Error ? e.message : String(e)}`);
     }
-    return;
   }
-  // Every ten minutes: TestFlight builds into the testers' group and fresh builds before expiry.
-  return tickTestflight(env, deps);
 }

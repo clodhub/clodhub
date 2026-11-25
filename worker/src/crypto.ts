@@ -54,7 +54,7 @@ export function timingSafeEqual(a: string, b: string): boolean {
 
 // Short public name of a master key, stored next to ciphertexts so rotation can tell them apart.
 export async function keyId(masterKey: string): Promise<string> {
-  return (await sha256Hex(`ourapps-kid:${masterKey}`)).slice(0, 12);
+  return (await sha256Hex(`clodhub-kid:${masterKey}`)).slice(0, 12);
 }
 
 async function hkdfBase(masterKey: string): Promise<CryptoKey> {
@@ -64,7 +64,7 @@ async function hkdfBase(masterKey: string): Promise<CryptoKey> {
 // One AES-GCM key per developer and format version.
 async function developerKey(masterKey: string, developerId: string): Promise<CryptoKey> {
   return crypto.subtle.deriveKey(
-    { name: "HKDF", hash: "SHA-256", salt: encoder.encode(`ourapps-dev:${developerId}`), info: encoder.encode(`ourapps-developer-secrets-v${SECRET_FORMAT}`) },
+    { name: "HKDF", hash: "SHA-256", salt: encoder.encode(`clodhub-dev:${developerId}`), info: encoder.encode(`clodhub-developer-secrets-v${SECRET_FORMAT}`) },
     await hkdfBase(masterKey),
     { name: "AES-GCM", length: 256 },
     false,
@@ -92,25 +92,11 @@ export async function openField(masterKey: string, developerId: string, field: s
   return decoder.decode(plain);
 }
 
-// Format 1 (whole JSON object, no AAD); read only, for upgrade.
-export async function openLegacyBlob<T>(masterKey: string, developerId: string, blob: string): Promise<T> {
-  const key = await crypto.subtle.deriveKey(
-    { name: "HKDF", hash: "SHA-256", salt: encoder.encode(developerId), info: encoder.encode("ourapps-developer-secrets") },
-    await hkdfBase(masterKey),
-    { name: "AES-GCM", length: 256 },
-    false,
-    ["decrypt"],
-  );
-  const bytes = fromBase64(blob);
-  const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: bytes.slice(0, 12) }, key, bytes.slice(12));
-  return JSON.parse(decoder.decode(plain)) as T;
-}
-
 // Keyed hash for tokens stored in the database: without the master secret a stolen table
 // cannot be used to forge or verify tokens.
 export async function pepperedHash(masterKey: string, purpose: string, value: string): Promise<string> {
   const key = await crypto.subtle.deriveKey(
-    { name: "HKDF", hash: "SHA-256", salt: encoder.encode("ourapps-pepper"), info: encoder.encode(`ourapps-hash:${purpose}`) },
+    { name: "HKDF", hash: "SHA-256", salt: encoder.encode("clodhub-pepper"), info: encoder.encode(`clodhub-hash:${purpose}`) },
     await hkdfBase(masterKey),
     { name: "HMAC", hash: "SHA-256", length: 256 },
     false,
@@ -146,27 +132,4 @@ export async function hashMatches(keys: MasterKeys, purpose: string, value: stri
     if (timingSafeEqual(candidates[i], stored)) return { ok: true, rewrite: i > 0 && Boolean(keys.current) };
   }
   return { ok: false, rewrite: false };
-}
-
-// Confirms a PEM private key is an EC P-256 PKCS#8 key, which is what Apple issues.
-export async function validateAppleKey(pem: string): Promise<boolean> {
-  try {
-    const body = pem.replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, "");
-    await crypto.subtle.importKey("pkcs8", fromBase64(body), { name: "ECDSA", namedCurve: "P-256" }, false, ["sign"]);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-// Confirms a PEM private key is a 2048-bit RSA PKCS#8 key, the kind Apple certifies for signing.
-export async function validateSigningKey(pem: string): Promise<boolean> {
-  try {
-    if (!/^-----BEGIN PRIVATE KEY-----[A-Za-z0-9+/=\s]+-----END PRIVATE KEY-----$/.test(pem.trim())) return false;
-    const body = pem.replace(/-----[A-Z ]+-----/g, "").replace(/\s+/g, "");
-    const key = await crypto.subtle.importKey("pkcs8", fromBase64(body), { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, true, ["sign"]);
-    return (key.algorithm as { modulusLength?: number }).modulusLength === 2048;
-  } catch {
-    return false;
-  }
 }

@@ -1,6 +1,6 @@
 // Plain-text pages of the recipe library and component catalogue, for agents that read without a browser.
-import { ASK_HEADINGS, buildingItSection, groupHasMore, recipeBuildSteps, PACKAGE_CHECK, PACKAGE_WHERE, QUALITY_TEXT, SIGNATURES_NOTE, classSettings, deprecationLine, describeCondition, kindText, markdownSections, questionGroups, recipeUseSentence } from "@my/store-shared";
-import type { CategoryCount, ClassList, ClassVersionView, ClassInterface, ComponentList, ComponentSummary, ComponentVersionView, Condition, Deprecation, FoundationSummary, EntryPort, Foundations, ListQuery, PackageContents, PackageDetails, Port, Quality, RecipeList, RecipeQuestion, RecipeSlotView, RecipeSummary, RecipeVersionView, SettingDeclaration, SlotDetails, Suitability, Targets } from "@my/store-shared";
+import { ASK_HEADINGS, buildingItSection, groupHasMore, recipeBuildSteps, PACKAGE_CHECK, PACKAGE_WHERE, QUALITY_TEXT, SIGNATURES_NOTE, classSettings, deprecationLine, describeCondition, kindText, markdownSections, questionGroups, recipeUseSentence } from "@clodhub/shared";
+import type { CategoryCount, ClassList, ClassVersionView, ClassInterface, ComponentList, ComponentSummary, ComponentVersionView, Condition, Deprecation, FoundationSummary, EntryPort, Foundations, ListQuery, PackageContents, PackageDetails, Port, Quality, RecipeList, RecipeQuestion, RecipeSlotView, RecipeSummary, RecipeVersionView, SettingDeclaration, SlotDetails, Suitability, Targets } from "@clodhub/shared";
 
 const COPYRIGHT = "Copyright Level N Ltd 2026";
 
@@ -89,7 +89,7 @@ function pageLinks(origin: string, path: string, l: { query: ListQuery; next: st
 }
 
 export function recipeListText(l: RecipeList, origin: string): string {
-  return page("ourapps recipe library", [
+  return page("ClodHub recipes", [
     `${totalText(l.total)} recipes match; this page shows ${l.recipes.length}, sorted by ${l.query.sort}.`,
     `Categories here: ${counts(l.categories, "recipes")}`,
     LIST_HELP,
@@ -102,7 +102,7 @@ export function recipeListText(l: RecipeList, origin: string): string {
 }
 
 export function componentListText(l: ComponentList, origin: string): string {
-  return page("ourapps component catalogue", [
+  return page("ClodHub components", [
     `${totalText(l.total)} components match; this page shows ${l.components.length}, sorted by ${l.query.sort}.`,
     `Categories here: ${counts(l.categories, "components")}`,
     `${LIST_HELP} Components also take class (scope/name), provides and requires (each may repeat; a component matches every one).`,
@@ -115,7 +115,7 @@ export function componentListText(l: ComponentList, origin: string): string {
 }
 
 export function classListText(l: ClassList, origin: string): string {
-  return page("ourapps component classes", [
+  return page("ClodHub component classes", [
     `${totalText(l.total)} classes; this page shows ${l.classes.length}, by category. Filter with ?category=. JSON: ${origin}/api/classes. Category tree: ${origin}/categories.txt`,
     `Categories here: ${list(l.categories.map((c) => `${c.id} (${c.classes})`))}`,
     "",
@@ -149,7 +149,7 @@ export function classText(c: ClassVersionView, origin: string): string {
 
 export function categoriesText(t: { categories: CategoryCount[] }, origin: string): string {
   const depth = (id: string) => id.split("/").length - 1;
-  return page("ourapps categories", [
+  return page("ClodHub categories", [
     `The category tree with the classes, components and recipes listed in each (a category counts its descendants). JSON: ${origin}/api/categories`,
     "",
     ...t.categories.map((c) => `${"  ".repeat(depth(c.id))}- ${c.title} (${c.id}): ${c.classes} classes, ${c.components} components, ${c.recipes} recipes`),
@@ -351,7 +351,7 @@ function recipeUseLines(v: ComponentVersionView): string[] {
     "How to use in a recipe",
     recipeUseSentence(v),
     `- as a slot in recipe.json components: ${JSON.stringify(slot)}`,
-    `- in place of another component of the class: python3 -m aepm fetch ${v.name}@${v.version} --store store --from https://ourapps.app, then python3 -m aepm design RECIPE@VERSION --store store --answers answers.json --substitute SLOT=${v.name}@${v.version} --out definition.json`,
+    `- in place of another component of the class: python3 -m aepm fetch ${v.name}@${v.version} --store store --from https://clodhub.com, then python3 -m aepm design RECIPE@VERSION --store store --answers answers.json --substitute SLOT=${v.name}@${v.version} --out definition.json`,
   ];
 }
 

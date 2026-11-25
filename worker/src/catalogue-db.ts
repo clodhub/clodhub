@@ -1,6 +1,6 @@
 // D1 access for the recipe library, the component catalogue, classes and categories. Entry rows are the listing:
 // each holds the summary of its newest listed version. Full version entries are R2 documents (catalogue-store.ts).
-import { COUNT_CAP, QUALITY_LEVELS, compareVersions, newestVersion, type Channel, type ComponentDependency, type Deprecation, type DeprecationReason, type EntryStatus, type ListQuery, type Quality, type Recipe, type Suitability, type Targets, type VulnerabilityWaiver, type AppTarget, type DeprecatedFilter, type PackageImage, type ClassDescriptor, type CategoryNode } from "@my/store-shared";
+import { COUNT_CAP, QUALITY_LEVELS, compareVersions, newestVersion, type Channel, type ComponentDependency, type Deprecation, type DeprecationReason, type EntryStatus, type ListQuery, type Quality, type Recipe, type Suitability, type Targets, type VulnerabilityWaiver, type AppTarget, type DeprecatedFilter, type PackageImage, type ClassDescriptor, type CategoryNode } from "@clodhub/shared";
 
 export type Kind = "recipe" | "component";
 

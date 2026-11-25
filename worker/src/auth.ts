@@ -5,22 +5,21 @@ import { Db, type Developer, type KeyScope } from "./db.js";
 import type { Deps, Env } from "./env.js";
 import { HttpError, bearer } from "./http.js";
 
-export const API_KEY_PREFIX = "oa_";
+export const API_KEY_PREFIX = "ch_";
 
-// "__Host-" cookies cannot be set by a subdomain or with a Domain attribute, so a web app served
-// on <linkId>.ourapps.app cannot plant a session or sign-in state cookie for the console.
+// "__Host-" cookies cannot be set by a subdomain or with a Domain attribute.
 // Plain names only for http://localhost development, where Safari refuses Secure cookies.
 export function sessionCookieName(env: Env): string {
-  return isSecure(env) ? "__Host-oa_session" : "oa_session";
+  return isSecure(env) ? "__Host-ch_session" : "ch_session";
 }
 
 function stateCookieName(env: Env): string {
-  return isSecure(env) ? "__Host-oa_state" : "oa_state";
+  return isSecure(env) ? "__Host-ch_state" : "ch_state";
 }
 const SESSION_DAYS = 30;
 
 // Paths a developer slug may not take.
-export const RESERVED_SLUGS = new Set(["api", "dl", "dev", "l", "example", "terms", "reference", "small", "free-tiers.md", "assets", "robots.txt", "favicon.ico", "favicon.svg", "index.html", "agents.md", "contract.md", "llms.txt", "recipes", "components", "classes", "categories", "images", "sitemap.xml"]);
+export const RESERVED_SLUGS = new Set(["api", "dl", "dev", "guide", "terms", "small", "free-tiers.md", "assets", "robots.txt", "favicon.ico", "favicon.svg", "index.html", "agents.md", "contract.md", "llms.txt", "recipes", "components", "classes", "categories", "images", "sitemap.xml", "policy", "docs", "diagrams"]);
 
 export function parseCookies(request: Request): Record<string, string> {
   const out: Record<string, string> = {};
@@ -54,7 +53,7 @@ function sessionHash(env: Env, id: string): Promise<string> {
 
 // Step 1: send the browser to GitHub with a state cookie.
 export function startLogin(env: Env): Response {
-  if (!oauthConfigured(env)) throw new HttpError(503, "GitHub sign-in is not configured");
+  if (!oauthConfigured(env)) throw new HttpError(503, "GitHub sign-in is not available yet; reading the catalogue needs no sign-in");
   const state = randomId(16);
   const params = new URLSearchParams({
     client_id: env.GITHUB_OAUTH_CLIENT_ID!,
@@ -73,7 +72,7 @@ export function startLogin(env: Env): Response {
 async function recordOrgs(env: Env, deps: Deps, developerId: string, token: string, now: string): Promise<void> {
   let res: Response;
   try {
-    res = await deps.fetch(`${env.GITHUB_API_BASE}/user/memberships/orgs?state=active&per_page=100`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "ourapps" } });
+    res = await deps.fetch(`${env.GITHUB_API_BASE}/user/memberships/orgs?state=active&per_page=100`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "clodhub" } });
   } catch {
     return;
   }
@@ -85,7 +84,7 @@ async function recordOrgs(env: Env, deps: Deps, developerId: string, token: stri
 
 // Step 2: swap the code for a token, read the GitHub user, create or find the developer.
 export async function finishLogin(request: Request, env: Env, deps: Deps): Promise<Response> {
-  if (!oauthConfigured(env)) throw new HttpError(503, "GitHub sign-in is not configured");
+  if (!oauthConfigured(env)) throw new HttpError(503, "GitHub sign-in is not available yet; reading the catalogue needs no sign-in");
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
@@ -93,13 +92,13 @@ export async function finishLogin(request: Request, env: Env, deps: Deps): Promi
 
   const tokenRes = await deps.fetch(`${env.GITHUB_OAUTH_BASE}/login/oauth/access_token`, {
     method: "POST",
-    headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "ourapps" },
+    headers: { Accept: "application/json", "Content-Type": "application/json", "User-Agent": "clodhub" },
     body: JSON.stringify({ client_id: env.GITHUB_OAUTH_CLIENT_ID, client_secret: env.GITHUB_OAUTH_CLIENT_SECRET, code, redirect_uri: `${env.PUBLIC_ORIGIN}/api/auth/callback` }),
   });
   const token = ((await tokenRes.json()) as { access_token?: string }).access_token;
   if (!token) throw new HttpError(502, "GitHub did not return a token");
 
-  const userRes = await deps.fetch(`${env.GITHUB_API_BASE}/user`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "ourapps" } });
+  const userRes = await deps.fetch(`${env.GITHUB_API_BASE}/user`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json", "User-Agent": "clodhub" } });
   if (!userRes.ok) throw new HttpError(502, `GitHub user lookup failed: ${userRes.status}`);
   const user = (await userRes.json()) as { id: number; login: string; name?: string | null };
 
@@ -201,7 +200,7 @@ export async function currentDeveloper(request: Request, env: Env, deps: Deps): 
 
 export async function requireDeveloper(request: Request, env: Env, deps: Deps): Promise<AuthedDeveloper> {
   const dev = await currentDeveloper(request, env, deps);
-  if (!dev) throw new HttpError(401, "sign in, or send an API key as Authorization: Bearer oa_...");
+  if (!dev) throw new HttpError(401, "sign in, or send an API key as Authorization: Bearer ch_...");
   const reading = ["GET", "HEAD", "OPTIONS"].includes(request.method);
   // Cookie sessions only accept writes from this site; API keys are not sent by browsers across sites.
   if (dev.authVia === "session" && !reading) {

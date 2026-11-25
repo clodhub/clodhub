@@ -1,6 +1,6 @@
 // Channels, images, classes and categories, quality, vulnerabilities and downloads in the catalogue.
 import { beforeEach, describe, expect, it } from "vitest";
-import { crc32, EXAMPLE_BUNDLE_DIGEST, EXAMPLE_IMAGE, EXAMPLE_IMAGE_BYTES, descriptorDigest, exampleCategories, exampleClassEntries, exampleComponentEntries, exampleComponentEntry, pngHeader, webpHeader, type ClassList, type ClassVersionView, type ComponentList, type ComponentVersionView, type RecipeList, type VulnerabilityReport } from "@my/store-shared";
+import { crc32, EXAMPLE_BUNDLE_DIGEST, EXAMPLE_IMAGE, EXAMPLE_IMAGE_BYTES, descriptorDigest, exampleCategories, exampleClassEntries, exampleComponentEntries, exampleComponentEntry, pngHeader, webpHeader, type ClassList, type ClassVersionView, type ComponentList, type ComponentVersionView, type RecipeList, type VulnerabilityReport } from "@clodhub/shared";
 import { CatalogueDb } from "../src/catalogue-db.js";
 import type { Env } from "../src/env.js";
 import { handle, scheduled } from "../src/index.js";
@@ -34,7 +34,7 @@ function stubs() {
   for (const [i, v] of ["0.1.0", "0.1.1", "0.1.2", "0.2.0", "0.3.0-preview.1", "1.0.0", "2.0.0", "3.0.0", "4.0.0", "5.0.0", "6.0.0", "7.0.0"].entries()) Object.assign(routes, release("acme/card-deck", `v${v}`, `card-deck-${v}.tar`, 10 + i));
   for (const [i, part] of exampleComponentEntries().entries()) Object.assign(routes, release(part.source.repository, part.source.tag, part.bundle.asset, 50 + i));
   Object.assign(routes, release("acme/poker-night-recipe", "v0.1.0", "poker-night-0.1.0.tar", 21));
-  routes[`GET ${gh("/user/memberships/orgs/ourapps-ae")}`] = () => (member ? jsonRes({ state: "active" }) : new Response("not a member", { status: 404 }));
+  routes[`GET ${gh("/user/memberships/orgs/clodhub")}`] = () => (member ? jsonRes({ state: "active" }) : new Response("not a member", { status: 404 }));
   const stub = fakeFetch(routes);
   osvCalls = stub.calls;
   return stub.fetch;
@@ -170,11 +170,11 @@ describe("classes and categories", () => {
     const res = await post("/api/dev/classes", deckClass);
     const classDigest = descriptorDigest(deckClass!.class);
     expect(res.status).toBe(201);
-    expect(await res.json()).toMatchObject({ status: "published", name: "ourapps-ae/card-deck-class", version: "1.0.0", digest: `sha256:${classDigest}`, url: `${BASE}/classes/card-deck-class` });
+    expect(await res.json()).toMatchObject({ status: "published", name: "clodhub/card-deck-class", version: "1.0.0", digest: `sha256:${classDigest}`, url: `${BASE}/classes/card-deck-class` });
     expect(((await (await post("/api/dev/classes", deckClass)).json()) as { status: string }).status).toBe("unchanged");
     await publish(card("0.1.0", (e) => (e.quality = { level: "reviewed", certified: true, liveTested: null })));
     const list = (await (await get("/api/classes?category=games")).json()) as ClassList;
-    expect(list.classes.map((c) => [c.name, c.category, c.implementations])).toEqual([["ourapps-ae/card-deck-class", "games/cards", 1], ["ourapps-ae/seating-class", "games/tables", 0]]);
+    expect(list.classes.map((c) => [c.name, c.category, c.implementations])).toEqual([["clodhub/card-deck-class", "games/cards", 1], ["clodhub/seating-class", "games/tables", 0]]);
     const view = (await (await get("/api/classes/card-deck-class")).json()) as ClassVersionView;
     expect(view).toMatchObject({ title: "Card deck", summary: "A deck that shuffles, deals and burns cards", category: "games/cards", presentation: "visual", digest: classDigest });
     expect(view.suites.map((s) => s.id)).toEqual(["behaviour"]);
@@ -182,9 +182,9 @@ describe("classes and categories", () => {
     const tree = (await (await get("/api/categories")).json()) as { categories: { id: string; classes: number; components: number }[] };
     expect(tree.categories.filter((c) => c.id.startsWith("games")).map((c) => [c.id, c.classes, c.components])).toEqual([["games", 2, 1], ["games/cards", 1, 1], ["games/tables", 1, 0]]);
     const text = await (await get("/classes/card-deck-class.txt")).text();
-    expect(text).toContain("Card deck (ourapps-ae/card-deck-class) 1.0.0");
+    expect(text).toContain("Card deck (clodhub/card-deck-class) 1.0.0");
     expect(text).toContain("- acme/card-deck 0.1.0: A shuffled deck");
-    expect(await (await get("/classes.txt")).text()).toContain("- Card deck (ourapps-ae/card-deck-class) 1.0.0");
+    expect(await (await get("/classes.txt")).text()).toContain("- Card deck (clodhub/card-deck-class) 1.0.0");
   });
 
   it("refuses a class without its catalogue fields, outside the tree, or changed under the same version", async () => {
@@ -391,14 +391,14 @@ describe("review fixes", () => {
     const refused = await post("/api/dev/classes", deckClass);
     expect(refused.status).toBe(403);
     const error = ((await refused.json()) as { error: string }).error;
-    expect(error).toContain("member of the ourapps-ae organisation");
-    expect(error).toContain("Authorized OAuth Apps, ourapps, Grant");
+    expect(error).toContain("member of the clodhub organisation");
+    expect(error).toContain("Authorized OAuth Apps, ClodHub, Grant");
     member = true;
     expect((await post("/api/dev/classes", deckClass)).status).toBe(201);
     const sue = await signIn(env, deps, { id: 9, login: "sue", name: "Sue" });
     expect((await handle(api(sue, "PUT", "/api/dev/secrets", { githubToken: GH_TOKEN }), env, deps)).status).toBe(200);
     const another = structuredClone(deckClass!);
-    another.class.name = "ourapps-ae/another-class";
+    another.class.name = "clodhub/another-class";
     const res = await post("/api/dev/classes", another, sue);
     expect(res.status).toBe(409);
     expect(((await res.json()) as { error: string }).error).toContain("belongs to another developer");
@@ -408,15 +408,15 @@ describe("review fixes", () => {
     const start = await handle(new Request(`${BASE}/api/auth/github`), env, deps);
     expect(new URL(start.headers.get("Location")!).searchParams.get("scope")).toBe("read:user read:org");
     const [deckClass] = exampleClassEntries() as Mutable[];
-    const scopeless = fakeFetch({ [`GET ${gh("/user/memberships/orgs/ourapps-ae")}`]: () => new Response(JSON.stringify({ message: "You need at least read:org scope" }), { status: 403 }) });
+    const scopeless = fakeFetch({ [`GET ${gh("/user/memberships/orgs/clodhub")}`]: () => new Response(JSON.stringify({ message: "You need at least read:org scope" }), { status: 403 }) });
     const refused = await handle(api(cookie, "POST", "/api/dev/classes", deckClass), env, { ...deps, fetch: scopeless.fetch });
     expect(refused.status).toBe(403);
-    expect(((await refused.json()) as { error: string }).error).toBe("the saved GitHub token cannot read organisation membership; sign in to ourapps.app again");
+    expect(((await refused.json()) as { error: string }).error).toBe("the saved GitHub token cannot read organisation membership; sign in to clodhub.com again");
     member = false;
-    const sue = await signIn(env, deps, { id: 9, login: "sue", name: "Sue" }, true, ["ourapps-ae"]);
+    const sue = await signIn(env, deps, { id: 9, login: "sue", name: "Sue" }, true, ["clodhub"]);
     const res = await post("/api/dev/classes", deckClass, sue);
     expect(res.status, await res.clone().text()).toBe(201);
-    expect(await env.DB.prepare("SELECT orgs FROM developer_orgs d JOIN developers v ON v.id = d.developer_id WHERE v.github_login = 'sue'").first()).toEqual({ orgs: '["ourapps-ae"]' });
+    expect(await env.DB.prepare("SELECT orgs FROM developer_orgs d JOIN developers v ON v.id = d.developer_id WHERE v.github_login = 'sue'").first()).toEqual({ orgs: '["clodhub"]' });
   });
 
   it("answers 400 for a value outside a closed facet or a malformed one, and an empty page for an unmatched open value", async () => {
@@ -490,7 +490,7 @@ describe("review fixes", () => {
     const [deckClass] = exampleClassEntries() as Mutable[];
     const res = await post("/api/dev/classes", deckClass);
     expect(res.status).toBe(403);
-    expect(((await res.json()) as { error: string }).error).toBe("there is no saved GitHub token and no organisation list from sign-in; sign in to ourapps.app again");
+    expect(((await res.json()) as { error: string }).error).toBe("there is no saved GitHub token and no organisation list from sign-in; sign in to clodhub.com again");
   });
 
   it("refuses images carrying more than 64 KB of metadata or chunks of unknown kinds", async () => {
@@ -574,7 +574,7 @@ describe("review fixes", () => {
     await env.DB.prepare(
       `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 1200)
        INSERT INTO components (id, name, scope, slug, developer_id, repo, latest_version, created_at, updated_at, description, class_name, class_version, class_title, category, category_top, platforms, licence, channel, published_at, downloads)
-       SELECT 'lobby' || i, 'acme/lobby-' || i, 'acme', 'lobby-' || i, ?1, 'acme/lobby-' || i, '0.1.0', '2026-10-01', '2026-10-01', 'A lobby for players', 'ourapps-ae/card-deck-class', '1.0.0', 'Card deck', 'games/cards', 'games', ' web ', 'MIT', 'features', '2026-10-01T00:00:00.000Z',
+       SELECT 'lobby' || i, 'acme/lobby-' || i, 'acme', 'lobby-' || i, ?1, 'acme/lobby-' || i, '0.1.0', '2026-10-01', '2026-10-01', 'A lobby for players', 'clodhub/card-deck-class', '1.0.0', 'Card deck', 'games/cards', 'games', ' web ', 'MIT', 'features', '2026-10-01T00:00:00.000Z',
               CASE WHEN i = 1 THEN 100000 ELSE i END FROM n`,
     ).bind(dev).run();
     await env.DB.prepare("INSERT INTO component_fts (rowid, name, title, summary, class, tags) SELECT seq, name, class_title, description, class_name, '' FROM components WHERE slug LIKE 'lobby-%'").run();
@@ -596,7 +596,7 @@ describe("review fixes", () => {
     await env.DB.prepare(
       `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 20500)
        INSERT INTO components (id, name, scope, slug, developer_id, repo, latest_version, created_at, updated_at, description, class_name, class_version, class_title, category, category_top, platforms, licence, channel, published_at, downloads)
-       SELECT 'lobby' || i, 'acme/lobby-' || i, 'acme', 'lobby-' || i, ?1, 'acme/lobby-' || i, '0.1.0', '2026-10-01', '2026-10-01', CASE WHEN i % 2 = 0 THEN 'A lobby for players' ELSE 'A lobbyist' END, 'ourapps-ae/card-deck-class', '1.0.0', 'Card deck', 'games/cards', 'games', ' web ', 'MIT', 'features', '2026-10-01T00:00:00.000Z',
+       SELECT 'lobby' || i, 'acme/lobby-' || i, 'acme', 'lobby-' || i, ?1, 'acme/lobby-' || i, '0.1.0', '2026-10-01', '2026-10-01', CASE WHEN i % 2 = 0 THEN 'A lobby for players' ELSE 'A lobbyist' END, 'clodhub/card-deck-class', '1.0.0', 'Card deck', 'games/cards', 'games', ' web ', 'MIT', 'features', '2026-10-01T00:00:00.000Z',
               CASE WHEN i = 1 THEN 100000 ELSE i END FROM n`,
     ).bind(dev).run();
     await env.DB.prepare("INSERT INTO component_fts (rowid, name, title, summary, class, tags) SELECT seq, '', class_title, description, class_name, '' FROM components WHERE slug LIKE 'lobby-%'").run();
@@ -614,7 +614,7 @@ describe("review fixes", () => {
     await env.DB.prepare(
       `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i + 1 FROM n WHERE i < 20500)
        INSERT INTO components (id, name, scope, slug, developer_id, repo, latest_version, created_at, updated_at, description, class_name, class_version, class_title, category, category_top, platforms, licence, channel, published_at, downloads)
-       SELECT 'busy' || i, 'acme/busy-' || i, 'acme', 'busy-' || i, ?1, 'acme/busy-' || i, '0.1.0', '2026-10-01', '2026-10-01', 'Busy', 'ourapps-ae/card-deck-class', '1.0.0', 'Card deck', 'games/cards', 'games', ' web ', 'MIT', 'features', '2027-01-01T00:00:00.000Z', 100 + i FROM n`,
+       SELECT 'busy' || i, 'acme/busy-' || i, 'acme', 'busy-' || i, ?1, 'acme/busy-' || i, '0.1.0', '2026-10-01', '2026-10-01', 'Busy', 'clodhub/card-deck-class', '1.0.0', 'Card deck', 'games/cards', 'games', ' web ', 'MIT', 'features', '2027-01-01T00:00:00.000Z', 100 + i FROM n`,
     ).bind(dev).run();
     for (const query of ["provides=ae/card-deck", "provides=ae/card-deck&sort=updated", "provides=card-deck&sort=trending", "provides=ae/card-deck&platform=web", "requires=ae/random-source&sort=name"]) {
       const res = await get(`/api/components?${query}`);

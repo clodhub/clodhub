@@ -163,7 +163,7 @@ export function canonical(value: unknown): string {
 }
 export const descriptorDigest = (value: unknown): string => bytesToHex(sha256(new TextEncoder().encode(canonical(value))));
 export function isClassReference(v: unknown): v is ClassReference {
-  return keys(v, "name version digest") && /^ourapps-ae\/[a-z][a-z0-9-]*$/.test(v.name) && version(v.version) && digest(v.digest);
+  return keys(v, "name version digest") && /^clodhub\/[a-z][a-z0-9-]*$/.test(v.name) && version(v.version) && digest(v.digest);
 }
 export function validLicence(v: unknown): boolean {
   if (typeof v !== "string" || !v.length || v.length > 512 || v !== v.trim()) return false;

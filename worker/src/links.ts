@@ -1,5 +1,7 @@
-// Short-lived signed links for artefacts served through /dl/<token>.
+// Short-lived signed links for package bundles served through /dl/<token>.
 import { fromBase64url, toBase64url } from "./crypto.js";
+import type { Deps, Env } from "./env.js";
+import { HttpError } from "./http.js";
 
 const encoder = new TextEncoder();
 
@@ -11,7 +13,7 @@ async function hmacKey(secret: string): Promise<CryptoKey> {
 
 export interface LinkPayload {
   url: string;
-  kind: "apk" | "icon" | "dmg" | "exe" | "bundle";
+  kind: "bundle";
   // File name offered for a bundle download.
   name?: string;
   // Developer whose GitHub token may be used to fetch the url.
@@ -44,7 +46,7 @@ export async function verifyLink(secret: string, token: string, now: Date): Prom
     return null;
   }
   if (typeof payload.url !== "string" || typeof payload.exp !== "number" || typeof payload.dev !== "string") return null;
-  if (!["apk", "icon", "dmg", "exe", "bundle"].includes(payload.kind)) return null;
+  if (payload.kind !== "bundle") return null;
   if (payload.name !== undefined && typeof payload.name !== "string") return null;
   if (payload.exp * 1000 < now.getTime()) return null;
   return payload;
@@ -52,4 +54,10 @@ export async function verifyLink(secret: string, token: string, now: Date): Prom
 
 export function linkExpiry(now: Date): number {
   return Math.floor(now.getTime() / 1000) + LINK_TTL_SECONDS;
+}
+
+export async function dlUrl(env: Env, deps: Deps, link: Omit<LinkPayload, "exp">): Promise<string> {
+  if (!env.LINK_SECRET) throw new HttpError(503, "LINK_SECRET is not configured");
+  const token = await signLink(env.LINK_SECRET, { ...link, exp: linkExpiry(deps.now()) });
+  return `${env.PUBLIC_ORIGIN}/dl/${token}`;
 }

@@ -3,6 +3,7 @@
 // packages stay in the publisher's GitHub releases.
 import {
   CATEGORY_PATH,
+  isAssetName,
   FOUNDATION_PLATFORMS,
   validLicence,
   CHANNELS,
@@ -63,7 +64,7 @@ import {
   type SlotDetails,
   type Sort,
   type VulnerabilityReport,
-} from "@my/store-shared";
+} from "@clodhub/shared";
 import { audit } from "../audit.js";
 import type { AuthedDeveloper } from "../auth.js";
 import { classListText, classText, categoriesText, componentDetailsText, componentListText, componentText, recipeDetailsText, recipeListText, recipeText } from "../catalogue-text.js";
@@ -71,7 +72,7 @@ import { CatalogueDb, entryStatus, type EntryRow, type Kind, type Listing, type 
 import { imageFacts, IMAGE_METADATA_BYTES, imageKey, putDocument, readDocument, readDocuments, sha256Hex } from "../catalogue-store.js";
 import { randomId } from "../crypto.js";
 import type { Deps, Env } from "../env.js";
-import { dlUrl } from "../flow.js";
+import { dlUrl, verifyLink } from "../links.js";
 import { HttpError, json, readJson } from "../http.js";
 import { loadSecrets } from "../secrets.js";
 import { fetchUpstream } from "../upstream.js";
@@ -83,7 +84,7 @@ export const MAX_CLASSES_PER_DEVELOPER = 200;
 export const DEFAULT_IMAGE_UPLOADS_PER_DAY = 300;
 export const DEFAULT_BUNDLE_LINKS_PER_MINUTE = 60;
 
-const SECRET_PATTERN = /-----BEGIN [A-Z ]*PRIVATE KEY-----|\bgh[pousr]_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{30,}|\boa_[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b/;
+const SECRET_PATTERN = /-----BEGIN [A-Z ]*PRIVATE KEY-----|\bgh[pousr]_[A-Za-z0-9]{30,}|\bgithub_pat_[A-Za-z0-9_]{30,}|\b(?:oa|ch)_[A-Za-z0-9_-]{20,}|\bAKIA[0-9A-Z]{16}\b/;
 
 type Plural = "recipes" | "components";
 const plural = (kind: Kind): Plural => (kind === "recipe" ? "recipes" : "components");
@@ -588,6 +589,19 @@ export async function bundle(request: Request, env: Env, deps: Deps, kind: Kind,
   return json({ ...base, status: "available", url, expiresAt } satisfies BundleLink);
 }
 
+// GET /dl/:token - streams the bundle a link names. A link with no developer is for a public release of an orphaned
+// entry, so no token is sent.
+export async function serveArtefact(env: Env, deps: Deps, token: string): Promise<Response> {
+  if (!env.LINK_SECRET) throw new HttpError(503, "LINK_SECRET is not configured");
+  const link = await verifyLink(env.LINK_SECRET, token, deps.now());
+  if (!link) throw new HttpError(403, "this link has expired; ask for the bundle again");
+  const githubToken = link.dev === "" ? undefined : (await loadSecrets(env, link.dev, ["githubToken"])).githubToken;
+  const upstream = await fetchUpstream(env, deps, link.url, githubToken);
+  if (!upstream.ok) throw new HttpError(502, `upstream returned ${upstream.status}`);
+  const name = isAssetName(link.name) ? link.name : "bundle";
+  return new Response(upstream.body, { status: 200, headers: { "Content-Type": "application/octet-stream", "Content-Disposition": `attachment; filename="${name}"`, "Cache-Control": "no-store" } });
+}
+
 // GET /api/recipes/:name/:version/deprecations and the same for components
 export async function deprecations(env: Env, kind: Kind, name: string, version: string): Promise<Response> {
   const d = db(env);
@@ -755,7 +769,7 @@ export async function sitemap(env: Env): Promise<Response> {
   const [recipes, components] = await Promise.all([d.list("recipe", { deprecated: "include", sort: "downloads", limit: 100 }, null), d.list("component", { deprecated: "include", sort: "downloads", limit: 100 }, null)]);
   const classes = await d.listClasses(null, null, 100);
   const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
-  const urls = ["/", "/example", "/terms", "/reference", "/small", "/recipes", "/components", "/classes", "/categories", ...recipes.rows.map((r) => `/recipes/${r.slug}`), ...components.rows.map((c) => `/components/${c.slug}`), ...classes.rows.map((c) => `/classes/${c.slug}`)];
+  const urls = ["/", "/guide", "/terms", "/small", "/recipes", "/components", "/classes", "/categories", ...recipes.rows.map((r) => `/recipes/${r.slug}`), ...components.rows.map((c) => `/components/${c.slug}`), ...classes.rows.map((c) => `/classes/${c.slug}`)];
   const body = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls.map((u) => `<url><loc>${escape(env.PUBLIC_ORIGIN + u)}</loc></url>`).join("\n")}\n</urlset>\n`;
   return new Response(body, { headers: { "Content-Type": "application/xml; charset=utf-8", "Cache-Control": "no-store" } });
 }
@@ -871,7 +885,7 @@ async function prepare(env: Env, d: CatalogueDb, deps: Deps, dev: AuthedDevelope
 // The publisher must be able to push to the repository, and the release must hold the bundle.
 async function verifyRelease(env: Env, deps: Deps, dev: AuthedDeveloper, c: Candidate): Promise<void> {
   const token = (await loadSecrets(env, dev.id, ["githubToken"])).githubToken;
-  if (!token) throw new HttpError(409, "save a GitHub token in Settings first: it checks your release and serves the bundle");
+  if (!token) throw new HttpError(409, "save a GitHub token at /dev first: it checks your release and serves the bundle");
   let repo: Response;
   try {
     repo = await fetchUpstream(env, deps, `${env.GITHUB_API_BASE}/repos/${c.source.repository}`, token, "application/vnd.github+json");
@@ -1050,7 +1064,7 @@ export async function publishClass(request: Request, env: Env, deps: Deps, dev: 
   // developer to publish a class keeps it.
   const holder = await d.scopeHolder(scope);
   if (holder && holder !== dev.id) throw new HttpError(409, `the class scope ${scope} belongs to another developer`);
-  if (!holder && scope !== dev.githubLogin.toLowerCase() && !(await memberOf(env, deps, dev, scope))) throw new HttpError(403, `publish ${scope}/... classes as ${scope} or as a member of the ${scope} organisation on GitHub; a member of an organisation that restricts third-party apps grants ourapps access to it (GitHub Settings, Applications, Authorized OAuth Apps, ourapps, Grant) and signs in to ourapps.app again`);
+  if (!holder && scope !== dev.githubLogin.toLowerCase() && !(await memberOf(env, deps, dev, scope))) throw new HttpError(403, `publish ${scope}/... classes as ${scope} or as a member of the ${scope} organisation on GitHub; a member of an organisation that restricts third-party apps grants ClodHub access to it (GitHub Settings, Applications, Authorized OAuth Apps, ClodHub, Grant) and signs in to clodhub.com again`);
   const existing = await d.classByName(c.name);
   const bySlug = existing ?? (await d.classBySlug(slug));
   if (bySlug && bySlug.name !== c.name) throw new HttpError(409, `the name ${slug} is already published as ${bySlug.name}`);
@@ -1072,8 +1086,8 @@ export async function publishClass(request: Request, env: Env, deps: Deps, dev: 
 
 // Whether the developer is an active member of the organisation: by the memberships read at their last sign-in, or
 // else by their saved GitHub token. A token GitHub refuses for lack of the read:org scope gets 403 with what to do.
-export const NO_GITHUB_TOKEN = "there is no saved GitHub token and no organisation list from sign-in; sign in to ourapps.app again";
-export const ORG_SCOPE_MISSING = "the saved GitHub token cannot read organisation membership; sign in to ourapps.app again";
+export const NO_GITHUB_TOKEN = "there is no saved GitHub token and no organisation list from sign-in; sign in to clodhub.com again";
+export const ORG_SCOPE_MISSING = "the saved GitHub token cannot read organisation membership; sign in to clodhub.com again";
 async function memberOf(env: Env, deps: Deps, dev: AuthedDeveloper, org: string): Promise<boolean> {
   const recorded = await env.DB.prepare("SELECT orgs FROM developer_orgs WHERE developer_id = ?").bind(dev.id).first<{ orgs: string }>();
   if (recorded && (JSON.parse(recorded.orgs) as string[]).includes(org.toLowerCase())) return true;

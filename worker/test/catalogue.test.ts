@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { descriptorDigest, EXAMPLE_IMAGE, EXAMPLE_IMAGE_BYTES, exampleCategories, exampleClassEntries, pngHeader, webpHeader, SIGNATURES_NOTE, summariseFoundations, type Foundations, type PackageDetails, EXAMPLE_BUNDLE_DIGEST, EXAMPLE_INTERFACE_DIGEST, exampleComponentEntries, exampleComponentEntry, exampleRecipeEntry, type BundleLink, type BuildReportList, type BuildReportView, type ComponentList, type ComponentVersionView, type DeprecationReport, type RecipeList, type RecipeVersionView, type SlotDetails } from "@my/store-shared";
+import { descriptorDigest, EXAMPLE_IMAGE, EXAMPLE_IMAGE_BYTES, exampleCategories, exampleClassEntries, pngHeader, webpHeader, SIGNATURES_NOTE, summariseFoundations, type Foundations, type PackageDetails, EXAMPLE_BUNDLE_DIGEST, EXAMPLE_INTERFACE_DIGEST, exampleComponentEntries, exampleComponentEntry, exampleRecipeEntry, type BundleLink, type BuildReportList, type BuildReportView, type ComponentList, type ComponentVersionView, type DeprecationReport, type RecipeList, type RecipeVersionView, type SlotDetails } from "@clodhub/shared";
 import { Db } from "../src/db.js";
 import report060 from "./fixtures/ourpoker-0.6.0-2026-11-16.json";
 import report080 from "./fixtures/ourpoker-0.8.0-2026-11-20.json";
@@ -37,7 +37,7 @@ function githubFor(extra: Record<string, (call: Call) => Response | Promise<Resp
     ...release("acme/server-host", "v0.1.0", "server-host-0.1.0.tar", 51),
     ...release("acme/apple-host", "v0.1.0", "apple-host-0.1.0.tar", 52),
     ...release("acme/guided-tour", "v0.1.0", "guided-tour-0.1.0.tar", 53),
-    [`GET ${gh("/user/memberships/orgs/ourapps-ae")}`]: () => jsonRes({ state: "active" }),
+    [`GET ${gh("/user/memberships/orgs/clodhub")}`]: () => jsonRes({ state: "active" }),
     ...extra,
   });
   calls = stub.calls;
@@ -285,7 +285,7 @@ describe("publishing a recipe", () => {
       expect(v).not.toHaveProperty("lastSuccessfulVerification");
       for (const field of ["upstream", "compatibility", "classes", "files", "artefacts"]) expect(v.foundations).not.toHaveProperty(field);
     }
-    expect(c.foundations.implements.map((x) => x.reference.name)).toEqual(["ourapps-ae/card-deck-class"]);
+    expect(c.foundations.implements.map((x) => x.reference.name)).toEqual(["clodhub/card-deck-class"]);
     expect(r.components[0]!).not.toHaveProperty("declaration");
     expect(r.components[0]!.classInfo).toEqual({ title: "Card deck", summary: "A deck that shuffles, deals and burns cards", url: `${BASE}/classes/card-deck-class` });
     const details = await get(new URL(r.foundations.details).pathname);
@@ -406,7 +406,7 @@ describe("publishing a recipe", () => {
     expect(deck.preferred).toEqual({ name: "acme/card-deck", version: "0.1.0", url: `${BASE}/components/card-deck` });
     expect(deck.catalogue).toMatchObject({ description: "A shuffled deck of 52 cards that deals and burns cards.", guardians: ["Example Guardian Ltd"] });
     expect(deck.catalogue!.profiles).toEqual([{ id: "any", cost: "none", load: {} }]);
-    expect(deck.alternatives).toEqual({ count: 0, url: `${BASE}/components?class=ourapps-ae%2Fcard-deck-class` });
+    expect(deck.alternatives).toEqual({ count: 0, url: `${BASE}/components?class=clodhub%2Fcard-deck-class` });
     expect(deck.catalogue!.quality).toBeNull();
     expect(deck.catalogue!.thumbnail).toBe(`${BASE}/images/${EXAMPLE_IMAGE.thumbnail.slice(7)}.webp`);
     await del("/api/dev/components/seating/0.1.0");
@@ -426,12 +426,12 @@ describe("publishing a recipe", () => {
     expect((await other("fancy-deck", 61)).status).toBe(201);
     expect((await other("strict-deck", 62, (e) => (e.requires = [{ id: "audit", type: "ae/audit", version: "1.0.0", description: "The ae/audit interface." }]))).status).toBe(201);
     const view = (await (await get("/api/recipes/poker-night")).json()) as RecipeVersionView;
-    expect(view.components.find((s) => s.id === "deck")!.alternatives).toEqual({ count: 2, url: `${BASE}/components?class=ourapps-ae%2Fcard-deck-class` });
+    expect(view.components.find((s) => s.id === "deck")!.alternatives).toEqual({ count: 2, url: `${BASE}/components?class=clodhub%2Fcard-deck-class` });
     expect(view.components.find((s) => s.id === "seats")!.alternatives.count).toBe(0);
-    const listed = ((await (await get("/api/components?class=ourapps-ae/card-deck-class&sort=name")).json()) as ComponentList).components.map((c) => c.name);
+    const listed = ((await (await get("/api/components?class=clodhub/card-deck-class&sort=name")).json()) as ComponentList).components.map((c) => c.name);
     expect(listed).toEqual(["acme/card-deck", "acme/fancy-deck", "acme/strict-deck"]);
     const text = await (await get("/recipes/poker-night/details.txt")).text();
-    expect(text).toContain(`    other components of this class (2): ${BASE}/components?class=ourapps-ae%2Fcard-deck-class`);
+    expect(text).toContain(`    other components of this class (2): ${BASE}/components?class=clodhub%2Fcard-deck-class`);
   });
 });
 
@@ -453,7 +453,7 @@ describe("job candidates", () => {
     expect(view.deprecations.map((d) => [d.name, d.via])).toEqual([["acme/cheap-host", ["acme/poker-night"]]]);
     const hostSlot = view.components.find((s) => s.id === "host")!;
     expect(hostSlot.alternatives.count).toBe(1);
-    expect(hostSlot.alternatives.url).toBe(`${BASE}/components?class=ourapps-ae%2Fserver-host-class`);
+    expect(hostSlot.alternatives.url).toBe(`${BASE}/components?class=clodhub%2Fserver-host-class`);
   });
 });
 
@@ -638,14 +638,14 @@ describe("components", () => {
     expect(await names("?provides=card-deck")).toEqual(["acme/card-deck"]);
     expect(await names("?requires=ae/random-source")).toEqual(["acme/card-deck"]);
     expect(await names("?requires=ae/card-deck")).toEqual(["acme/seating"]);
-    expect(await names("?class=ourapps-ae/seating-class")).toEqual(["acme/seating"]);
+    expect(await names("?class=clodhub/seating-class")).toEqual(["acme/seating"]);
     expect(await names("?category=games")).toEqual(["acme/card-deck", "acme/seating"]);
     expect(await names("?category=games/tables")).toEqual(["acme/seating"]);
     expect(await names("?category=delivery")).toEqual(["acme/apple-host", "acme/server-host"]);
     expect(await names("?platform=tvos")).toEqual([]);
     const list = (await (await get("/api/components?sort=name")).json()) as ComponentList;
     expect(list.categories.map((c) => [c.id, c.components])).toEqual([["delivery", 2], ["games", 2], ["presentation", 1], ["tools", 0]]);
-    expect(list.components[1]).toMatchObject({ name: "acme/card-deck", category: "games/cards", class: { name: "ourapps-ae/card-deck-class", version: "1.0.0", title: "Card deck" } });
+    expect(list.components[1]).toMatchObject({ name: "acme/card-deck", category: "games/cards", class: { name: "clodhub/card-deck-class", version: "1.0.0", title: "Card deck" } });
     const tree = (await (await get("/api/categories")).json()) as { categories: { id: string; components: number; classes: number }[] };
     expect(tree.categories.find((c) => c.id === "games/cards")).toMatchObject({ components: 1 });
   });
@@ -780,8 +780,8 @@ describe("components", () => {
     expect(view.dependencies).toEqual([{ name: "acme/random-pool", version: "0.1.0" }]);
     expect(view.suitability.profiles[0].settings).toEqual({ plan: "eco", capacity: 10, durable: true });
     const text = await (await get("/components/card-deck.txt")).text();
-    expect(text).toContain("Requires (2)\n- random-source (ae/random-source 1.0.0, optional): The ae/random-source interface.\n  components that provide it: https://ourapps.app/components.txt?provides=ae%2Frandom-source\n- audit (ae/audit 1.0.0): The ae/audit interface.");
-    expect(text).toContain("Class: Card deck (ourapps-ae/card-deck-class@1.0.0): A deck that shuffles, deals and burns cards. Any component of this class can fill a recipe slot that asks for it. Category games/cards; https://ourapps.app/classes/card-deck-class.txt");
+    expect(text).toContain("Requires (2)\n- random-source (ae/random-source 1.0.0, optional): The ae/random-source interface.\n  components that provide it: https://clodhub.com/components.txt?provides=ae%2Frandom-source\n- audit (ae/audit 1.0.0): The ae/audit interface.");
+    expect(text).toContain("Class: Card deck (clodhub/card-deck-class@1.0.0): A deck that shuffles, deals and burns cards. Any component of this class can fill a recipe slot that asks for it. Category games/cards; https://clodhub.com/classes/card-deck-class.txt");
     expect(text).toContain("settings plan \"eco\", capacity 10, durable true");
     const bad = await post("/api/dev/components", nextComponent("0.2.0", digest("e"), (e) => (e.requires[0].optional = "yes")));
     expect(bad.status).toBe(400);
@@ -926,7 +926,7 @@ describe("page variants", () => {
     expect(list.status).toBe(200);
     expect(list.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
     const listText = await list.text();
-    expect(listText).toContain("ourapps recipe library");
+    expect(listText).toContain("ClodHub recipes");
     expect(listText).toContain("- Poker Night (acme/poker-night) 0.1.0: A card game for a club's league night, with house rules.");
     expect(listText).toContain("Copyright Level N Ltd 2026");
 
@@ -946,8 +946,8 @@ describe("page variants", () => {
     expect(page).toContain("Line 0.1: no security releases");
     expect(page).toContain("Known vulnerabilities: none known");
     expect(page).toContain("Slots (5): each needs a component of its class");
-    expect(page).toContain("- deck: Card deck, a deck that shuffles, deals and burns cards (class ourapps-ae/card-deck-class@1.0.0, https://ourapps.app/classes/card-deck-class.txt)\n  preferred acme/card-deck@0.1.0: A shuffled deck of 52 cards that deals and burns cards.");
-    expect(page).toMatch(/- apple: .* \(class ourapps-ae\/apple-shell-class@1\.0\.0, https:\/\/ourapps\.app\/classes\/apple-shell-class\.txt\); only when \(targets includes ios\) or \(targets includes macos\)\n  preferred acme\/apple-host@0\.1\.0: The iPhone, iPad and Mac shell\./);
+    expect(page).toContain("- deck: Card deck, a deck that shuffles, deals and burns cards (class clodhub/card-deck-class@1.0.0, https://clodhub.com/classes/card-deck-class.txt)\n  preferred acme/card-deck@0.1.0: A shuffled deck of 52 cards that deals and burns cards.");
+    expect(page).toMatch(/- apple: .* \(class clodhub\/apple-shell-class@1\.0\.0, https:\/\/clodhub\.com\/classes\/apple-shell-class\.txt\); only when \(targets includes ios\) or \(targets includes macos\)\n  preferred acme\/apple-host@0\.1\.0: The iPhone, iPad and Mac shell\./);
     expect(page).toContain("python3 -m aepm alternatives poker-night@0.1.0 SLOT --store store lists the components that fit, then add --substitute SLOT=NAME@VERSION to design");
     expect(page).toContain("sets host.targets to the answer");
     expect(page).toContain("range: 100 to 1000000");
@@ -965,11 +965,11 @@ describe("page variants", () => {
     expect(details.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
     const more = await details.text();
     expect(more).toContain("Poker Night (acme/poker-night) 0.1.0: details");
-    expect(more).toContain("class: ourapps-ae/card-deck-class 1.0.0");
+    expect(more).toContain("class: clodhub/card-deck-class 1.0.0");
     expect(more).toContain("provides ae/seating 1.0.0; requires ae/card-deck 1.0.0; settings minimumPlayers integer, always written");
     expect(more).toContain("provides ae/server-host 1.0.0; requires none; settings targets string (label), always written, expectedPeople integer, always written, accountReference string (slug)");
     expect(more).toContain("- slot apple (only when (targets includes ios) or (targets includes macos))");
-    expect(more).toContain("    other components of this class (0): https://ourapps.app/components?class=ourapps-ae%2Fcard-deck-class\n    python3 -m aepm alternatives poker-night@0.1.0 deck --store store");
+    expect(more).toContain("    other components of this class (0): https://clodhub.com/components?class=clodhub%2Fcard-deck-class\n    python3 -m aepm alternatives poker-night@0.1.0 deck --store store");
     expect(more).toContain("- seats.seating -> application.seating");
     expect(more).toContain("guardians: Example Guardian Ltd");
     expect(more).toContain("Package foundations (publisher-declared)");
@@ -1005,7 +1005,7 @@ describe("page variants", () => {
     expect(((await (await get("/recipes.json?category=games")).json()) as RecipeList).total).toEqual({ count: 1, approximate: false });
 
     const components = await (await get("/components.txt")).text();
-    expect(components).toContain("- acme/card-deck 0.1.0: A shuffled deck of 52 cards that deals and burns cards.\n  class ourapps-ae/card-deck-class@1.0.0 (Card deck); category games/cards");
+    expect(components).toContain("- acme/card-deck 0.1.0: A shuffled deck of 52 cards that deals and burns cards.\n  class clodhub/card-deck-class@1.0.0 (Card deck); category games/cards");
     expect(components).toContain("5 components match; this page shows 5, sorted by downloads.");
     const one = await (await get("/components/card-deck.txt")).text();
     expect(one).toContain("Provides (1)\n- card-deck (ae/card-deck 1.0.0): The ae/card-deck interface: what a card deck offers the application.");
@@ -1016,9 +1016,9 @@ describe("page variants", () => {
     expect(one).toContain("Data migration: this component keeps no data");
     expect(((await (await get("/components/card-deck.json")).json()) as ComponentVersionView).name).toBe("acme/card-deck");
     {
-      expect(one).toContain("Implements: ourapps-ae/card-deck-class@1.0.0 ");
+      expect(one).toContain("Implements: clodhub/card-deck-class@1.0.0 ");
       expect(one).toContain("Platforms: web, server, ios, macos, android");
-      expect(one).toContain('- as a slot in recipe.json components: {"id":"card-deck","class":{"name":"ourapps-ae/card-deck-class","version":"1.0.0","digest":"');
+      expect(one).toContain('- as a slot in recipe.json components: {"id":"card-deck","class":{"name":"clodhub/card-deck-class","version":"1.0.0","digest":"');
       expect(one).toContain("--substitute SLOT=acme/card-deck@0.1.0");
       expect(one).toContain(`${BASE}/components/card-deck/details.txt?version=0.1.0`);
       expect(one).not.toContain("Package foundations");
@@ -1072,7 +1072,7 @@ describe("page variants", () => {
     const second = await (await get(new URL(next).pathname + new URL(next).search + "&limit=2")).text();
     expect(second).toContain("- acme/guided-tour 0.1.0");
     expect(second).toContain("Previous: ");
-    expect(await (await get("/classes.txt")).text()).toContain("ourapps component classes");
+    expect(await (await get("/classes.txt")).text()).toContain("ClodHub component classes");
     expect(await (await get("/categories.txt")).text()).toContain("  - Cards (games/cards): 1 classes, 1 components, 0 recipes");
     expect(await (await get("/components.txt?q=nothingmatches")).text()).toContain("No components match.");
     expect(await (await get("/recipes.txt?category=tools")).text()).toContain("No recipes match.");
@@ -1422,13 +1422,13 @@ describe("account deletion keeps the catalogue and orphans it", () => {
 });
 
 describe("build reports", () => {
-  const ourpoker = "ourapps-ae/ourpoker";
+  const ourpoker = "clodhub/ourpoker";
   const reports = [report060, report080] as unknown as Mutable[];
 
   // OurPoker as migration 0022 leaves it: the name and owner, no listed version, and the digests it published.
   async function ourpokerBeforeTheRound() {
     const dev = (await env.DB.prepare("SELECT id FROM developers WHERE github_id = 42").first<{ id: string }>())!.id;
-    await env.DB.prepare("INSERT INTO recipes (id, name, scope, slug, developer_id, repo, created_at, updated_at) VALUES ('ourpoker', ?, 'ourapps-ae', 'ourpoker', ?, 'ourapps-ae/ourpoker', '2026-11-01', '2026-11-20')").bind(ourpoker, dev).run();
+    await env.DB.prepare("INSERT INTO recipes (id, name, scope, slug, developer_id, repo, created_at, updated_at) VALUES ('ourpoker', ?, 'clodhub', 'ourpoker', ?, 'clodhub/ourpoker', '2026-11-01', '2026-11-20')").bind(ourpoker, dev).run();
     for (const r of reports) await env.DB.prepare("INSERT INTO published_digests (kind, name, version, digest, published_at) VALUES ('recipe', ?, ?, ?, ?)").bind(ourpoker, r.recipe.version, r.recipe.digest, `${r.date}T00:00:00Z`).run();
   }
 
@@ -1476,7 +1476,7 @@ describe("build reports", () => {
     expect((await error((r) => (r.format = 2)))[1]).toContain("format-refused");
     expect((await error((r) => (r.rating.score = 11)))[1]).toContain("rating.score");
     expect((await error((r) => (r.results[0].built = "yes")))[1]).toContain("results[0].built");
-    expect((await error((r) => (r.recipe.name = "ourapps-ae/other")))[1]).toContain("not ourapps-ae/ourpoker");
+    expect((await error((r) => (r.recipe.name = "clodhub/other")))[1]).toContain("not clodhub/ourpoker");
     expect((await error((r) => (r.date = "2099-01-01")))[1]).toContain("future");
   });
 

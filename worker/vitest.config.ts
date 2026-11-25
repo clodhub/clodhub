@@ -12,7 +12,7 @@ export default defineConfig(async () => {
         miniflare: {
           bindings: {
             TEST_MIGRATIONS: migrations,
-            PUBLIC_ORIGIN: "https://ourapps.app",
+            PUBLIC_ORIGIN: "https://clodhub.com",
             LINK_SECRET: "test-link-secret",
             MASTER_KEY: "test-master-key",
             GITHUB_OAUTH_CLIENT_ID: "test-client-id",

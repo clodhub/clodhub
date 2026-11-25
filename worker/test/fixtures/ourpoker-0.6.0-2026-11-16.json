@@ -1,8 +1,8 @@
 {
   "format": 1,
   "kind": "recipe-build",
-  "recipe": {"name": "ourapps-ae/ourpoker", "version": "0.6.0", "digest": "sha256:9a5bad0c674ecb28f6a8d6212e17753d1e6151dd0d5e6c81f9f429b327f352e5"},
-  "aepm": {"repository": "ourapps-ae/aepm", "commit": "d1688ec"},
+  "recipe": {"name": "clodhub/ourpoker", "version": "0.6.0", "digest": "sha256:9a5bad0c674ecb28f6a8d6212e17753d1e6151dd0d5e6c81f9f429b327f352e5"},
+  "aepm": {"repository": "clodhub/aepm", "commit": "d1688ec"},
   "date": "2026-11-16",
   "agent": {"harness": "OpenCode", "model": "anthropic/claude-opus-5-5", "session": "a new session given only the prompt"},
   "prompt": "Build an application from the OurPoker recipe: https://ourapps.app/recipes/ourpoker.txt",

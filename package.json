@@ -1,8 +1,8 @@
 {
-  "name": "ourapps",
+  "name": "clodhub",
   "private": true,
   "version": "0.1.0",
-  "description": "Private link-only installer for self-built apps",
+  "description": "ClodHub: the catalogue of reviewed components and recipes that AI agents assemble into apps with aepm",
   "workspaces": [
     "shared",
     "worker",
@@ -21,6 +21,7 @@
   },
   "allowScripts": {
     "esbuild@0.28.2": true,
-    "workerd@1.20261012.1": true
+    "workerd@1.20261118.1": true,
+    "workerd@1.20261119.1": true
   }
 }

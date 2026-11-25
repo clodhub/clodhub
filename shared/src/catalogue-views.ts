@@ -405,7 +405,7 @@ export interface BundleLink {
 }
 
 // Where a package's archive is and what installing it does, said the same way on every page.
-export const PACKAGE_WHERE = "The archive is a release file on the publisher's public GitHub repository; ourapps keeps this page and a pointer to the release, not the code.";
+export const PACKAGE_WHERE = "The archive is a release file on the publisher's public GitHub repository; ClodHub keeps this page and a pointer to the release, not the code.";
 export const PACKAGE_CHECK = "aepm checks the archive's sha256 fingerprint before anything is copied, and installing runs none of the package's code.";
 
 // What one package archive holds, from its file list: the files by kind, and where the installed ones go.
@@ -536,14 +536,14 @@ export function recipeBuildSteps(v: { slug: string; version: string; digest: str
   const file = v.instructions.split("/").at(-1)!;
   const archive = `store/objects/${v.digest.replace(/^sha256:/, "")}.tar`;
   return [
-    { text: "Get aepm", command: "git clone https://github.com/ourapps-ae/aepm && export PYTHONPATH=$PWD/aepm" },
+    { text: "Get aepm", command: "git clone https://github.com/clodhub/aepm && export PYTHONPATH=$PWD/aepm" },
     { text: "Fetch the recipe and the component it prefers for each slot; every sha256 digest and signature is checked", command: `python3 -m aepm fetch ${id} --with-dependencies --store store` },
     { text: `Read the recipe's own instructions: this writes ${v.instructions} from the fetched archive into the current folder. The same command works in a macOS or Linux shell and in PowerShell or cmd on Windows 10 version 1803 or later`, command: `tar -xf ${archive} ${v.instructions}` },
     { text: "The questions as JSON with toAsk and followUps. Answer from the person's description. Tell the person how many questions toAsk lists, ask them in one round, include as conditional questions in that round the followUps whose condition one of those answers could meet, and add no others", command: `python3 -m aepm questions ${id} --store store` },
     { text: `Write answers.json (question id to answer), then design. For another component of a slot's class than the preferred one: python3 -m aepm alternatives ${id} SLOT --store store lists the components that fit, then add --substitute SLOT=NAME@VERSION to design`, command: `python3 -m aepm design ${id} --store store --answers answers.json --out definition.json` },
     { text: "Check this machine's build tools for the chosen targets; add --install to install the missing ones it can", command: `python3 -m aepm doctor ${id} --store store --answers answers.json` },
     { text: "Resolve the exact packages", command: "python3 -m aepm resolve definition.json --catalogue store/catalogue.json --out lock.json" },
-    { text: `Make the owner policy: Level N's release and guardian keys from https://ourapps.app/policy/levelnpolicy.json plus your own owner key (python3 -m aepm.test_identities DIR makes a disposable one); ${file} shows how`, command: null },
+    { text: `Make the owner policy: Level N's release and guardian keys from https://clodhub.com/policy/levelnpolicy.json plus your own owner key (python3 -m aepm.test_identities DIR makes a disposable one); ${file} shows how`, command: null },
     { text: "Install", command: "python3 -m aepm install definition.json --lock lock.json --store store --policy policy.json --target app" },
     { text: "Let verify run the installed packages' checks: the policy's trustedExecution lists the digest of each package in lock.json", command: `python3 -c 'import json; p=json.load(open("policy.json")); p["trustedExecution"]=sorted(x["digest"] for x in json.load(open("lock.json"))["packages"]); json.dump(p, open("policy.json", "w"), indent=2)'` },
     { text: "Run every package's checks on the installed application; --allow-network lets the checks' npm ci download", command: "python3 -m aepm verify app --policy policy.json --trusted --allow-network" },

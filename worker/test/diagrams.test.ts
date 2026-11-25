@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { EXAMPLE_BUNDLE_DIGEST, EXAMPLE_DIGEST, descriptorDigest, exampleFoundations, exampleRecipeEntry, interfaceKey, type ComponentEntry, type RecipeEntry } from "@my/store-shared";
+import { EXAMPLE_BUNDLE_DIGEST, EXAMPLE_DIGEST, descriptorDigest, exampleFoundations, exampleRecipeEntry, interfaceKey, type ComponentEntry, type RecipeEntry } from "@clodhub/shared";
 import { OURPOKER_CATALOGUE, OURPOKER_RECIPE } from "../../shared/src/fixtures/ourpoker.js";
 import { CatalogueDb, type EntryRow } from "../src/catalogue-db.js";
 import type { Env } from "../src/env.js";
@@ -27,7 +27,7 @@ async function seed(): Promise<void> {
   await d.addCategories(groups.map((id) => ({ id, title: id, parent: null })));
   const classes = OURPOKER_RECIPE.components.map((c, i) => {
     const descriptor = exampleFoundations().classes[0].descriptor;
-    descriptor.name = `ourapps-ae/${c.id}-class`;
+    descriptor.name = `clodhub/${c.id}-class`;
     descriptor.category = OURPOKER_CATALOGUE[i]!.category ?? "other";
     descriptor.provides = c.class.provides.map(p => ({ type: p.type, version: p.version, path: descriptor.inventory[0].path, modules: { web: ["index.mjs"] } }));
     descriptor.requires = c.class.requires.map(p => ({ type: p.type, version: p.version }));
@@ -71,7 +71,7 @@ async function seed(): Promise<void> {
     ...base,
     foundations: { ...exampleFoundations(), classes, implements: [] },
     recipe: { ...base.recipe, name: OURPOKER_RECIPE.name, version: OURPOKER_RECIPE.version, title: OURPOKER_RECIPE.title, components: OURPOKER_RECIPE.components.map((c, i) => ({ ...c, class: classes[i].reference, configuration: {} })), connections: OURPOKER_RECIPE.connections, jobs: [], scale: null, questions: [] },
-    source: { repository: "ourapps-ae/ourpoker", tag: `v${OURPOKER_RECIPE.version}` },
+    source: { repository: "clodhub/ourpoker", tag: `v${OURPOKER_RECIPE.version}` },
   };
   const document = await putDocument(env, "recipe", "ourpoker", OURPOKER_RECIPE.version, r);
   const listing = { description: "", title: r.recipe.title, summary: r.recipe.summary, category: groups[0]!, className: null, classVersion: null, classTitle: null, platforms: r.foundations.platforms, targets: r.recipe.targets, tags: [], licence: "Apache-2.0", thumbnail: null };
@@ -124,10 +124,10 @@ describe("component connections diagram", () => {
     const res = await get("/api/components/turn-engine/latest/connections.svg");
     expectSvgResponse(res);
     const svg = await res.text();
-    const engine = OURPOKER_CATALOGUE.find((c) => c.name === "ourapps-ae/turn-engine")!;
+    const engine = OURPOKER_CATALOGUE.find((c) => c.name === "clodhub/turn-engine")!;
     expect(engine.requires).toHaveLength(9);
     for (const p of [...engine.requires, ...engine.provides]) expect(svg, p.type).toContain(`${p.type} ${p.version}`);
-    for (const name of ["holdem-rules", "seating", "game-clock", "private-views", "presence", "tournament", "computer-players", "round-history", "rules-settings", "realtime-rooms"]) expect(svg, name).toContain(`ourapps-ae/${name}<`);
+    for (const name of ["holdem-rules", "seating", "game-clock", "private-views", "presence", "tournament", "computer-players", "round-history", "rules-settings", "realtime-rooms"]) expect(svg, name).toContain(`clodhub/${name}<`);
     expect(svg).toContain("optional: may stay unconnected");
   });
 

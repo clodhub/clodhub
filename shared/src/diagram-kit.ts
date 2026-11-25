@@ -1,4 +1,4 @@
-// Drawing kit for ourapps diagrams: hand-computed flat-design SVG, no layout engine and no dependencies.
+// Drawing kit for ClodHub diagrams: hand-computed flat-design SVG, no layout engine and no dependencies.
 // Style: light background, Material palette, cards with a coloured header band, orthogonal lines only, white
 // label pills, a legend in the picture. Every coordinate is computed by the caller from measure(), so text never
 // overflows a card. write() fails the build when two cards overlap or a line passes through a card.
