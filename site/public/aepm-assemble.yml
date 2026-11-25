@@ -25,7 +25,7 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - run: git clone --depth 1 https://github.com/ourapps-ae/aepm "$RUNNER_TEMP/aepm"
+      - run: git clone --depth 1 https://github.com/clodhub/aepm "$RUNNER_TEMP/aepm"
       - name: Fetch, design, resolve and install
         env:
           RECIPE: ${{ inputs.recipe }}
@@ -41,7 +41,7 @@ jobs:
           aepm fetch "$RECIPE" --with-dependencies --store "$work/store"
           aepm design "$RECIPE" --store "$work/store" --answers answers.json --out "$work/definition.json"
           aepm resolve "$work/definition.json" --catalogue "$work/store/catalogue.json" --out "$work/lock.json"
-          curl -fsSL https://ourapps.app/policy/levelnpolicy.json -o "$work/levelnpolicy.json"
+          curl -fsSL https://clodhub.com/policy/levelnpolicy.json -o "$work/levelnpolicy.json"
           printf '%s\n' "$AEPM_OWNER_KEY" | openssl pkey -pubout -out "$work/owner.pub"
           python3 - "$work" <<'POLICY'
           import json, sys

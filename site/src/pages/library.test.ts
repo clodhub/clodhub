@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { SIGNATURES_NOTE, classDescriptor, exampleComponentEntry, exampleRecipeEntry, packageContents, summariseFoundations, type ComponentSummary, type PackageDetails, type ComponentVersionView, type Deprecation, type RecipeSummary, type RecipeVersionView } from "@my/store-shared";
+import { SIGNATURES_NOTE, classDescriptor, exampleComponentEntry, exampleRecipeEntry, packageContents, summariseFoundations, type ComponentSummary, type PackageDetails, type ComponentVersionView, type Deprecation, type RecipeSummary, type RecipeVersionView } from "@clodhub/shared";
 import { escapeHtml } from "../html.js";
 import { classBody, componentBody, componentCard, deprecationBanner, detailsBody, recipeBody, recipeCard, splitDescription } from "./library.js";
 
-const origin = "https://ourapps.app";
+const origin = "https://clodhub.com";
 const publisher = { slug: "dana", displayName: "Dana" };
 
 const image = { url: `${origin}/images/${"e".repeat(64)}.png`, thumbnail: `${origin}/images/${"f".repeat(64)}.webp`, caption: "The table during a hand", platform: "web", width: 1280, height: 800 };
@@ -77,14 +77,14 @@ function componentView(patch: Partial<ComponentVersionView> = {}): ComponentVers
     ...versionCommon,
     foundations: summariseFoundations(e.foundations, `${origin}/api/components/card-deck/0.1.0/details`), foundationEvidence: "publisher-declared",
     about: e.page.description,
-    classInfo: { summary: "A deck of playing cards", url: `${origin}/classes/card-deck-class`, others: 2, othersUrl: `${origin}/components?class=ourapps-ae%2Fcard-deck-class` },
+    classInfo: { summary: "A deck of playing cards", url: `${origin}/classes/card-deck-class`, others: 2, othersUrl: `${origin}/components?class=clodhub%2Fcard-deck-class` },
     contents: packageContents(e.foundations),
     name: e.name,
     slug: "card-deck",
     version: e.version,
     description: e.description,
     category: "games/cards",
-    class: { name: "ourapps-ae/card-deck-class", version: "1.0.0", title: "Card deck" },
+    class: { name: "clodhub/card-deck-class", version: "1.0.0", title: "Card deck" },
     tags: e.tags,
     targets: e.targets,
     provides: e.provides,
@@ -114,7 +114,7 @@ function componentView(patch: Partial<ComponentVersionView> = {}): ComponentVers
 describe("recipe page", () => {
   it("shows package facts as counts with one link to the lists, after what a reader needs first", () => {
     const text = recipeBody(recipeView(), "latest").html;
-    expect(text).toContain("ourapps-ae/card-deck-class"); expect(text).toContain("A deck that shuffles, deals and burns cards");
+    expect(text).toContain("clodhub/card-deck-class"); expect(text).toContain("A deck that shuffles, deals and burns cards");
     expect(text).toContain("Package facts"); expect(text).toContain(escapeHtml(SIGNATURES_NOTE)); expect(text).not.toContain("verified record");
     expect(text).toContain('<a href="/recipes/poker-night/details?version=0.1.0">Sources and dependencies</a>');
     expect(text).toMatch(/\d+ upstream sources?, \d+ exact dependenc(y|ies), \d+ class(es)?, \d+ files?/);
@@ -148,12 +148,12 @@ describe("recipe page", () => {
     const html = recipeBody(recipeView(), "latest").html;
     expect(html).toContain("<th>Slot</th><th>What it is</th><th>Preferred component</th><th>Alternatives</th>");
     expect(html).toContain("<code>seats</code>");
-    expect(html).toContain('<span class="small faint"><code>ourapps-ae/seating-class</code> 1.0.0</span>');
+    expect(html).toContain('<span class="small faint"><code>clodhub/seating-class</code> 1.0.0</span>');
     expect(html).toContain("<summary>Where it runs and who reviewed it</summary>");
     expect(html).toContain('<a href="/components/card-deck">card-deck</a> <span class="small faint">0.1.0</span><br /><span class="small muted">A shuffled deck.</span>');
     expect(html).toContain('<a href="/classes/seating-class">Seating</a>');
-    expect(html).toContain('<a href="/components?class=ourapps-ae%2Fseating-class">1 other</a>');
-    expect(html).toContain('<a href="/components?class=ourapps-ae%2Fcard-deck-class">0 others</a>');
+    expect(html).toContain('<a href="/components?class=clodhub%2Fseating-class">1 other</a>');
+    expect(html).toContain('<a href="/components?class=clodhub%2Fcard-deck-class">0 others</a>');
   });
 
   it("shows description, diagram, questions, components with suitability and guardians, targets, answer sets and versions", () => {
@@ -162,7 +162,7 @@ describe("recipe page", () => {
     expect(html).toContain("Build an application from the Poker Night recipe");
     expect(html).not.toMatch(/coming soon|aepm create/);
     expect(html).toContain("Poker Night deals a hand");
-    expect(html).toContain('src="https://ourapps.app/api/recipes/poker-night/0.1.0/diagram.svg"');
+    expect(html).toContain('src="https://clodhub.com/api/recipes/poker-night/0.1.0/diagram.svg"');
     expect(html).toContain("Publisher's diagram");
     expect(html).toContain("How its components connect");
     expect(html).toContain('href="/api/recipes/poker-night/0.1.0/components.svg" target="_blank"');
@@ -243,7 +243,7 @@ describe("component page", () => {
 
   it("leads with what it is and its class, then what it provides and needs, its settings and how a recipe uses it", () => {
     const html = componentBody(componentView(), "latest").html;
-    expect(html).toContain('{&quot;id&quot;:&quot;card-deck&quot;,&quot;class&quot;:{&quot;name&quot;:&quot;ourapps-ae/card-deck-class&quot;,&quot;version&quot;:&quot;1.0.0&quot;,&quot;digest&quot;:');
+    expect(html).toContain('{&quot;id&quot;:&quot;card-deck&quot;,&quot;class&quot;:{&quot;name&quot;:&quot;clodhub/card-deck-class&quot;,&quot;version&quot;:&quot;1.0.0&quot;,&quot;digest&quot;:');
     expect(html).toContain("--substitute SLOT=acme/card-deck@0.1.0");
     expect(html).toContain('<a href="/components/card-deck/details?version=0.1.0">Sources and dependencies</a>');
     const order = ['id="about"', 'id="class"', 'id="interfaces"', 'id="settings"', 'id="use-it"', 'id="more"', 'id="what-you-download"', 'id="platforms"', 'id="package-facts"'].map((x) => html.indexOf(x));
@@ -267,7 +267,7 @@ describe("component page", () => {
     const card = html.slice(html.indexOf('id="class"'), html.indexOf('id="interfaces"'));
     expect(card).toContain('<h2>Its class: <a href="/classes/card-deck-class">Card deck</a></h2>');
     expect(card).toContain("A deck of playing cards.");
-    expect(card).toContain('<a href="/components?class=ourapps-ae%2Fcard-deck-class">2 other components implement it</a>');
+    expect(card).toContain('<a href="/components?class=clodhub%2Fcard-deck-class">2 other components implement it</a>');
     expect(card).toContain("<td>Web</td><td><code>ae/card-deck</code></td><td><code>index.mjs</code></td>");
   });
 
@@ -281,7 +281,7 @@ describe("component page", () => {
     const html = componentBody(componentView({ settings: [{ id: "decks", type: "integer", grammar: "integer", required: false, secret: false, hasDefault: true, default: 1 }, { id: "house", type: "string", grammar: "slug", required: true, secret: false, hasDefault: false }] }), "latest").html;
     expect(html).toContain("<tr><td><code>decks</code></td><td>whole number</td><td><code>1</code></td><td>may set it</td></tr>");
     expect(html).toContain("<td><span class=\"muted\">none</span></td><td>must set it</td>");
-    expect(html).toContain("A recipe uses it through a slot of class Card deck (ourapps-ae/card-deck-class 1.0.0), naming acme/card-deck as the slot&#39;s preferred component");
+    expect(html).toContain("A recipe uses it through a slot of class Card deck (clodhub/card-deck-class 1.0.0), naming acme/card-deck as the slot&#39;s preferred component");
     expect(html).toContain("The recipe sets decks and house; house has no default, so the recipe always sets it.");
   });
 
@@ -386,7 +386,7 @@ describe("sources and dependencies", () => {
     expect(html).toContain("fetched at build time by npm, pinned by package-lock.json");
     expect(html).toContain("<summary><b>Exact dependencies (1)</b></summary>");
     expect(html).toContain(`<summary><b>Files (${e.foundations.files.length})</b></summary>`);
-    expect(html).toContain("ourapps-ae/card-deck-class");
+    expect(html).toContain("clodhub/card-deck-class");
     expect(html).toContain(escapeHtml(SIGNATURES_NOTE));
     expect(html).not.toContain("<details open");
     expect(html).toContain('href="/api/components/card-deck/0.1.0/details"');
@@ -417,7 +417,7 @@ describe("the format round on pages", () => {
   });
 
   it("compares a class's implementations side by side", () => {
-    const html = classBody({ name: "ourapps-ae/card-deck-class", slug: "card-deck-class", version: "1.0.0", title: "Card deck", summary: "A deck", category: "games/cards", presentation: "visual", implementations: 2, publisher: null, url: "", digest: "c".repeat(64), provides: [], requires: [], settings: { type: "object", properties: {}, required: [], additionalProperties: false }, suites: [{ id: "behaviour", argv: ["node", "check.mjs"], network: false, timeoutSeconds: 30 }], versions: [{ version: "1.0.0", digest: "c".repeat(64), publishedAt: "2026-11-01T00:00:00.000Z" }], implementationList: [{ name: "acme/card-deck", slug: "card-deck", version: "0.1.0", description: "A deck", thumbnail: image.thumbnail, quality: { level: "integration-tested", certified: false, liveTested: null }, platforms: ["web", "ios"], downloads: 40, vulnerabilities: 0, url: "" }, { name: "acme/fancy-deck", slug: "fancy-deck", version: "1.0.0", description: "Fancy", thumbnail: null, quality: null, platforms: ["web"], downloads: 3, vulnerabilities: null, url: "" }] }).html;
+    const html = classBody({ name: "clodhub/card-deck-class", slug: "card-deck-class", version: "1.0.0", title: "Card deck", summary: "A deck", category: "games/cards", presentation: "visual", implementations: 2, publisher: null, url: "", digest: "c".repeat(64), provides: [], requires: [], settings: { type: "object", properties: {}, required: [], additionalProperties: false }, suites: [{ id: "behaviour", argv: ["node", "check.mjs"], network: false, timeoutSeconds: 30 }], versions: [{ version: "1.0.0", digest: "c".repeat(64), publishedAt: "2026-11-01T00:00:00.000Z" }], implementationList: [{ name: "acme/card-deck", slug: "card-deck", version: "0.1.0", description: "A deck", thumbnail: image.thumbnail, quality: { level: "integration-tested", certified: false, liveTested: null }, platforms: ["web", "ios"], downloads: 40, vulnerabilities: 0, url: "" }, { name: "acme/fancy-deck", slug: "fancy-deck", version: "1.0.0", description: "Fancy", thumbnail: null, quality: null, platforms: ["web"], downloads: 3, vulnerabilities: null, url: "" }] }).html;
     expect(html).toContain("Implementations (2)");
     expect(html).toContain('<a href="/components/card-deck">acme/card-deck</a> 0.1.0');
     expect(html).toContain("Integration-tested");
@@ -432,7 +432,7 @@ describe("build reports on the recipe page", () => {
     id: `id${version.replace(/\./g, "")}`, version, digest: `sha256:${"a".repeat(64)}`, date, publishedAt: `${date}T12:00:00Z`, current,
     agent: { harness: "OpenCode 2.3.2", model: "anthropic/claude-opus-5-5" }, activeMinutes: 27.6, costUsd: 1.85,
     results: [{ target: "server", built: true, tested: "37 of 37 tests", ran: "deployed" }, { target: "ios", built: false, tested: "<b>not built</b>", ran: "not launched" }],
-    problems: ["a first deploy failed"], rating: { score: 7, of: 10, by: "the building agent", mostHelpful: "make the first deploy work" }, url: "https://ourapps.app/api/recipes/poker-night/reports/x",
+    problems: ["a first deploy failed"], rating: { score: 7, of: 10, by: "the building agent", mostHelpful: "make the first deploy work" }, url: "https://clodhub.com/api/recipes/poker-night/reports/x",
   });
 
   it("lists each report after Build it with its targets, problems and rating, and notes a report of another version", () => {

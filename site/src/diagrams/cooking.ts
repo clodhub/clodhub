@@ -2,7 +2,7 @@
 // and every update after. Hand-laid: every coordinate is computed here from the text. One zone per party that acts;
 // steps run left to right, a second row starts again at the left, and a line down the left margin carries the result
 // of one zone into the next. Regenerated into public/diagrams/cooking-a-recipe.svg by scripts/build-diagrams.ts.
-import { COLOURS, Canvas, INK, measure, pillWidth, ZTITLE, type CardBox, type Kind, type Zone } from "@my/store-shared";
+import { COLOURS, Canvas, INK, measure, pillWidth, ZTITLE, type CardBox, type Kind, type Zone } from "@clodhub/shared";
 
 interface Step {
   title: string;
@@ -28,7 +28,7 @@ const PARTS: Part[] = [
     icon: "host",
     rows: [
       [
-        { title: "1 Find a recipe", lines: ["in the recipe library at", "ourapps.app/recipes, or", "compose one from components"] },
+        { title: "1 Find a recipe", lines: ["on ClodHub at", "clodhub.com/recipes, or", "compose one from components"] },
         { title: "2 Read its questions", lines: ["the recipe page lists each", "question, its options and", "its default"] },
         { title: "3 Answer them", lines: ["your agent infers what it", "can from your repository", "and asks you the rest"] },
       ],
@@ -73,14 +73,14 @@ const PARTS: Part[] = [
   },
   {
     title: "Delivery: your accounts, your people",
-    who: "your accounts and ourapps",
+    who: "your accounts and ourapps.app",
     zone: "green",
     kind: "rooms",
     icon: "rooms",
     rows: [
       [
         { title: "14 Your accounts", lines: ["the application runs on", "hosting, Apple and Android", "accounts you own"] },
-        { title: "15 Share link", lines: ["ourapps makes one private", "link per person or group"] },
+        { title: "15 Share link", lines: ["ourapps.app makes one", "private link per person", "or group"] },
         { title: "16 Your people", lines: ["staff, members, customers", "open the link and install", "on their devices"] },
       ],
     ],
@@ -123,7 +123,7 @@ export function cookingSvg(): string {
     [
       { text: "the next step", colour: FLOW, arrow: true },
     ],
-    ["Each zone is one party that acts.", "A pill names what passes from one", "zone to the next.", "ourapps keeps the library, the catalogue", "and the share links. The building happens", "in your repository, on your computer."],
+    ["Each zone is one party that acts.", "A pill names what passes from one", "zone to the next.", "ClodHub keeps the catalogue; ourapps.app", "keeps the share links. The building happens", "in your repository, on your computer."],
   );
 
   // Every card's size first, so every row and zone can be sized.

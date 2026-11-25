@@ -16,12 +16,12 @@ describe("renderMarkdown", () => {
   });
 
   it("escapes raw HTML and refuses unsafe links", () => {
-    const out = renderMarkdown('<script>alert(1)</script> [x](javascript:alert(1)) [ok](https://ourapps.app/a?b=1&c=2) [rel](/recipes)');
+    const out = renderMarkdown('<script>alert(1)</script> [x](javascript:alert(1)) [ok](https://clodhub.com/a?b=1&c=2) [rel](/recipes)');
     expect(out).not.toContain("<script>");
     expect(out).toContain("&lt;script&gt;");
     expect(out).toContain("[x](javascript:alert(1))");
     expect(out).not.toContain('href="javascript');
-    expect(out).toContain('<a href="https://ourapps.app/a?b=1&amp;c=2" target="_blank" rel="noopener">ok</a>');
+    expect(out).toContain('<a href="https://clodhub.com/a?b=1&amp;c=2" target="_blank" rel="noopener">ok</a>');
     expect(out).toContain('<a href="/recipes">rel</a>');
   });
 

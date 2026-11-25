@@ -38,13 +38,13 @@ This descriptor and its digest-bound reference are independent of any preferred 
 ```json
 {
   "reference": {
-    "name": "ourapps-ae/counter-class",
+    "name": "clodhub/counter-class",
     "version": "1.0.0",
-    "digest": "0ca7e37debb58040c02df6755aae5ca1b88d67067de1236e3d4095a2f31d2dbb"
+    "digest": "f525dc2e914f12672127d0c7d517a2a1934c3ef3d0177e14b8b56e4764683900"
   },
   "descriptor": {
     "format": 2,
-    "name": "ourapps-ae/counter-class",
+    "name": "clodhub/counter-class",
     "version": "1.0.0",
     "title": "Counter",
     "summary": "A number people can raise and lower together",

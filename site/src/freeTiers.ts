@@ -667,7 +667,7 @@ export const CATEGORIES: Category[] = [
           "Add a manifest and service worker; `pushManager.subscribe()` from a button; send with the `web-push` package.",
         ],
         env: ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"],
-        fits: "Web apps shared through ourapps: their banner offers adding them to the home screen, which iPhone needs for web push.",
+        fits: "Web apps shared through ourapps.app: their banner offers adding them to the home screen, which iPhone needs for web push.",
         sources: ["https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/"],
       },
       {
@@ -899,8 +899,8 @@ export const CATEGORIES: Category[] = [
         verdict: "pick",
         free: ["Public repositories: free standard runners. Private: 2,000 minutes a month, which macOS uses about 10 times faster (unverified ratio; macOS is $0.062 a minute against Linux $0.006)."],
         catches: ["With no payment method, runs stop when the minutes run out."],
-        setup: ["Add `.github/workflows/release.yml` (the ourapps repository prompt writes it); store signing material as repository secrets."],
-        fits: "Every ourapps release pipeline.",
+        setup: ["Add `.github/workflows/release.yml` (the ourapps.app repository prompt writes it); store signing material as repository secrets."],
+        fits: "Every ourapps.app release pipeline.",
         sources: ["https://docs.github.com/en/billing/reference/actions-runner-pricing"],
       },
       {
@@ -1018,5 +1018,5 @@ export const CATEGORIES: Category[] = [
 
 // The prompt behind each service's "Copy agent prompt" button.
 export function servicePrompt(s: Service): string {
-  return `Add ${s.name} to this app, keeping it inside the free plan. Read the "${s.name}" section of https://ourapps.app/free-tiers.md and follow its Agent setup steps. Before relying on any number, open the Sources links and check the current limits, because free tiers change. Store keys only as server secrets (${(s.env ?? ["the names given there"]).join(", ")}), never in the app bundle. Apply the best practices listed for its category. When done, tell me what you set up, which limits now apply, and anything I must do myself (sign-ups, payment details, approvals).`;
+  return `Add ${s.name} to this app, keeping it inside the free plan. Read the "${s.name}" section of https://clodhub.com/free-tiers.md and follow its Agent setup steps. Before relying on any number, open the Sources links and check the current limits, because free tiers change. Store keys only as server secrets (${(s.env ?? ["the names given there"]).join(", ")}), never in the app bundle. Apply the best practices listed for its category. When done, tell me what you set up, which limits now apply, and anything I must do myself (sign-ups, payment details, approvals).`;
 }

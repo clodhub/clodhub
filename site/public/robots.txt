@@ -1,13 +1,17 @@
 User-agent: *
 Allow: /$
-Allow: /example
-Allow: /example/
+Allow: /guide
 Allow: /terms
-Allow: /reference
 Allow: /small
 Allow: /recipes
 Allow: /components
+Allow: /classes
+Allow: /categories
+Allow: /free-tiers.md
+Allow: /agents.md
+Allow: /llms.txt
+Allow: /contract.md
 Allow: /sitemap.xml
 Disallow: /
 
-Sitemap: https://ourapps.app/sitemap.xml
+Sitemap: https://clodhub.com/sitemap.xml

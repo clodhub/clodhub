@@ -4,8 +4,8 @@
 <rect x="0" y="0" width="1190" height="1702" fill="#FAFAFA"/>
 <text x="40" y="52" font-family="Helvetica Neue,Arial,sans-serif" font-size="26" font-weight="bold" fill="#263238">How a recipe is cooked</text>
 <text x="40" y="78" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" fill="#607D8B">From a recipe in the library to an application on your people's devices, and every update after</text>
-<rect x="40" y="108" width="611.4" height="210" rx="8" fill="white" stroke="#90A4AE" stroke-width="1.4"/>
-<path d="M 40 116 a8 8 0 0 1 8 -8 h595.4 a8 8 0 0 1 8 8 v22 h-611.4 z" fill="#37474F"/>
+<rect x="40" y="108" width="651.3" height="210" rx="8" fill="white" stroke="#90A4AE" stroke-width="1.4"/>
+<path d="M 40 116 a8 8 0 0 1 8 -8 h635.3 a8 8 0 0 1 8 8 v22 h-651.3 z" fill="#37474F"/>
 <text x="54" y="128" font-family="Helvetica Neue,Arial,sans-serif" font-size="14" font-weight="bold" fill="white">Legend</text>
 <rect x="54" y="150" width="14" height="14" rx="3" fill="#1E88E5"/>
 <text x="76" y="161" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a step by you and your agent</text>
@@ -14,17 +14,17 @@
 <rect x="54" y="198" width="14" height="14" rx="3" fill="#FB8C00"/>
 <text x="76" y="209" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a step by aepm</text>
 <rect x="54" y="222" width="14" height="14" rx="3" fill="#43A047"/>
-<text x="76" y="233" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a step by your accounts and ourapps</text>
+<text x="76" y="233" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a step by your accounts and ourapps.app</text>
 <rect x="54" y="246" width="14" height="14" rx="3" fill="#AD1457"/>
 <text x="76" y="257" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a step by aepm and you, the owner</text>
 <path d="M 54 287 L 84 287" stroke="#455A64" stroke-width="2" marker-end="url(#arr-455A64)" fill="none" stroke-linecap="round"/>
 <text x="94" y="291" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">the next step</text>
-<text x="354.75" y="161" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Each zone is one party that acts.</text>
-<text x="354.75" y="176" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">A pill names what passes from one</text>
-<text x="354.75" y="191" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">zone to the next.</text>
-<text x="354.75" y="206" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ourapps keeps the library, the catalogue</text>
-<text x="354.75" y="221" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">and the share links. The building happens</text>
-<text x="354.75" y="236" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">in your repository, on your computer.</text>
+<text x="381.35" y="161" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Each zone is one party that acts.</text>
+<text x="381.35" y="176" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">A pill names what passes from one</text>
+<text x="381.35" y="191" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">zone to the next.</text>
+<text x="381.35" y="206" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ClodHub keeps the catalogue; ourapps.app</text>
+<text x="381.35" y="221" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">keeps the share links. The building happens</text>
+<text x="381.35" y="236" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">in your repository, on your computer.</text>
 <rect x="84" y="368" width="1066" height="183" rx="10" fill="#E8EAF6" stroke="#3949AB" stroke-width="1.6"/>
 <path d="M 84 378 a10 10 0 0 1 10 -10 h1046 a10 10 0 0 1 10 10 v34 h-1066 z" fill="#3949AB" fill-opacity="0.92"/>
 <circle cx="101" cy="395" r="2.6" fill="white"/><circle cx="111" cy="395" r="2.6" fill="white"/><circle cx="106" cy="385" r="2.6" fill="white"/><path d="M 106 385 L 101 395 M 106 385 L 111 395 M 101 395 H 111" stroke="white" stroke-width="1.4"/>
@@ -33,8 +33,8 @@
 <path d="M 110 444 a8 8 0 0 1 8 -8 h188 a8 8 0 0 1 8 8 v22 h-204 z" fill="#1E88E5"/>
 <rect x="119" y="445" width="16" height="10" rx="1.5" fill="none" stroke="white" stroke-width="1.8"/><line x1="127" y1="455" x2="127" y2="458" stroke="white" stroke-width="1.8"/><line x1="123" y1="458.5" x2="131" y2="458.5" stroke="white" stroke-width="1.8"/>
 <text x="142" y="456" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">1 Find a recipe</text>
-<text x="122" y="485" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">in the recipe library at</text>
-<text x="122" y="500" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ourapps.app/recipes, or</text>
+<text x="122" y="485" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">on ClodHub at</text>
+<text x="122" y="500" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">clodhub.com/recipes, or</text>
 <text x="122" y="515" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">compose one from components</text>
 </g>
 <g><rect x="370" y="436" width="224" height="89" rx="8" fill="#E3F2FD" stroke="#1E88E5" stroke-width="1.4"/>
@@ -161,23 +161,24 @@
 <text x="122" y="1344" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">hosting, Apple and Android</text>
 <text x="122" y="1359" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">accounts you own</text>
 </g>
-<g><rect x="363" y="1280" width="191" height="74" rx="8" fill="#E8F5E9" stroke="#43A047" stroke-width="1.4"/>
-<path d="M 363 1288 a8 8 0 0 1 8 -8 h175 a8 8 0 0 1 8 8 v22 h-191 z" fill="#43A047"/>
+<g><rect x="363" y="1280" width="177" height="89" rx="8" fill="#E8F5E9" stroke="#43A047" stroke-width="1.4"/>
+<path d="M 363 1288 a8 8 0 0 1 8 -8 h161 a8 8 0 0 1 8 8 v22 h-177 z" fill="#43A047"/>
 <circle cx="375" cy="1300" r="2.6" fill="white"/><circle cx="385" cy="1300" r="2.6" fill="white"/><circle cx="380" cy="1290" r="2.6" fill="white"/><path d="M 380 1290 L 375 1300 M 380 1290 L 385 1300 M 375 1300 H 385" stroke="white" stroke-width="1.4"/>
 <text x="395" y="1300" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">15 Share link</text>
-<text x="375" y="1329" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ourapps makes one private</text>
-<text x="375" y="1344" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">link per person or group</text>
+<text x="375" y="1329" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">ourapps.app makes one</text>
+<text x="375" y="1344" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">private link per person</text>
+<text x="375" y="1359" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">or group</text>
 </g>
 <path d="M 307 1324 L 362 1324" fill="none" stroke="#455A64" stroke-width="2" marker-end="url(#arr-455A64)" stroke-linejoin="round" stroke-linecap="round"/>
-<g><rect x="610" y="1280" width="191" height="89" rx="8" fill="#E8F5E9" stroke="#43A047" stroke-width="1.4"/>
-<path d="M 610 1288 a8 8 0 0 1 8 -8 h175 a8 8 0 0 1 8 8 v22 h-191 z" fill="#43A047"/>
-<circle cx="622" cy="1300" r="2.6" fill="white"/><circle cx="632" cy="1300" r="2.6" fill="white"/><circle cx="627" cy="1290" r="2.6" fill="white"/><path d="M 627 1290 L 622 1300 M 627 1290 L 632 1300 M 622 1300 H 632" stroke="white" stroke-width="1.4"/>
-<text x="642" y="1300" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">16 Your people</text>
-<text x="622" y="1329" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">staff, members, customers</text>
-<text x="622" y="1344" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">open the link and install</text>
-<text x="622" y="1359" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">on their devices</text>
+<g><rect x="596" y="1280" width="191" height="89" rx="8" fill="#E8F5E9" stroke="#43A047" stroke-width="1.4"/>
+<path d="M 596 1288 a8 8 0 0 1 8 -8 h175 a8 8 0 0 1 8 8 v22 h-191 z" fill="#43A047"/>
+<circle cx="608" cy="1300" r="2.6" fill="white"/><circle cx="618" cy="1300" r="2.6" fill="white"/><circle cx="613" cy="1290" r="2.6" fill="white"/><path d="M 613 1290 L 608 1300 M 613 1290 L 618 1300 M 608 1300 H 618" stroke="white" stroke-width="1.4"/>
+<text x="628" y="1300" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">16 Your people</text>
+<text x="608" y="1329" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">staff, members, customers</text>
+<text x="608" y="1344" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">open the link and install</text>
+<text x="608" y="1359" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">on their devices</text>
 </g>
-<path d="M 554 1324 L 609 1324" fill="none" stroke="#455A64" stroke-width="2" marker-end="url(#arr-455A64)" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 540 1324 L 595 1324" fill="none" stroke="#455A64" stroke-width="2" marker-end="url(#arr-455A64)" stroke-linejoin="round" stroke-linecap="round"/>
 <rect x="84" y="1449" width="1066" height="213" rx="10" fill="#FCE4EC" stroke="#AD1457" stroke-width="1.6"/>
 <path d="M 84 1459 a10 10 0 0 1 10 -10 h1046 a10 10 0 0 1 10 10 v34 h-1066 z" fill="#AD1457" fill-opacity="0.92"/>
 <circle cx="101" cy="1476" r="2.6" fill="white"/><circle cx="111" cy="1476" r="2.6" fill="white"/><circle cx="106" cy="1466" r="2.6" fill="white"/><path d="M 106 1466 L 101 1476 M 106 1466 L 111 1476 M 101 1476 H 111" stroke="white" stroke-width="1.4"/>
@@ -222,6 +223,6 @@
 <g><rect x="931.5" y="821" width="68" height="18" rx="9" fill="white" stroke="#263238" stroke-width="1.2"/><text x="965.5" y="834" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a design</text></g>
 <path d="M 471.5 1132 L 471.5 1185 L 52 1185 L 52 1324 L 109 1324" fill="none" stroke="#455A64" stroke-width="2" marker-end="url(#arr-455A64)" stroke-linejoin="round" stroke-linecap="round"/>
 <g><rect x="341.5" y="1176" width="114" height="18" rx="9" fill="white" stroke="#263238" stroke-width="1.2"/><text x="398.5" y="1189" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">the application</text></g>
-<path d="M 705.5 1369 L 705.5 1422 L 52 1422 L 52 1561 L 109 1561" fill="none" stroke="#455A64" stroke-width="2" marker-end="url(#arr-455A64)" stroke-linejoin="round" stroke-linecap="round"/>
-<g><rect x="641.5" y="1413" width="48" height="18" rx="9" fill="white" stroke="#263238" stroke-width="1.2"/><text x="665.5" y="1426" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">later</text></g>
+<path d="M 691.5 1369 L 691.5 1422 L 52 1422 L 52 1561 L 109 1561" fill="none" stroke="#455A64" stroke-width="2" marker-end="url(#arr-455A64)" stroke-linejoin="round" stroke-linecap="round"/>
+<g><rect x="627.5" y="1413" width="48" height="18" rx="9" fill="white" stroke="#263238" stroke-width="1.2"/><text x="651.5" y="1426" text-anchor="middle" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">later</text></g>
 </svg>

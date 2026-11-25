@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TERMS_VERSION } from "@my/store-shared";
+import { TERMS_VERSION } from "@clodhub/shared";
 import { answerText, conditionHtml, costLabel, includedWhenHtml, loadText, paragraphsOf, queryString, readQuery, releaseUrl, targetLabel, versionFromSearch, withFilter } from "./library.js";
 import { termsBody } from "./pages/terms.js";
 import { storeFrame } from "./pages/public.js";
@@ -90,7 +90,7 @@ describe("library wording", () => {
 describe("public copy", () => {
   it("terms describe the library and catalogue", () => {
     const text = termsBody().html;
-    expect(text).toContain("public recipe library and component catalogue");
+    expect(text).toContain("public catalogue of recipes");
     expect(text).toContain("it does not keep the packages");
     expect(text).toContain("Recipes, components and classes you publish");
     expect(text).toContain(`Version ${TERMS_VERSION}`);
@@ -111,12 +111,12 @@ describe("public copy", () => {
     expect(TERMS_VERSION).toMatch(/^\d{4}-\d{2}-\d{2}(\.\d+)?$/);
   });
 
-  it("the store frame keeps the copyright, links the library and says what is public", () => {
+  it("the public frame keeps the copyright, links the catalogue and says what is public", () => {
     const page = storeFrame(html`<p>x</p>`).html;
     expect(page).toContain("Copyright Level N Ltd 2026");
     expect(page).toContain('href="/recipes"');
     expect(page).toContain('href="/components"');
-    expect(page).toContain("The recipe library and component catalogue are public");
+    expect(page).toContain("The catalogue is public");
   });
 });
 
@@ -128,24 +128,24 @@ describe("one story across the pages", () => {
     return text;
   };
 
-  it("the guide opens with recipes and components and keeps the delivery steps", () => {
+  it("the guide opens with recipes and components and holds no delivery steps", () => {
     const guide = read("./pages/guide.ts");
     const ids = [...guide.matchAll(/^ {6}id: "([a-z-]+)",$/gm)].map((m) => m[1]);
-    expect(ids.slice(0, 6)).toEqual(["how-it-works", "find-recipe", "compose", "publish", "deprecation", "tldr"]);
-    for (const id of ["sign-in", "credentials", "add-app", "release", "share", "testflight"]) expect(ids).toContain(id);
+    expect(ids.slice(0, 5)).toEqual(["how-it-works", "find-recipe", "compose", "publish", "deprecation"]);
+    for (const id of ["add-app", "release", "share", "testflight"]) expect(ids).not.toContain(id);
   });
 
-  it("no page or document tells the old story", () => {
-    const files = ["./pages/public.ts", "./pages/guide.ts", "./pages/small.ts", "./pages/example.ts", "./pages/shell.ts", "./pages/dev.ts", "./pages/prompts.ts", "./pages/reference.ts", "./pages/terms.ts", "../index.html", "../public/agents.md", "../public/llms.txt", "../public/cloud-assembly.md"];
+  it("no page or document tells the old story or names the old scope", () => {
+    const files = ["./pages/public.ts", "./pages/guide.ts", "./pages/small.ts", "./pages/shell.ts", "./pages/dev.ts", "./pages/prompts.ts", "./pages/terms.ts", "./pages/library.ts", "../index.html", "../public/agents.md", "../public/llms.txt", "../public/cloud-assembly.md", "../public/aepm-assemble.yml"];
     for (const file of files) {
       const text = read(file);
-      for (const old of ["Built with AI agents, shared with friends", "Private by design", "a private installer", "Builds apps for friends and family", "friends and family", "For your friends", "At eight people", "private app store"]) expect(text, `${file}: ${old}`).not.toContain(old);
+      for (const old of ["friends and family", "private app store", "ourapps-" + "ae", "ourapps console", "Our Agentically-Engineered"]) expect(text, `${file}: ${old}`).not.toContain(old);
     }
   });
 
-  it("the landing page speaks to businesses, clubs, households and shops", () => {
+  it("the landing page says in plain words what ClodHub is", () => {
     const landing = read("./pages/public.ts");
-    for (const text of ["Our apps for our businesses, our club, our home, our shop", "For your people", "For you, the developer", "Who it is for", "A clinic's appointment board", "A club's league night", "A shop's order screen", "A household's chores planner", "A restaurant's table display", "Fast", "Low cost", "Maintainable and safe", "Delivered to your people"]) expect(landing, text).toContain(text);
+    for (const text of ["ClodHub is a catalogue of reviewed components and recipes", "aepm", "Browse recipes", "Browse components"]) expect(landing, text).toContain(text);
     const small = read("./pages/small.ts");
     expect(small).toContain("At a small organisation's size, the expensive parts are free");
     expect(small).toContain("Choose free or paid by size");
@@ -160,7 +160,7 @@ describe("one story across the pages", () => {
     for (const step of ["aepm fetch", "aepm design", "--answers answers.json", "aepm resolve", "levelnpolicy.json", "aepm install", "secrets.AEPM_OWNER_KEY", "secrets.AEPM_PUSH_TOKEN"]) expect(workflow, step).toContain(step);
   });
 
-  it("the console sidebar links the library and the catalogue", () => {
+  it("the signed-in sidebar links the recipes and components", () => {
     const shell = read("./pages/shell.ts");
     expect(shell).toContain('href: "/recipes"');
     expect(shell).toContain('href: "/components"');

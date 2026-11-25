@@ -1,5 +1,5 @@
-// Terms of use and data statement, shown at sign-up and reachable from the profile.
-import { TERMS_VERSION } from "@my/store-shared";
+// Terms of use and data statement, shown at sign-up and reachable from every footer.
+import { TERMS_VERSION } from "@clodhub/shared";
 import { api, whoAmI, type Me } from "../api.js";
 import { html, mount, type Raw } from "../html.js";
 import { navigate } from "../nav.js";
@@ -13,58 +13,50 @@ export function termsBody(): Raw {
   return html`
     <article class="story terms">
       <h1 style="font-size:34px">Terms of use and data statement</h1>
-      <p class="muted">Version ${TERMS_VERSION}. Plain words on purpose. ourapps is operated by Level N Ltd.</p>
+      <p class="muted">Version ${TERMS_VERSION}. Plain words on purpose. ClodHub is operated by Level N Ltd.</p>
 
-      <h2>1. What ourapps is</h2>
-      <p>ourapps does two things. It delivers applications privately: developers register apps they built for their business, club, household or shop, create share links, and the people they share with (staff, members, customers, family) install from those links; apps are not listed or searchable. It is also a public recipe library and component catalogue: developers may publish recipes (applications assembled from questions) and components (reviewed parts), and anyone can browse and search them, with a plain-text and a JSON version of every page for agents.</p>
-      <p>ourapps keeps the page details of a recipe or component and pointers to the publisher's own GitHub release; it does not keep the packages, and serves them through links that expire after an hour. It is not an app store: it does not review apps, recipes or components, and there is no transaction between you and the people who install or build from what you publish.</p>
+      <h2>1. What ClodHub is</h2>
+      <p>ClodHub is a public catalogue of recipes (applications assembled from questions), components (reviewed parts) and classes (the contracts components fill). Developers publish them from their own GitHub repositories, and anyone can browse and search them, with a plain-text and a JSON version of every page for agents.</p>
+      <p>ClodHub keeps the page details of a recipe or component and pointers to the publisher's own GitHub release; it does not keep the packages, and serves them through links that expire after an hour. It is not a store: there is no transaction between you and the people who build from what you publish.</p>
 
       <h2>2. Who the terms apply to</h2>
-      <p>These terms are between Level N Ltd and you, the developer who signs in. People who open a share link do not sign in and hold no account; what the service records about them is in section 4.</p>
+      <p>These terms are between Level N Ltd and you, the developer who signs in. People who only read the catalogue do not sign in and hold no account; what the service records about them is in section 4.</p>
 
       <h2>3. What we hold about you and why</h2>
       <table class="table">
         <tr><th>Data</th><th>Why we hold it</th><th>Where it goes</th></tr>
-        <tr><td>GitHub id, login, display name</td><td>To identify your account when you sign in; sign-in reads your public profile</td><td>Display name and page address are shown to the people you share with on install pages</td></tr>
+        <tr><td>GitHub id, login, display name</td><td>To identify your account when you sign in; sign-in reads your public profile</td><td>Display name and publisher name are shown as the publisher of your entries</td></tr>
         <tr><td>The GitHub organisations you are an active member of, read at each sign-in</td><td>To decide whether you may publish classes in an organisation's name</td><td>Nowhere; replaced at your next sign-in and removed with your account</td></tr>
-        <tr><td>GitHub token (encrypted)</td><td>To read release assets and workflow status from your repositories and to ask them for fresh builds</td><td>Sent only to api.github.com, only for repositories you named</td></tr>
-        <tr><td>App Store Connect API key and team id (encrypted)</td><td>To create your iPhone signing certificate, App IDs and provisioning profiles, and to upload builds to TestFlight and send them to the people you share with, on your behalf</td><td>Sent only to api.appstoreconnect.apple.com, when you set up signing or TestFlight, when a workflow uploads a build, and when the service looks after TestFlight builds</td></tr>
-        <tr><td>Private keys of the Apple Distribution and Mac Installer Distribution certificates the service creates for you (encrypted), with the certificates</td><td>So your apps' release workflows can sign Apple apps and Mac installation packages without Apple secrets in the repositories</td><td>Given only to a release workflow that presents one of your apps' build tokens; installer signing material is returned only for Mac builds</td></tr>
-        <tr><td>App listings (name, text, image addresses, repository name, bundle ID) and their TestFlight set-up</td><td>To build install pages and read releases</td><td>Shown to whoever holds a share link; details only on your public page when you switch it on</td></tr>
-        <tr><td>Recipes, components and classes you publish (name, version, description, questions, suitability and migration declarations, diagram, repository and release names, digests), and the images you upload for them</td><td>To list them in the recipe library and component catalogue, let people search them, and serve their packages from your GitHub release with your token</td><td>Public to anyone, with your display name and page address as publisher; a version stays bound to its digest after it is unlisted; after you delete your account they stay public without your name (section 7)</td></tr>
+        <tr><td>GitHub token (encrypted)</td><td>To check, when you publish, that you can push to the repository and that its release holds the package, and to read the release when someone asks for a download link</td><td>Sent only to api.github.com</td></tr>
+        <tr><td>Recipes, components and classes you publish (name, version, description, questions, suitability and migration declarations, package foundations, diagram, repository and release names, digests), and the images you upload for them</td><td>To list them in the catalogue, let people search them, and serve their packages from your GitHub release with your token</td><td>Public to anyone, with your display name and publisher name; a version stays bound to its digest after it is unlisted; after you delete your account they stay public without your name (section 7)</td></tr>
         <tr><td>Build reports the catalogue's curators publish about a recipe: the agent, model and harness, the prompt and the answers given, the measured times, tool calls, tokens and cost, what was built, tested and run, problems and a rating</td><td>To show on the recipe's page how agents fared building from it</td><td>Public to anyone, with the recipe</td></tr>
-        <tr><td>Share links</td><td>To let the people you share with reach an install page and to let you revoke access</td><td>Known to whoever you send them to</td></tr>
-        <tr><td>API keys (hashed), sessions (hashed), build tokens (hashed)</td><td>To let you, your agents and your repositories act on your account</td><td>Nowhere; we hold hashes only</td></tr>
+        <tr><td>API keys (hashed), sessions (hashed)</td><td>To let you and your agents act on your account</td><td>Nowhere; we hold hashes only</td></tr>
         <tr><td>Audit log (event, short detail, country of the request)</td><td>So you can see what happened on your account</td><td>Shown only to you</td></tr>
       </table>
-      <p>We do not sell, share or analyse this information for any purpose other than running the service for you. No advertising, no analytics, no tracking of the people you share with. Level N Ltd staff do not read your credentials; they are encrypted with a key that exists only in the service's secret store, and the service decrypts a field only at the moment it is needed.</p>
+      <p>We do not sell, share or analyse this information for any purpose other than running the service for you. No advertising, no analytics, no tracking. Level N Ltd staff do not read your token; it is encrypted with a key that exists only in the service's secret store, and the service decrypts it only at the moment it is needed.</p>
 
-      <h2>4. What we hold about the people you share with</h2>
-      <p>Nothing. People who install on iPhone or iPad deal with Apple directly through TestFlight, and Android and web installs record nothing about the person. Install pages set no cookies and carry no analytics.</p>
-      <p>When anyone asks for a recipe or component download link, the service keeps a hash of their network address, mixed with the day and a secret, until the end of that day (UTC); it is deleted within the following hour. The hash counts one download per address and limits how many links one address can ask for. The address itself is not stored.</p>
+      <h2>4. What we hold about people who read the catalogue</h2>
+      <p>Pages set no tracking cookies and carry no analytics. When anyone asks for a recipe or component download link, the service keeps a hash of their network address, mixed with the day and a secret, until the end of that day (UTC); it is deleted within the following hour. The hash counts one download per address and limits how many links one address can ask for. The address itself is not stored.</p>
 
       <h2>5. Your responsibilities</h2>
       <ul class="bullets">
-        <li>You are responsible for the apps you share: what they do, what they collect, and that you have the right to the code, the images and the names in them. Write the privacy summary on each app honestly; the people you share with rely on it.</li>
-        <li>Share links are private by obscurity. Send them to people you mean to, and revoke them when you change your mind.</li>
-        <li>Apple's and Google's developer agreements apply to you, not to us. In particular, TestFlight builds go through Apple's beta review.</li>
-        <li>For each TestFlight build the service answers Apple's export compliance question for you: the app uses no encryption, or only encryption exempt from export compliance requirements. Share through the service only apps for which that is true.</li>
-        <li>Publish a recipe or component only if you have the right to, describe it honestly, and put references to secrets in it, never secret values. Anything you publish is public until you unlist it, and stays public after you delete your account unless you unlist it first. You can mark your own recipe or component deprecated, with a replacement if you name one, and clear that mark again.</li>
-        <li>Keep your GitHub and Apple accounts secure; the service can only be as safe as the sign-in in front of it.</li>
-        <li>Do not use the service to distribute anything unlawful, deceptive or harmful, or to reach people who did not ask for it.</li>
+        <li>Publish a recipe, component or class only if you have the right to, describe it honestly, and put references to secrets in it, never secret values.</li>
+        <li>Anything you publish is public until you unlist it, and stays public after you delete your account unless you unlist it first. You can mark your own recipe or component deprecated, with a replacement if you name one, and clear that mark again.</li>
+        <li>Keep your GitHub account secure; the service can only be as safe as the sign-in in front of it.</li>
+        <li>Do not use the service to publish anything unlawful, deceptive or harmful.</li>
       </ul>
 
       <h2>6. Keeping it secure</h2>
-      <p>Credentials are encrypted per account with keys derived from a secret that lives only in the service's secret store; tokens and sessions are stored as keyed hashes; credential changes require a browser session; API keys have scopes and expiry; every security event is logged and shown to you. The details are in the <a href="/dev/guide#security">guide</a>. If we learn of a breach affecting your data we will tell you through the email on your GitHub account without undue delay and say what was affected and what we did.</p>
+      <p>The GitHub token is encrypted per account with a key derived from a secret that lives only in the service's secret store; API keys and sessions are stored as keyed hashes; changing the token requires a browser session; API keys have scopes and expiry; every security event is logged and shown to you. The details are in the <a href="/guide#security">guide</a>. If we learn of a breach affecting your data we will tell you through the email on your GitHub account without undue delay and say what was affected and what we did.</p>
 
       <h2>7. Removing your data</h2>
-      <p>Credentials can be removed one by one in Settings. Deleting an app removes its links and its TestFlight records. Unlisting a recipe or component hides it from the library and catalogue. Deleting your account (Settings, Profile) removes everything we hold about you at once, except the recipes and components you published: those stay in the library and catalogue without your name, are marked orphaned, and carry a warning on every page and response that shows them or anything that uses them. Their packages can still be downloaded only while the release in your GitHub repository is public. Unlist them before deleting your account if you want them hidden. Apps already installed through TestFlight keep working until their build expires, which we cannot change. The signing certificate, the App Store profiles and the apps in App Store Connect remain on your Apple account; remove them there.</p>
+      <p>The GitHub token can be removed on the developer page. Unlisting a recipe or component hides it from the catalogue. Deleting your account (developer page, Account) removes everything we hold about you at once, except the recipes, components and classes you published: those stay in the catalogue without your name, are marked orphaned, and carry a warning on every page and response that shows them or anything that uses them. Their packages can still be downloaded only while the release in your GitHub repository is public. Unlist them before deleting your account if you want them hidden.</p>
 
       <h2>8. The service itself</h2>
-      <p>ourapps is provided free and as is. We aim to keep it running and to give notice before any withdrawal, but we make no promise of availability and accept no liability for loss arising from its use, to the extent the law allows. We may change these terms; when we do, you are asked to accept the current version the next time you open the console, and the version you accepted is shown in your profile.</p>
+      <p>ClodHub is provided free and as is. We aim to keep it running and to give notice before any withdrawal, but we make no promise of availability and accept no liability for loss arising from its use, to the extent the law allows. We may change these terms; when we do, you are asked to accept the current version the next time you sign in, and the version you accepted is shown on the developer page.</p>
 
       <h2>9. Contact</h2>
-      <p>Level N Ltd. Questions about these terms or about your data: use the contact details on <a href="https://www.level-n.com" target="_blank" rel="noopener">level-n.com</a>. Security problems: report them privately at <a href="https://github.com/ourapps-ae/ourapps/security/advisories/new" target="_blank" rel="noopener">github.com/ourapps-ae/ourapps/security</a>. Please do not post personal details or security problems in public issues.</p>
+      <p>Level N Ltd. Questions about these terms or about your data: use the contact details on <a href="https://www.level-n.com" target="_blank" rel="noopener">level-n.com</a>. Security problems: report them privately at <a href="https://github.com/clodhub/clodhub/security/advisories/new" target="_blank" rel="noopener">github.com/clodhub/clodhub/security</a>. Please do not post personal details or security problems in public issues.</p>
     </article>
   `;
 }
@@ -80,7 +72,7 @@ export async function termsPage(root: HTMLElement): Promise<void> {
         <div style="max-width:760px;margin:0 auto">
           ${me && !accepted ? acceptCard(me) : ""}
           ${termsBody()}
-          ${me && accepted ? html`<p class="small muted mt">You accepted version ${me.developer.termsAcceptedVersion} on ${new Date(me.developer.termsAcceptedAt!).toLocaleString()}. <a href="/dev/settings">Profile</a></p>` : ""}
+          ${me && accepted ? html`<p class="small muted mt">You accepted version ${me.developer.termsAcceptedVersion} on ${new Date(me.developer.termsAcceptedAt!).toLocaleString()}. <a href="/dev">Developer page</a></p>` : ""}
         </div>
       `,
       { me },
@@ -95,7 +87,7 @@ function acceptCard(me: Me): Raw {
   return html`
     <div class="card pad-l mt" style="border-color:var(--accent)">
       <h2 style="margin-top:0">${changed ? "Accept the current terms" : "Before you start"}</h2>
-      <p class="muted">${changed ? `You accepted version ${me.developer.termsAcceptedVersion}; version ${TERMS_VERSION} is current. Please read and accept it.` : "Read these terms once; they say what we hold about you and the people you share with, and why. The console opens as soon as you accept."}</p>
+      <p class="muted">${changed ? `You accepted version ${me.developer.termsAcceptedVersion}; version ${TERMS_VERSION} is current. Please read and accept it.` : "Read these terms once; they say what we hold about you and why. The developer page opens as soon as you accept."}</p>
       <label class="check mt"><input type="checkbox" id="agree" /> <span>I have read the terms and the data statement and I accept them.</span></label>
       <div class="form-actions"><button class="btn lg" id="accept" disabled>Accept and continue</button><form method="post" action="/api/auth/logout" style="display:inline"><button class="btn secondary" type="submit">Sign out instead</button></form></div>
       <div id="error" class="mt-s"></div>

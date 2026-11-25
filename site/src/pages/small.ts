@@ -56,7 +56,7 @@ export async function smallPage(root: HTMLElement): Promise<void> {
             <p>${CATEGORIES.map((c, i) => html`${i ? " · " : ""}${c.title}`)}</p>
             <div class="row wrap mt">
               <a class="btn" href="/free-tiers.md">Read the list (for agents)</a>
-              ${me ? html`<a class="btn secondary" href="/dev/guide#free-tiers">Open it in the guide</a>` : html`<a class="btn secondary" href="/api/auth/github">${icon("github")} Sign in for the guide</a>`}
+              <a class="btn secondary" href="/guide#free-tiers">Open it in the guide</a>
             </div>
           </div>
         </article>

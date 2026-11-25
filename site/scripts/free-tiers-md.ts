@@ -10,7 +10,7 @@ push(
   "",
   `Checked on the providers' own pages on ${CHECKED}. Free tiers change: open the Sources links and confirm a limit before relying on it. "(unverified)" marks what could not be confirmed.`,
   "",
-  "Apps distributed through ourapps.app have a few to a few dozen users. At that size most backend services fit inside free plans: realtime servers, video calls, databases, AI, notifications. This file lists them with limits, catches and setup steps an AI coding agent can follow.",
+  "Apps built from ClodHub recipes for a small organisation have a few to a few dozen users. At that size most backend services fit inside free plans: realtime servers, video calls, databases, AI, notifications. This file lists them with limits, catches and setup steps an AI coding agent can follow.",
   "",
   "## Rules that apply to every service",
   "",

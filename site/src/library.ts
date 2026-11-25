@@ -1,5 +1,5 @@
 // Pure helpers for the recipe library and component catalogue pages.
-import { describeCondition, type Condition, type Deprecation, type EntryStatus, type Profile, type RecipeSlot } from "@my/store-shared";
+import { describeCondition, type Condition, type Deprecation, type EntryStatus, type Profile, type RecipeSlot } from "@clodhub/shared";
 import { html, type Raw } from "./html.js";
 
 export const CLIENT_TARGET_LABEL: Record<string, string> = {

@@ -1,6 +1,6 @@
 // The recipe library and the component catalogue: browse, search, and read one entry.
-import type { BuildReportView, CategoryCount, ClassList, ClassVersionView, FoundationSummary, Foundations, ImageView, LineView, PackageDetails, Quality, VersionRef, VulnerabilityReport, VulnerabilitySummary } from "@my/store-shared";
-import { buildingItSection, groupHasMore, markdownSections, recipeBuildSteps, recipeUseSentence, PACKAGE_CHECK, PACKAGE_WHERE, QUALITY_LEVELS, QUALITY_TEXT, SIGNATURES_NOTE, classSettings, questionGroups, settingTypeWords, type BundleLink, type ClassInterface, type EntryPort, type PackageContents, type ComponentList, type ComponentSummary, type ComponentVersionView, type Deprecation, type EntryStatus, type Profile, type RecipeList, type RecipeSlotView, type RecipeSummary, type RecipeVersionView, type SettingDeclaration } from "@my/store-shared";
+import type { BuildReportView, CategoryCount, ClassList, ClassVersionView, FoundationSummary, Foundations, ImageView, LineView, PackageDetails, Quality, VersionRef, VulnerabilityReport, VulnerabilitySummary } from "@clodhub/shared";
+import { buildingItSection, groupHasMore, markdownSections, recipeBuildSteps, recipeUseSentence, PACKAGE_CHECK, PACKAGE_WHERE, QUALITY_LEVELS, QUALITY_TEXT, SIGNATURES_NOTE, classSettings, questionGroups, settingTypeWords, type BundleLink, type ClassInterface, type EntryPort, type PackageContents, type ComponentList, type ComponentSummary, type ComponentVersionView, type Deprecation, type EntryStatus, type Profile, type RecipeList, type RecipeSlotView, type RecipeSummary, type RecipeVersionView, type SettingDeclaration } from "@clodhub/shared";
 import { ApiError, api, whoAmI } from "../api.js";
 import { html, mount, raw, type Raw } from "../html.js";
 import { svgFigure } from "../figures.js";
@@ -16,7 +16,7 @@ import { termsPending } from "./terms.js";
 type Kind = "recipes" | "components";
 
 const none = html``;
-const FOOTNOTE = "The recipe library and component catalogue are public. Share links stay private. No tracking.";
+const FOOTNOTE = "The catalogue is public. No tracking.";
 
 function variants(path: string, version?: string): Raw {
   const suffix = version ? `?version=${encodeURIComponent(version)}` : "";
@@ -206,7 +206,7 @@ function listFrame(root: HTMLElement, kind: Kind | "classes", query: LibraryQuer
   const links = html`<p class="small mt-s">${variants(`/${kind}`)} ${(["recipes", "components", "classes"] as const).filter((k) => k !== kind).map((k) => html`<a href="/${k}">${k[0]!.toUpperCase()}${k.slice(1)}</a> `)}<a href="/categories">Categories</a></p>`;
   const publicBody = html`
       <section style="padding:26px 0 6px">
-        <span class="pill accent">${kind === "recipes" ? "Recipe library" : kind === "components" ? "Component catalogue" : "Classes"}</span>
+        <span class="pill accent">${kind === "recipes" ? "Recipes" : kind === "components" ? "Components" : "Classes"}</span>
         <h1 style="margin-top:10px">${title}</h1>
         <p class="lead muted">${lead}</p>
         ${controls}${links}
@@ -217,7 +217,7 @@ function listFrame(root: HTMLElement, kind: Kind | "classes", query: LibraryQuer
 }
 
 async function listingPage(root: HTMLElement, kind: Kind): Promise<void> {
-  setTheme("store", kind === "recipes" ? "Recipes on ourapps" : "Components on ourapps", true);
+  setTheme("store", kind === "recipes" ? "Recipes on ClodHub" : "Components on ClodHub", true);
   const query = readQuery(location.search);
   const me = await whoAmI();
   const controls = html`${searchBox(kind, query)}`;
@@ -465,8 +465,8 @@ export function recipeBody(v: RecipeVersionView, requested: string): Raw {
 
           <div class="card mt" id="build-it">
             <h2>Build it</h2>
-            <p class="muted">Give your coding agent this line. The page it reads lists the aepm steps: fetch the recipe and its components, ask you the questions below, design, install, then build and run. <a href="/dev/agents#recipes-and-components">Tools and instructions for agents</a>. With no machine of your own: <a href="/cloud-assembly.md">build it in GitHub Actions</a>.</p>
-            ${copyRow(`Build an application from the ${v.title} recipe: https://ourapps.app/recipes/${v.slug}.txt`)}
+            <p class="muted">Give your coding agent this line. The page it reads lists the aepm steps: fetch the recipe and its components, ask you the questions below, design, install, then build and run. <a href="/agents.md">Tools and instructions for agents</a>. With no machine of your own: <a href="/cloud-assembly.md">build it in GitHub Actions</a>.</p>
+            ${copyRow(`Build an application from the ${v.title} recipe: https://clodhub.com/recipes/${v.slug}.txt`)}
             ${buildStepsHtml(v)}
           </div>
 
@@ -507,7 +507,7 @@ export function recipeBody(v: RecipeVersionView, requested: string): Raw {
 
           <div class="card mt" id="how-components-connect">
             <h2>How its components connect</h2>
-            <p class="muted small">Drawn by ourapps from the recipe and the catalogue: each component in a zone by category, each line an interface from the component that provides it to the one that requires it.</p>
+            <p class="muted small">Drawn by ClodHub from the recipe and the catalogue: each component in a zone by category, each line an interface from the component that provides it to the one that requires it.</p>
             ${svgFigure(`/api/recipes/${v.slug}/${v.version}/components.svg`, `Diagram of the ${v.components.length} components of ${v.title}, grouped by category, with ${v.connections.length} lines from each component that provides an interface to each component that requires it.`)}
             ${v.diagram ? html`<h3 class="mt">Publisher's diagram</h3>${svgFigure(v.diagram, `The publisher's design diagram of ${v.title}`)}` : ""}
           </div>
@@ -537,7 +537,7 @@ export function recipeBody(v: RecipeVersionView, requested: string): Raw {
 }
 
 export async function recipePage(root: HTMLElement, slug: string): Promise<void> {
-  setTheme("store", "Recipe on ourapps", true);
+  setTheme("store", "Recipe on ClodHub", true);
   const me = await whoAmI();
   const requested = versionFromSearch(location.search);
   let v: RecipeVersionView;
@@ -546,7 +546,7 @@ export async function recipePage(root: HTMLElement, slug: string): Promise<void>
   } catch (err) {
     return notFound(root, err instanceof ApiError && err.status === 404 ? "No such recipe or version." : String(err));
   }
-  setTheme("store", `${v.title}: a recipe on ourapps`, true);
+  setTheme("store", `${v.title}: a recipe on ClodHub`, true);
   showInFrame(root, me, v.title, recipeBody(v, requested), { bare: true });
   wireCopy(root);
   wireBundle(root, v.bundle.url);
@@ -616,7 +616,7 @@ export function componentBody(v: ComponentVersionView, requested: string): Raw {
           <div class="card mt" id="use-it">
             <h2>Use it in a recipe</h2>
             ${snippet
-              ? html`<p>${recipeUseSentence(v)}</p><p class="small muted mt-s">The slot in <code>recipe.json</code> <code>components</code>:</p>${copyRow(snippet)}<p class="small muted mt-s">In place of another component of its class: <code>aepm fetch ${v.name}@${v.version} --from https://ourapps.app</code>, then <code>aepm design ... --substitute SLOT=${v.name}@${v.version}</code>.</p>`
+              ? html`<p>${recipeUseSentence(v)}</p><p class="small muted mt-s">The slot in <code>recipe.json</code> <code>components</code>:</p>${copyRow(snippet)}<p class="small muted mt-s">In place of another component of its class: <code>aepm fetch ${v.name}@${v.version} --from https://clodhub.com</code>, then <code>aepm design ... --substitute SLOT=${v.name}@${v.version}</code>.</p>`
               : html`<p class="muted">It implements no class, so no slot can name it.</p>`}
             <p class="small muted">Guardians: ${v.guardians.length === 0 ? "none recorded for this version" : v.guardians.join(", ")}.</p>
             <h3 class="mt">Recipes that use it</h3>
@@ -674,7 +674,7 @@ export function componentBody(v: ComponentVersionView, requested: string): Raw {
 }
 
 export async function componentPage(root: HTMLElement, slug: string): Promise<void> {
-  setTheme("store", "Component on ourapps", true);
+  setTheme("store", "Component on ClodHub", true);
   const me = await whoAmI();
   const requested = versionFromSearch(location.search);
   let v: ComponentVersionView;
@@ -683,7 +683,7 @@ export async function componentPage(root: HTMLElement, slug: string): Promise<vo
   } catch (err) {
     return notFound(root, err instanceof ApiError && err.status === 404 ? "No such component or version." : String(err));
   }
-  setTheme("store", `${v.name}: a component on ourapps`, true);
+  setTheme("store", `${v.name}: a component on ClodHub`, true);
   showInFrame(root, me, v.name, componentBody(v, requested), { bare: true });
   wireCopy(root);
   wireBundle(root, v.bundle.url);
@@ -719,7 +719,7 @@ export function detailsBody(d: PackageDetails, kind: Kind, slug: string): Raw {
 }
 
 export async function detailsPage(root: HTMLElement, kind: Kind, slug: string): Promise<void> {
-  setTheme("store", "Sources and dependencies on ourapps", true);
+  setTheme("store", "Sources and dependencies on ClodHub", true);
   const me = await whoAmI();
   const requested = versionFromSearch(location.search);
   let d: PackageDetails;
@@ -744,7 +744,7 @@ function classCard(c: ClassList["classes"][number]): Raw {
 }
 
 export async function classesPage(root: HTMLElement): Promise<void> {
-  setTheme("store", "Classes on ourapps", true);
+  setTheme("store", "Classes on ClodHub", true);
   const query = readQuery(location.search);
   const me = await whoAmI();
   try {
@@ -803,7 +803,7 @@ export function classBody(c: ClassVersionView): Raw {
 }
 
 export async function classPage(root: HTMLElement, slug: string): Promise<void> {
-  setTheme("store", "Class on ourapps", true);
+  setTheme("store", "Class on ClodHub", true);
   const me = await whoAmI();
   let c: ClassVersionView;
   try {
@@ -811,7 +811,7 @@ export async function classPage(root: HTMLElement, slug: string): Promise<void> 
   } catch (err) {
     return notFound(root, err instanceof ApiError && err.status === 404 ? "No such class or version." : String(err));
   }
-  setTheme("store", `${c.title}: a class on ourapps`, true);
+  setTheme("store", `${c.title}: a class on ClodHub`, true);
   showInFrame(root, me, c.title, classBody(c), { bare: true });
 }
 
@@ -829,7 +829,7 @@ export function categoriesBody(categories: CategoryCount[]): Raw {
 }
 
 export async function categoriesPage(root: HTMLElement): Promise<void> {
-  setTheme("store", "Categories on ourapps", true);
+  setTheme("store", "Categories on ClodHub", true);
   const me = await whoAmI();
   try {
     const tree = await api<{ categories: CategoryCount[] }>("GET", "/api/categories");

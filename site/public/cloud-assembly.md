@@ -1,17 +1,17 @@
 # Building an application from a recipe on GitHub, with no machine of your own
 
-GitHub Actions does the work a computer does in "Building an application from a recipe" (https://ourapps.app/agents.md): aepm fetches the recipe and its components, designs the application from your answers, resolves exact versions and installs it into your repository. The workflows the design installs then check, build, release and update it. A person can do every step below on github.com in a browser; an agent with the GitHub CLI (`gh`) signed in can do them with the commands shown.
+GitHub Actions does the work a computer does in "Building an application from a recipe" (https://clodhub.com/agents.md): aepm fetches the recipe and its components, designs the application from your answers, resolves exact versions and installs it into your repository. The workflows the design installs then check, build, release and update it. A person can do every step below on github.com in a browser; an agent with the GitHub CLI (`gh`) signed in can do them with the commands shown.
 
-The examples use the OurPoker recipe (`ourpoker@0.7.0`, https://ourapps.app/recipes/ourpoker.txt). Another recipe works the same way when its design includes the `ourapps-release` component, which brings the workflows.
+The examples use the OurPoker recipe (`ourpoker@0.7.0`, https://clodhub.com/recipes/ourpoker.txt). Another recipe works the same way when its design includes the `ourapps-release` component, which brings the workflows.
 
 ## 1. The repository
 
 1. Create a private repository: on github.com, "New repository", with a README; or `gh repo create <owner>/<name> --private --add-readme`.
 2. Settings, Actions, General: tick "Allow GitHub Actions to create and approve pull requests". `aepm-update` needs it to propose updates.
 3. Add three files to the main branch ("Add file", "Create new file"; or commit them from a clone):
-   - `answers.json`: the recipe's answers, an object from question id to answer. The questions, their defaults and the conditions that ask them are on the recipe's text page (`https://ourapps.app/recipes/<name>.txt`). The design must include the `ourapps-release` component: for OurPoker, `publish` or `releases` is true. Example: `{"targets": ["web", "android"], "server": "cloudflare", "hostingAccount": "ourpoker-cloudflare-account", "releases": true}`. Secret reference answers are names, never values.
+   - `answers.json`: the recipe's answers, an object from question id to answer. The questions, their defaults and the conditions that ask them are on the recipe's text page (`https://clodhub.com/recipes/<name>.txt`). The design must include the `ourapps-release` component: for OurPoker, `publish` or `releases` is true. Example: `{"targets": ["web", "android"], "server": "cloudflare", "hostingAccount": "ourpoker-cloudflare-account", "releases": true}`. Secret reference answers are names, never values.
    - `CHANGELOG.md`: the release notes, read by the release workflow and shown to your people. To start: `# Changelog`, then `## [0.1.0]`, `### Added`, `- First release.`
-   - `.github/workflows/aepm-assemble.yml`: a copy of https://ourapps.app/aepm-assemble.yml.
+   - `.github/workflows/aepm-assemble.yml`: a copy of https://clodhub.com/aepm-assemble.yml.
 
 ## 2. The secrets
 
@@ -37,7 +37,7 @@ The recipe's `INSTRUCTIONS.md` (part 4, "Repository and releases") has the same 
 
 Actions, aepm-assemble, "Run workflow", with the recipe `ourpoker@0.7.0`; or `gh workflow run aepm-assemble.yml --repo <owner>/<name> -f recipe=ourpoker@0.7.0`.
 
-It runs `aepm fetch` (checking every archive's sha256 digest and signatures), `aepm design` with `answers.json`, `aepm resolve`, makes the policy from Level N's release and guardian keys (https://ourapps.app/policy/levelnpolicy.json) and the public key of `AEPM_OWNER_KEY`, runs `aepm install` and commits the application to main. A refused design fails the run with the list of what is missing; fix `answers.json` and run it again. It refuses a repository that already holds an assembled application (a `.aepm` folder).
+It runs `aepm fetch` (checking every archive's sha256 digest and signatures), `aepm design` with `answers.json`, `aepm resolve`, makes the policy from Level N's release and guardian keys (https://clodhub.com/policy/levelnpolicy.json) and the public key of `AEPM_OWNER_KEY`, runs `aepm install` and commits the application to main. A refused design fails the run with the list of what is missing; fix `answers.json` and run it again. It refuses a repository that already holds an assembled application (a `.aepm` folder).
 
 ## 4. The workflows the application brings
 
