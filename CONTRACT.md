@@ -502,7 +502,7 @@ POST /api/dev/components
 }
 -> 201 { "status": "published", "name": "acme/card-deck", "version": "0.1.0", "url": "https://ourapps.app/components/card-deck", "api": "https://ourapps.app/api/components/card-deck/0.1.0" }
 -> 200 the same with "status": "unchanged" for the same version and digest again
--> 200 the same with "status": "republished" for the same version and digest when that version is stored in an earlier component entry format: the stored entry is replaced, and its downloads, vulnerability results, publication date and (unless the body sets one) quality stay
+-> 200 the same with "status": "updated" for the same version and digest when that version is stored in an earlier component entry format, or when the body differs from the stored entry only in `description`, `page` and `tags` (and `quality`): the stored entry is replaced, and its downloads, vulnerability results, publication date and (unless the body sets one) quality stay
 ```
 
 - `page.description` is Markdown of at most 20,000 characters, shown on the component's page: what the component is first, then sections under level-2 headings. A section headed `Examples` is shown with the opening text, one headed `Settings` above the settings table, and the others under "More about it". The Level N publish tool takes them from the archive's `CONTRACT.md`: "Purpose and facilities", then "Scenarios and presentation" as Examples, "User inputs" as Settings, and "Integration", "Infrastructure", "Verification" and "Updates and removal".

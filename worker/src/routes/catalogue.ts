@@ -887,7 +887,18 @@ function refuseSecrets(body: unknown): void {
   if (SECRET_PATTERN.test(JSON.stringify(body))) throw new HttpError(400, "the entry appears to contain a secret; publish references to secrets, never values");
 }
 
-function published(env: Env, kind: Kind, status: "published" | "republished" | "unchanged", name: string, slug: string, version: string): Response {
+// The text a publisher may change on a published component version without a new version: its description, page text
+// and tags. Every other field, quality aside, must be the stored entry's.
+const COMPONENT_TEXT = ["description", "page", "tags"] as const;
+
+function textOnlyChange(before: ComponentEntry, after: ComponentEntry): boolean {
+  // As stored: a JSON round trip drops fields left undefined.
+  const json = (v: unknown): string => canonical(JSON.parse(JSON.stringify(v ?? null)));
+  const rest = (e: ComponentEntry) => json({ ...e, description: null, page: null, tags: null, quality: null });
+  return COMPONENT_TEXT.some((k) => json(before[k]) !== json(after[k])) && rest(before) === rest(after);
+}
+
+function published(env: Env, kind: Kind, status: "published" | "updated" | "unchanged", name: string, slug: string, version: string): Response {
   const base = plural(kind);
   return json({ status, name, version, url: `${env.PUBLIC_ORIGIN}/${base}/${slug}`, api: `${env.PUBLIC_ORIGIN}/api/${base}/${slug}/${version}` }, status === "published" ? 201 : 200);
 }
@@ -955,16 +966,17 @@ async function publishEntry(request: Request, env: Env, deps: Deps, dev: AuthedD
   const slug = splitName(name)!.slug;
   const now = deps.now().toISOString();
   const stored = plan.existing === "same" && kind === "component" ? await d.version("component", slug, version, true) : null;
-  if (stored && plan.entry && (await readDocument<ComponentEntry>(env, stored.row.document)).format < e.format) {
-    // A version stored in an earlier component entry format, published again with the same digest: its entry is replaced.
+  const before = stored ? await readDocument<ComponentEntry>(env, stored.row.document) : null;
+  if (before && plan.entry && (before.format < e.format || textOnlyChange(before, e as ComponentEntry))) {
+    // The same version and digest with an entry in a newer format, or with other text: its entry is replaced.
     await verifyRelease(env, deps, dev, c);
     const key = await putDocument(env, kind, slug, version, e);
     const x = e as ComponentEntry;
     await d.replaceComponentVersion(plan.entry, { version, digest: e.digest, channel: e.release.channel, fixes: e.release.fixes, images: e.images, waivers: e.vulnerabilityWaivers, quality: e.quality, source: e.source, bundle: e.bundle, document: key, listing: listingOf(kind, e, category, publishedClass), purls: purlsOf(e.foundations), description: x.description, guardians: x.guardians, suitability: x.suitability, classDigest: x.foundations.implements[0]!.digest, provides: x.provides, requires: x.requires, dependencies: x.dependencies }, now);
     if (plan.unlisted) await d.relist(kind, plan.entry, version, now);
     await d.claimImages(e.images.flatMap((i) => [hexOf(i.digest), hexOf(i.thumbnail)]), now);
-    await audit(request, env, deps, dev.id, "component-republished", `${name} ${version}`);
-    return published(env, kind, "republished", name, slug, version);
+    await audit(request, env, deps, dev.id, "component-updated", `${name} ${version}`);
+    return published(env, kind, "updated", name, slug, version);
   }
   if (plan.existing === "same") {
     if (!plan.unlisted) return published(env, kind, "unchanged", name, slug, version);

@@ -736,7 +736,7 @@ describe("components", () => {
     await env.DB.prepare("UPDATE component_versions SET document = ?").bind(earlier).run();
     expect(((await (await get("/api/components/card-deck")).json()) as ComponentVersionView).about).toBe("");
 
-    expect(((await (await post("/api/dev/components", component())).json()) as { status: string }).status).toBe("republished");
+    expect(((await (await post("/api/dev/components", component())).json()) as { status: string }).status).toBe("updated");
     const v = (await (await get("/api/components/card-deck")).json()) as ComponentVersionView;
     expect(v.about).toContain("A club night uses it at every table.");
     expect(v.provides[0]!.description).toContain("what a card deck offers");
@@ -748,6 +748,25 @@ describe("components", () => {
     // In the current format the same version again is unchanged, and another digest is still refused.
     expect(((await (await post("/api/dev/components", component())).json()) as { status: string }).status).toBe("unchanged");
     expect((await post("/api/dev/components", component((e) => (e.digest = digest("9"))))).status).toBe(409);
+  });
+
+  it("updates the description, page text and tags of a published version, and nothing else, without a new version", async () => {
+    await publishCard();
+    const text = (e: Mutable) => {
+      e.description = "A deck of 52 playing cards for any card game.";
+      e.page.description = "A deck of 52 playing cards.\n\n## Examples\n\nA rummy night.";
+      e.tags = ["cards", "deck", "rummy"];
+    };
+    expect(((await (await post("/api/dev/components", component(text))).json()) as { status: string }).status).toBe("updated");
+    const v = (await (await get("/api/components/card-deck")).json()) as ComponentVersionView;
+    expect(v.description).toBe("A deck of 52 playing cards for any card game.");
+    expect(v.about).toContain("A rummy night.");
+    expect(v.tags).toEqual(["cards", "deck", "rummy"]);
+    expect(((await (await get("/api/components?q=rummy")).json()) as { components: { name: string }[] }).components.map((c) => c.name)).toEqual(["acme/card-deck"]);
+    // Any other change with the same version and digest leaves the stored entry as it is.
+    const other = await post("/api/dev/components", component((e) => (text(e), (e.description = "Changed again."), (e.targets = { client: ["web", "ios"], server: [] }))));
+    expect(((await other.json()) as { status: string }).status).toBe("unchanged");
+    expect(((await (await get("/api/components/card-deck")).json()) as ComponentVersionView).description).toBe("A deck of 52 playing cards for any card game.");
   });
 
   it("keeps optional requirements and profile settings through publication, reads and text", async () => {
