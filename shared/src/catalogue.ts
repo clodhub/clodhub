@@ -8,8 +8,9 @@ import { CATEGORY_PATH, canonical, classDescriptor, descriptorDigest, graphProbl
 
 // suitability.json and migration.json.
 export const CATALOGUE_FORMAT = 1;
-// The bodies of the publish routes: component, recipe and class entries.
+// The bodies of the publish routes: recipe and class entries, and component entries.
 export const ENTRY_FORMAT = 2;
+export const COMPONENT_ENTRY_FORMAT = 3;
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
@@ -363,8 +364,8 @@ export function validateQuality(value: unknown, where = "quality"): Result<"qual
   return { ok: true, quality: { level: value.level as QualityLevel, certified: value.certified as boolean, liveTested } };
 }
 
-function readEntryFormat(value: unknown, errors: string[]): void {
-  if (value !== ENTRY_FORMAT) errors.push(`format-refused: the entry format is ${ENTRY_FORMAT}${value === 1 ? "; a format 1 entry is refused, publish the version again with the current publish tool" : ""}`);
+function readEntryFormat(value: unknown, errors: string[], expected: number = ENTRY_FORMAT, what = "entry"): void {
+  if (value !== expected) errors.push(`format-refused: the ${what} format is ${expected}${typeof value === "number" && value < expected ? `; a format ${value} ${what} is refused, publish the version again with the current publish tool` : ""}`);
 }
 
 // ---------------------------------------------------------------- classes and categories
@@ -500,7 +501,11 @@ export interface SettingDeclaration extends SettingKind {
   required: boolean;
   secret: boolean;
   hasDefault: boolean;
+  // The value aepm writes when a recipe leaves the setting unset; present exactly when hasDefault is true.
+  default?: SettingValue;
 }
+
+export type SettingValue = boolean | number | string;
 
 // An entry module an interface document declares in "x-ourapps-modules": its path (null when the document gives no
 // text), and whether the component installs it (aepm's rule 4: the artefact destination components/<short name>/<path>,
@@ -677,6 +682,22 @@ export function settingSchema(s: { type: SettingType; grammar: string }): Rec {
 
 export function kindText(s: { type: SettingType; grammar: string }): string {
   return s.type === "string" ? `string (${s.grammar})` : s.type;
+}
+
+const GRAMMAR_WORDS: Readonly<Record<string, string>> = {
+  identifier: "letters, digits and underscores",
+  qualified: "a dotted name such as com.example.app",
+  slug: "lowercase letters, digits and hyphens",
+  label: "letters, digits, spaces and hyphens",
+  environment: "capital letters, digits and underscores",
+  address: "a web address",
+};
+
+// A setting's type for people: what kind of value it takes.
+export function settingTypeWords(s: { type: SettingType; grammar: string }): string {
+  if (s.type === "integer") return "whole number";
+  if (s.type === "boolean") return "yes or no";
+  return `text: ${GRAMMAR_WORDS[s.grammar] ?? s.grammar}`;
 }
 
 // The settings a class configuration declares, by id, with the property schema of each and whether it is always written.
@@ -1410,18 +1431,26 @@ export interface ComponentDependency {
   version: string;
 }
 
+// A provided or required interface as a component entry carries it, with the description its interface document gives.
+export interface EntryPort extends Port {
+  description: string;
+}
+
 export interface ComponentEntry extends EntryCommon {
   foundations: Foundations;
-  format: 2;
+  format: 3;
   name: string;
   version: string;
   digest: string;
   description: string;
+  // Markdown for the component's page: what it is first, then sections under level-2 headings. A section headed
+  // "Examples" is shown with the opening text, one headed "Settings" with the settings table, the rest below them.
+  page: { description: string };
   tags: string[];
   targets: Targets;
   guardians: string[];
-  provides: Port[];
-  requires: Port[];
+  provides: EntryPort[];
+  requires: EntryPort[];
   // Setting declarations and descriptive interface document facts.
   settings: SettingDeclaration[];
   interfaceDigests: Record<string, string>;
@@ -1433,40 +1462,44 @@ export interface ComponentEntry extends EntryCommon {
   bundle: BundlePointer;
 }
 
-const COMPONENT_FIELDS = [...COMMON_FIELDS, "format", "name", "version", "digest", "description", "tags", "targets", "guardians", "provides", "requires", "settings", "interfaceDigests", "interfaceModules", "dependencies", "suitability", "migration", "source", "bundle", "foundations"];
+const COMPONENT_FIELDS = [...COMMON_FIELDS, "format", "name", "version", "digest", "description", "page", "tags", "targets", "guardians", "provides", "requires", "settings", "interfaceDigests", "interfaceModules", "dependencies", "suitability", "migration", "source", "bundle", "foundations"];
 
-function readPorts(value: unknown, where: string, errors: string[], allowOptional = false): Port[] {
+export const PORT_DESCRIPTION = 2_000;
+
+function readPorts(value: unknown, where: string, errors: string[], allowOptional = false): EntryPort[] {
   if (!Array.isArray(value) || value.length > 50) {
     errors.push(`${where} must be a list of at most 50 interfaces`);
     return [];
   }
-  const out: Port[] = [];
+  const out: EntryPort[] = [];
   value.forEach((p, i) => {
     const at = `${where}[${i}]`;
     if (!isRecord(p)) return void errors.push(`${at} must be an object`);
-    unknownKeys(p, allowOptional ? ["id", "type", "version", "optional"] : ["id", "type", "version"], at, errors);
+    unknownKeys(p, allowOptional ? ["id", "type", "version", "description", "optional"] : ["id", "type", "version", "description"], at, errors);
+    if (!text(p.description, PORT_DESCRIPTION, 0)) errors.push(`${at}.description must be text of at most ${PORT_DESCRIPTION} characters: the interface document's description`);
     if (typeof p.id !== "string" || !IDENTIFIER.test(p.id)) errors.push(`${at}.id must be an identifier`);
     else if (out.some((o) => o.id === p.id)) errors.push(`${at}.id ${p.id} is used twice`);
     if (typeof p.type !== "string" || !PORT_TYPE.test(p.type)) errors.push(`${at}.type must be an interface type such as ae/card-deck`);
     else if (typeof p.id === "string" && p.id !== portId(p.type)) errors.push(`${at}.id must be ${portId(p.type)}, the last segment of its type ${p.type}`);
     if (!isVersion(p.version)) errors.push(`${at}.version must be three integers`);
     if (allowOptional && p.optional !== undefined && typeof p.optional !== "boolean") errors.push(`${at}.optional must be true or false`);
-    out.push({ id: String(p.id), type: String(p.type), version: String(p.version), ...(allowOptional && p.optional === true ? { optional: true } : {}) });
+    out.push({ id: String(p.id), type: String(p.type), version: String(p.version), description: typeof p.description === "string" ? p.description.trim() : "", ...(allowOptional && p.optional === true ? { optional: true } : {}) });
   });
   return out;
 }
 
-// component.json `collect` as the entry carries it: { id, type, grammar, required, secret, hasDefault } per setting.
+// component.json `collect` as the entry carries it: { id, type, grammar, required, secret, hasDefault, default } per
+// setting, with default exactly when hasDefault is true.
 function readSettings(value: unknown, errors: string[]): SettingDeclaration[] {
   if (!Array.isArray(value) || value.length > LIMITS.settings) {
-    errors.push(`settings must be a list of at most ${LIMITS.settings} settings: { id, type, grammar, required, secret, hasDefault } for each entry of component.json collect`);
+    errors.push(`settings must be a list of at most ${LIMITS.settings} settings: { id, type, grammar, required, secret, hasDefault, default } for each entry of component.json collect`);
     return [];
   }
   const out: SettingDeclaration[] = [];
   value.forEach((s, i) => {
     const at = `settings[${i}]`;
     if (!isRecord(s)) return void errors.push(`${at} must be an object`);
-    unknownKeys(s, ["id", "type", "grammar", "required", "secret", "hasDefault"], at, errors);
+    unknownKeys(s, ["id", "type", "grammar", "required", "secret", "hasDefault", "default"], at, errors);
     if (typeof s.id !== "string" || !IDENTIFIER.test(s.id)) errors.push(`${at}.id must be an identifier`);
     else if (out.some((o) => o.id === s.id)) errors.push(`${at}.id ${s.id} is used twice`);
     const type = (SETTING_TYPES as readonly unknown[]).includes(s.type) ? (s.type as SettingType) : null;
@@ -1474,9 +1507,17 @@ function readSettings(value: unknown, errors: string[]): SettingDeclaration[] {
     else if (type === "string" ? !(typeof s.grammar === "string" && s.grammar in GRAMMAR_PATTERNS) : s.grammar !== type) errors.push(`${at}.grammar must be ${type === "string" ? `one of ${Object.keys(GRAMMAR_PATTERNS).join(", ")}` : type}`);
     for (const key of ["required", "secret", "hasDefault"] as const) if (typeof s[key] !== "boolean") errors.push(`${at}.${key} must be true or false`);
     if (s.secret === true && s.hasDefault === true) errors.push(`${at}: a secret setting has no default`);
-    out.push({ id: String(s.id), type: type ?? "string", grammar: String(s.grammar), required: s.required === true, secret: s.secret === true, hasDefault: s.hasDefault === true });
+    if (s.hasDefault === true && !settingValueFits(type, String(s.grammar), s.default)) errors.push(`${at}.default must be the setting's default value: ${type === "string" ? `a string of grammar ${String(s.grammar)}` : type === "integer" ? "an integer" : "true or false"}`);
+    if (s.hasDefault !== true && s.default !== undefined) errors.push(`${at}.default is given only when hasDefault is true`);
+    out.push({ id: String(s.id), type: type ?? "string", grammar: String(s.grammar), required: s.required === true, secret: s.secret === true, hasDefault: s.hasDefault === true, ...(s.hasDefault === true ? { default: s.default as SettingValue } : {}) });
   });
   return out;
+}
+
+function settingValueFits(type: SettingType | null, grammar: string, value: unknown): value is SettingValue {
+  if (type === "boolean") return typeof value === "boolean";
+  if (type === "integer") return Number.isInteger(value) && (value as number) >= INT32_MIN && (value as number) <= INT32_MAX;
+  return type === "string" && typeof value === "string" && matchesGrammar(grammar, value);
 }
 
 const PLATFORM = /^[a-z][a-z0-9-]{0,30}$/;
@@ -1641,13 +1682,20 @@ export function validateComponentEntry(input: unknown): Result<"entry", Componen
   if (!isRecord(input)) return { ok: false, errors: ["the body must be a JSON object"] };
   unknownKeys(input, COMPONENT_FIELDS, "component", errors);
   errors.push(...validateFoundations(input.foundations, "component", Object.values(GRAMMAR_PATTERNS)));
-  readEntryFormat(input.format, errors);
+  readEntryFormat(input.format, errors, COMPONENT_ENTRY_FORMAT, "component entry");
   if (!isCatalogueName(input.name)) errors.push("name must be <scope>/<name>: lowercase letters, digits and single hyphens");
   if (!isPackageVersion(input.version)) errors.push("version must be three integers, for example 0.1.0, with a pre-release such as -preview.1 for a preview");
   const common = readCommon(input, input.version, isRecord(input.foundations) && Array.isArray(input.foundations.platforms) ? (input.foundations.platforms as string[]) : [], errors);
   if (isRecord(input.foundations) && Array.isArray(input.foundations.implements) && input.foundations.implements.length !== 1) errors.push("foundations.implements must name exactly one class: the component's listing class");
   if (!isDigest(input.digest)) errors.push("digest must be sha256:<64 lowercase hex>");
   if (!text(input.description, LIMITS.componentDescription)) errors.push(`description must be text of at most ${LIMITS.componentDescription} characters`);
+  const page: ComponentEntry["page"] = { description: "" };
+  if (!isRecord(input.page)) errors.push("page must be an object with description: Markdown saying what the component is, then sections under level-2 headings");
+  else {
+    unknownKeys(input.page, ["description"], "page", errors);
+    if (!text(input.page.description, LIMITS.description)) errors.push(`page.description must be text of at most ${LIMITS.description} characters`);
+    else page.description = input.page.description.replace(/\r\n/g, "\n").trim();
+  }
   const tags = readTags(input.tags, "tags", errors);
   const targets = input.targets === undefined ? { client: [], server: [] } : readTargets(input.targets, "targets", errors);
   const guardians = stringList(input.guardians ?? [], "guardians", errors, { max: 10, item: (v) => text(v, 80), what: "guardian names" });
@@ -1667,11 +1715,12 @@ export function validateComponentEntry(input: unknown): Result<"entry", Componen
     ok: true,
     entry: {
       foundations: input.foundations as Foundations,
-      format: 2,
+      format: COMPONENT_ENTRY_FORMAT,
       name: input.name as string,
       version: input.version as string,
       digest: input.digest as string,
       description: (input.description as string).trim(),
+      page,
       ...common,
       tags,
       targets,

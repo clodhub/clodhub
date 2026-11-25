@@ -18,6 +18,7 @@ import {
   isCatalogueName,
   isCatalogueSlug,
   isPackageVersion,
+  packageContents,
   recipeComponentsSvg,
   slotClass,
   splitName,
@@ -259,11 +260,14 @@ async function recipeView(env: Env, d: CatalogueDb, e: SummaryRow, v: VersionRow
     foundationEvidence: "publisher-declared",
     description: doc.page.description,
     diagram: doc.page.diagram ? `${env.PUBLIC_ORIGIN}/api/recipes/${e.slug}/${v.version}/diagram.svg` : null,
+    contents: packageContents(doc.foundations),
     components: recipe.components.map((s, i) => {
       const found = listed[i] ?? null;
+      const descriptor = classDescriptor(s.class, doc.foundations)!;
       return {
         ...s,
-        declaration: slotClass(classDescriptor(s.class, doc.foundations)!),
+        declaration: slotClass(descriptor),
+        classInfo: { title: descriptor.title, summary: descriptor.summary, url: `${env.PUBLIC_ORIGIN}/classes/${splitName(s.class.name)!.slug}` },
         preferred: { ...s.preferred, url: found ? `${env.PUBLIC_ORIGIN}/components/${found.slug}` : null },
         catalogue: found ? { description: found.row.description, suitability: found.row.suitability!, guardians: found.row.guardians, quality: found.row.quality, thumbnail: thumbnailUrl(env, found.row.listing.thumbnail) } : null,
         deprecation: tree.notices.find((n) => n.name === s.preferred.name && n.version === s.preferred.version && n.via.includes(e.name)) ?? null,
@@ -354,15 +358,21 @@ export async function publishBuildReport(request: Request, env: Env, deps: Deps,
 }
 
 async function componentView(env: Env, d: CatalogueDb, e: SummaryRow, v: VersionRow, doc: ComponentEntry): Promise<ComponentVersionView> {
-  const [[tree], common, usedBy] = await Promise.all([d.deprecationsFor([subject("component", e, v.version)]), versionCommon(env, d, "component", e, v), d.recipesUsing(e.name)]);
+  const reference = doc.foundations.implements[0]!;
+  const descriptor = classDescriptor(reference, doc.foundations)!;
+  const [[tree], common, usedBy, others] = await Promise.all([d.deprecationsFor([subject("component", e, v.version)]), versionCommon(env, d, "component", e, v), d.recipesUsing(e.name), d.implementationCount(reference.name, e.name)]);
   return {
     ...componentSummary(env, asVersion(e, v), tree.notices),
     ...common,
+    // Format 2 documents, stored until their versions are published again in format 3, have no page.
+    about: doc.page?.description ?? "",
+    classInfo: { summary: descriptor.summary, url: `${env.PUBLIC_ORIGIN}/classes/${splitName(reference.name)!.slug}`, others, othersUrl: `${env.PUBLIC_ORIGIN}/components?class=${encodeURIComponent(reference.name)}` },
+    contents: packageContents(doc.foundations),
     foundations: summariseFoundations(doc.foundations, `${env.PUBLIC_ORIGIN}/api/components/${e.slug}/${v.version}/details`),
     foundationEvidence: "publisher-declared",
     guardians: doc.guardians,
-    provides: doc.provides,
-    requires: doc.requires,
+    provides: doc.provides.map((p) => ({ ...p, description: p.description ?? "" })),
+    requires: doc.requires.map((p) => ({ ...p, description: p.description ?? "" })),
     settings: doc.settings,
     interfaceDigests: doc.interfaceDigests,
     interfaceModules: doc.interfaceModules,
@@ -877,7 +887,7 @@ function refuseSecrets(body: unknown): void {
   if (SECRET_PATTERN.test(JSON.stringify(body))) throw new HttpError(400, "the entry appears to contain a secret; publish references to secrets, never values");
 }
 
-function published(env: Env, kind: Kind, status: "published" | "unchanged", name: string, slug: string, version: string): Response {
+function published(env: Env, kind: Kind, status: "published" | "republished" | "unchanged", name: string, slug: string, version: string): Response {
   const base = plural(kind);
   return json({ status, name, version, url: `${env.PUBLIC_ORIGIN}/${base}/${slug}`, api: `${env.PUBLIC_ORIGIN}/api/${base}/${slug}/${version}` }, status === "published" ? 201 : 200);
 }
@@ -944,6 +954,18 @@ async function publishEntry(request: Request, env: Env, deps: Deps, dev: AuthedD
   const plan = await prepare(env, d, deps, dev, c);
   const slug = splitName(name)!.slug;
   const now = deps.now().toISOString();
+  const stored = plan.existing === "same" && kind === "component" ? await d.version("component", slug, version, true) : null;
+  if (stored && plan.entry && (await readDocument<ComponentEntry>(env, stored.row.document)).format < e.format) {
+    // A version stored in an earlier component entry format, published again with the same digest: its entry is replaced.
+    await verifyRelease(env, deps, dev, c);
+    const key = await putDocument(env, kind, slug, version, e);
+    const x = e as ComponentEntry;
+    await d.replaceComponentVersion(plan.entry, { version, digest: e.digest, channel: e.release.channel, fixes: e.release.fixes, images: e.images, waivers: e.vulnerabilityWaivers, quality: e.quality, source: e.source, bundle: e.bundle, document: key, listing: listingOf(kind, e, category, publishedClass), purls: purlsOf(e.foundations), description: x.description, guardians: x.guardians, suitability: x.suitability, classDigest: x.foundations.implements[0]!.digest, provides: x.provides, requires: x.requires, dependencies: x.dependencies }, now);
+    if (plan.unlisted) await d.relist(kind, plan.entry, version, now);
+    await d.claimImages(e.images.flatMap((i) => [hexOf(i.digest), hexOf(i.thumbnail)]), now);
+    await audit(request, env, deps, dev.id, "component-republished", `${name} ${version}`);
+    return published(env, kind, "republished", name, slug, version);
+  }
   if (plan.existing === "same") {
     if (!plan.unlisted) return published(env, kind, "unchanged", name, slug, version);
     await verifyRelease(env, deps, dev, c);

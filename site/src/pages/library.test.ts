@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SIGNATURES_NOTE, classDescriptor, exampleComponentEntry, exampleRecipeEntry, slotClass, summariseFoundations, type ComponentSummary, type PackageDetails, type ComponentVersionView, type Deprecation, type RecipeSummary, type RecipeVersionView } from "@my/store-shared";
+import { SIGNATURES_NOTE, classDescriptor, exampleComponentEntry, exampleRecipeEntry, packageContents, slotClass, summariseFoundations, type ComponentSummary, type PackageDetails, type ComponentVersionView, type Deprecation, type RecipeSummary, type RecipeVersionView } from "@my/store-shared";
 import { escapeHtml } from "../html.js";
 import { classBody, componentBody, componentCard, deprecationBanner, detailsBody, recipeBody, recipeCard, splitDescription } from "./library.js";
 
@@ -50,9 +50,11 @@ function recipeView(patch: Partial<RecipeVersionView> = {}): RecipeVersionView {
     bundle: { ...e.bundle, url: `${origin}/api/recipes/poker-night/0.1.0/bundle` },
     description: e.page.description,
     diagram: `${origin}/api/recipes/poker-night/0.1.0/diagram.svg`,
+    contents: packageContents(e.foundations),
     components: r.components.map((c) => ({
       ...c,
       declaration: slotClass(classDescriptor(c.class, e.foundations)!),
+      classInfo: { title: classDescriptor(c.class, e.foundations)!.title, summary: classDescriptor(c.class, e.foundations)!.summary, url: `${origin}/classes/${c.class.name.split("/")[1]}` },
       preferred: { ...c.preferred, url: c.id === "deck" ? `${origin}/components/card-deck` : null },
       catalogue: c.id === "deck" ? { description: "A shuffled deck.", suitability, guardians: ["Example Guardian Ltd"], quality: null, thumbnail: null } : null,
       deprecation: null,
@@ -75,6 +77,9 @@ function componentView(patch: Partial<ComponentVersionView> = {}): ComponentVers
   return {
     ...versionCommon,
     foundations: summariseFoundations(e.foundations, `${origin}/api/components/card-deck/0.1.0/details`), foundationEvidence: "publisher-declared",
+    about: e.page.description,
+    classInfo: { summary: "A deck of playing cards", url: `${origin}/classes/card-deck-class`, others: 2, othersUrl: `${origin}/components?class=ourapps-ae%2Fcard-deck-class` },
+    contents: packageContents(e.foundations),
     name: e.name,
     slug: "card-deck",
     version: e.version,
@@ -126,12 +131,27 @@ describe("recipe page", () => {
     expect(html.indexOf("Intro text.")).toBeLessThan(html.indexOf("<summary>The full description</summary>"));
     expect(html.indexOf("Long rules.")).toBeGreaterThan(html.indexOf("<summary>The full description</summary>"));
   });
+  it("says what its download holds and leaves out, from its own files and recipe.json", () => {
+    const html = recipeBody(recipeView(), "latest").html;
+    const card = html.slice(html.indexOf('id="what-you-download"'), html.indexOf('id="build-it"'));
+    expect(card).toContain("<code>recipe.json</code> holds its 7 questions, 5 slots and 2 tested answer sets");
+    expect(card).toContain("Not included: the 5 components of its slots");
+    expect(card).toContain('id="bundle-link"');
+  });
+
+  it("states each scale band once", () => {
+    const view = recipeView();
+    const html = recipeBody({ ...view, scale: { question: "scale", bands: [{ id: "small", label: "small: up to 10 people", load: { concurrentPeople: 10 } }] } }, "latest").html;
+    expect(html).toContain("<li><b>small</b>: up to 10 people (");
+  });
+
   it("lists each slot with its class, preferred component and the other components of its class", () => {
     const html = recipeBody(recipeView(), "latest").html;
-    expect(html).toContain("<th>Slot</th><th>Class</th><th>Preferred component</th><th>Alternatives</th>");
+    expect(html).toContain("<th>Slot</th><th>What it is</th><th>Preferred component</th><th>Alternatives</th>");
     expect(html).toContain("<code>seats</code>");
     expect(html).toContain("<p>Provides <code>ae/seating</code> 1.0.0</p><p>Requires <code>ae/card-deck</code> 1.0.0</p>");
-    expect(html).toContain('<a href="/components/card-deck">acme/card-deck</a>');
+    expect(html).toContain('<a href="/components/card-deck">card-deck</a> <span class="small faint">0.1.0</span><br /><span class="small muted">A shuffled deck.</span>');
+    expect(html).toContain('<a href="/classes/seating-class">Seating</a>');
     expect(html).toContain('<a href="/components?class=ourapps-ae%2Fseating-class">1 other</a>');
     expect(html).toContain('<a href="/components?class=ourapps-ae%2Fcard-deck-class">0 others</a>');
   });
@@ -153,7 +173,7 @@ describe("recipe page", () => {
     expect(html).toContain("a reference, never a value");
     expect(html).toContain('href="/components/card-deck"');
     expect(html).toContain("Guardians: Example Guardian Ltd");
-    expect(html).toContain("not in the catalogue");
+    expect(html).toContain("Not in the catalogue.");
     expect(html).toContain("when lessons is yes");
     expect(html).toContain("when (targets includes ios) or (targets includes macos)");
     expect(html).toContain("asked when lessons is yes");
@@ -221,17 +241,61 @@ describe("component page", () => {
     expect(html).toContain('href="/components/card-deck.json"');
   });
 
-  it("leads with how to use it, its class, interfaces, platforms and settings; package facts as counts", () => {
+  it("leads with what it is and its class, then what it provides and needs, its settings and how a recipe uses it", () => {
     const html = componentBody(componentView(), "latest").html;
     expect(html).toContain('{&quot;id&quot;:&quot;card-deck&quot;,&quot;class&quot;:{&quot;name&quot;:&quot;ourapps-ae/card-deck-class&quot;,&quot;version&quot;:&quot;1.0.0&quot;,&quot;digest&quot;:');
     expect(html).toContain("--substitute SLOT=acme/card-deck@0.1.0");
     expect(html).toContain('<a href="/components/card-deck/details?version=0.1.0">Sources and dependencies</a>');
-    const order = ['id="what-you-download"', 'id="use-it"', 'id="class"', 'id="platforms"', 'id="settings"', 'id="package-facts"'].map((x) => html.indexOf(x));
-    expect(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1]))).toBe(true);
+    const order = ['id="about"', 'id="class"', 'id="interfaces"', 'id="settings"', 'id="use-it"', 'id="more"', 'id="what-you-download"', 'id="platforms"', 'id="package-facts"'].map((x) => html.indexOf(x));
+    expect(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), JSON.stringify(order)).toBe(true);
+  });
+
+  it("explains the component from its page text: what it is, examples, settings with defaults and the rest under More", () => {
+    const html = componentBody(componentView(), "latest").html;
+    const about = html.slice(html.indexOf('id="about"'), html.indexOf('id="class"'));
+    expect(about).toContain("A shuffled deck of 52 cards");
+    expect(about).toContain("<h3 class=\"mt\">Examples</h3>");
+    expect(about).toContain("A club night uses it at every table.");
+    const settings = html.slice(html.indexOf('id="settings"'), html.indexOf('id="use-it"'));
+    expect(settings).toContain("Each setting has a default that suits a club night.");
+    expect(html.slice(html.indexOf('id="more"'))).toContain("<summary><b>How it is checked</b></summary>");
+    expect(html.indexOf("A club night uses it")).toBe(html.lastIndexOf("A club night uses it"));
+  });
+
+  it("links the class it implements, its summary and the other components of the class", () => {
+    const html = componentBody(componentView(), "latest").html;
+    const card = html.slice(html.indexOf('id="class"'), html.indexOf('id="interfaces"'));
+    expect(card).toContain('<h2>Its class: <a href="/classes/card-deck-class">Card deck</a></h2>');
+    expect(card).toContain("A deck of playing cards.");
+    expect(card).toContain('<a href="/components?class=ourapps-ae%2Fcard-deck-class">2 other components implement it</a>');
+    expect(card).toContain("<td>Web</td><td><code>ae/card-deck</code></td><td><code>index.mjs</code></td>");
+  });
+
+  it("describes each interface it provides and needs, linked to the components on the other side", () => {
+    const html = componentBody(componentView(), "latest").html;
+    expect(html).toContain('<a class="small" href="/components?requires=ae%2Fcard-deck">ae/card-deck 1.0.0</a><br /><span class="small muted">The ae/card-deck interface: what a card deck offers the application.</span>');
+    expect(html).toContain('<a class="small" href="/components?provides=ae%2Frandom-source">ae/random-source 1.0.0</a>');
+  });
+
+  it("shows each setting's default and says in words how a recipe uses the component", () => {
+    const html = componentBody(componentView({ settings: [{ id: "decks", type: "integer", grammar: "integer", required: false, secret: false, hasDefault: true, default: 1 }, { id: "house", type: "string", grammar: "slug", required: true, secret: false, hasDefault: false }] }), "latest").html;
+    expect(html).toContain("<tr><td><code>decks</code></td><td>whole number</td><td><code>1</code></td><td>may set it</td></tr>");
+    expect(html).toContain("<td><span class=\"muted\">none</span></td><td>must set it</td>");
+    expect(html).toContain("A recipe uses it through a slot of class Card deck (ourapps-ae/card-deck-class 1.0.0), naming acme/card-deck as the slot&#39;s preferred component");
+    expect(html).toContain("The recipe sets decks and house; house has no default, so the recipe always sets it.");
+  });
+
+  it("says what the download holds, from its own file list", () => {
+    const html = componentBody(componentView(), "latest").html;
+    const card = html.slice(html.indexOf('id="what-you-download"'), html.indexOf('id="platforms"'));
+    expect(card).toContain("<code>card-deck-0.1.0.tar</code>, one archive from");
+    expect(card).toContain("Installing copies");
+    expect(card).toContain('the components that provide what it needs (<a href="/components?provides=ae%2Frandom-source">ae/random-source</a>)');
+    expect(card).not.toContain("The working implementation for each device");
   });
 
   it("marks an optional requirement", () => {
-    const html = componentBody(componentView({ requires: [{ id: "random-source", type: "ae/random-source", version: "1.0.0", optional: true }, { id: "audit", type: "ae/audit", version: "1.0.0" }] }), "latest").html;
+    const html = componentBody(componentView({ requires: [{ id: "random-source", type: "ae/random-source", version: "1.0.0", optional: true, description: "" }, { id: "audit", type: "ae/audit", version: "1.0.0", description: "" }] }), "latest").html;
     expect(html).toContain('<code>random-source</code> <span class="small muted">optional</span>');
     expect(html).not.toContain('<code>audit</code> <span class="small muted">optional</span>');
   });
