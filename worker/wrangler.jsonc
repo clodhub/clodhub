@@ -7,7 +7,7 @@
   "routes": [{ "pattern": "clodhub.com", "custom_domain": true }],
   "workers_dev": false,
   "d1_databases": [
-    { "binding": "DB", "database_name": "clodhub", "database_id": "PENDING", "migrations_dir": "migrations" }
+    { "binding": "DB", "database_name": "clodhub", "database_id": "52511f94-bc20-421a-846c-a0553f32e7f3", "migrations_dir": "migrations" }
   ],
   // Catalogue documents (one per published version) and images by sha256.
   "r2_buckets": [
