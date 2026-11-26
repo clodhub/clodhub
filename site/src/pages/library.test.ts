@@ -470,3 +470,12 @@ describe("build steps on the recipe page", () => {
     expect(html).not.toContain("From the recipe");
   });
 });
+
+describe("package URLs on pages", () => {
+  it("shows the versioned package URL of a recipe, a component and a class", () => {
+    expect(recipeBody(recipeView(), "latest").html).toContain("Package URL <code>pkg:clod/io.github.acme/poker-night-recipe@0.1.0</code>");
+    expect(componentBody(componentView(), "latest").html).toContain("Package URL <code>pkg:clod/io.github.acme/card-deck@0.1.0</code>");
+    const d = exampleComponentEntry().foundations.classes[0]!.descriptor;
+    expect(classBody({ ...d, digest: "a".repeat(64), implementations: 0, implementationList: [], versions: [], publisher: null, url: "", suites: [] } as unknown as Parameters<typeof classBody>[0]).html).toContain("Package URL <code>pkg:clod/com.clodhub/card-deck-class@1.0.0</code>");
+  });
+});
