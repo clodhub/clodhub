@@ -8,6 +8,7 @@ from urllib.parse import unquote
 FORBIDDEN = {"Cc", "Cf", "Zs", "Zl", "Zp", "Co", "Cs"}
 NS_MIN = {"maven": 1, "golang": 1, "github": 1, "bitbucket": 1, "composer": 1, "swift": 2}
 NS_NONE = {"cargo", "gem", "pypi", "nuget", "hex", "pub", "cocoapods", "hackage", "conda"}
+NS_EXACT = {"clod": 1}
 
 
 def decode(raw):
@@ -60,6 +61,8 @@ def parse(v):
     if kind in NS_NONE and namespace:
         return None
     if len(namespace) < NS_MIN.get(kind, 0):
+        return None
+    if kind in NS_EXACT and len(namespace) != NS_EXACT[kind]:
         return None
     if kind == "swift" and "." not in namespace[0]:
         return None
@@ -160,6 +163,10 @@ def cases():
     for kind in ["cargo", "gem", "pypi", "nuget", "hex", "pub", "cocoapods", "hackage", "conda"]:
         add(f"pkg:{kind}/lib@1.0", True)
         add(f"pkg:{kind}/ns/lib@1.0", False)
+    for p, ok in [("pkg:clod/lib@1.0.0", False), ("pkg:clod/com.clodhub/presence@0.11.0", True), ("pkg:clod/com.clodhub/presence", True),
+                  ("pkg:clod/com.clodhub/presence-class@1.1.0", True), ("pkg:clod/io.github.someone/thing@1.0.0", True),
+                  ("pkg:clod/com/clodhub/presence@1.0.0", False), ("pkg:clod/com.clodhub/sub/presence@1.0.0", False)]:
+        add(p, ok)
     for kind in ["generic", "deb", "docker", "oci"]:
         add(f"pkg:{kind}/lib@1.0", True)
         add(f"pkg:{kind}/ns/lib@1.0", True)

@@ -38,13 +38,13 @@ This descriptor and its digest-bound reference are independent of any preferred 
 ```json
 {
   "reference": {
-    "name": "clodhub/counter-class",
+    "name": "pkg:clod/com.clodhub/counter-class",
     "version": "1.0.0",
-    "digest": "f525dc2e914f12672127d0c7d517a2a1934c3ef3d0177e14b8b56e4764683900"
+    "digest": "138a3db25a73bafd64e2efe581e62cbc00c1390b3d66aab67587995cf5a5a443"
   },
   "descriptor": {
-    "format": 2,
-    "name": "clodhub/counter-class",
+    "format": 3,
+    "name": "pkg:clod/com.clodhub/counter-class",
     "version": "1.0.0",
     "title": "Counter",
     "summary": "A number people can raise and lower together",
@@ -52,7 +52,7 @@ This descriptor and its digest-bound reference are independent of any preferred 
     "presentation": "visual",
     "provides": [
       {
-        "type": "counter",
+        "type": "com.clodhub/counter",
         "version": "1.0.0",
         "path": "classes/counter/interface.json",
         "modules": {

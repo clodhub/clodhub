@@ -2,7 +2,11 @@
 import { GRAMMAR_PATTERNS, componentFacts, interfaceKey, type CategoryNode, type ClassEntry, type ComponentEntry, type EntryPort, type PackageImage, type Port, type RecipeContext, type RecipeEntry, type SettingDeclaration, type SettingValue, type Suitability } from "./catalogue.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
-import { descriptorDigest, type ClassDescriptor, type Foundations } from "./foundations.js";
+import { CLASS_FORMAT, descriptorDigest, type ClassDescriptor, type Foundations } from "./foundations.js";
+
+// The namespace of the invented publisher acme: its GitHub owner is acme.
+export const EXAMPLE_NAMESPACE = "io.github.acme";
+const acme = (name: string) => `pkg:clod/${EXAMPLE_NAMESPACE}/${name}`;
 
 export const EXAMPLE_DIGEST = `sha256:${"a".repeat(64)}`;
 export const EXAMPLE_BUNDLE_DIGEST = `sha256:${"b".repeat(64)}`;
@@ -89,9 +93,9 @@ export function exampleFoundations(slug = "card-deck"): Foundations {
   const properties: ClassDescriptor["settings"]["properties"] = type === "seating" ? { minimumPlayers: { type: "integer" } } : type === "server-host" ? { targets: { type: "string", pattern: GRAMMAR_PATTERNS.label }, expectedPeople: { type: "integer" }, accountReference: { type: "string", pattern: GRAMMAR_PATTERNS.slug } } : type === "guided-tour" ? { length: { type: "string", pattern: GRAMMAR_PATTERNS.slug } } : {};
   const required = type === "seating" ? ["minimumPlayers"] : type === "server-host" ? ["targets", "expectedPeople"] : type === "guided-tour" ? ["length"] : [];
   const descriptor: ClassDescriptor = {
-    format: 2, name: `clodhub/${type}-class`, version: "1.0.0", ...CLASS_FACTS[type]!,
-    provides: [{ ...v1(`ae/${type}`), path: `classes/${type}/interface.json`, modules: { web: ["index.mjs"], server: ["index.mjs"] } }],
-    requires: type === "seating" ? [v1("ae/card-deck")] : [],
+    format: CLASS_FORMAT, name: `pkg:clod/com.clodhub/${type}-class`, version: "1.0.0", ...CLASS_FACTS[type]!,
+    provides: [{ ...v1(`com.clodhub/${type}`), path: `classes/${type}/interface.json`, modules: { web: ["index.mjs"], server: ["index.mjs"] } }],
+    requires: type === "seating" ? [v1("com.clodhub/card-deck")] : [],
     settings: { type: "object", properties, required, additionalProperties: false },
     inventory: [{ path: `classes/${type}/interface.json`, digest: "c".repeat(64) }, { path: `classes/${type}/check.mjs`, digest: "d".repeat(64) }],
     verification: [{ id: "behaviour", root: "package", argv: ["node", `classes/${type}/check.mjs`], cwd: ".", prepare: [], tools: { node: "26" }, fixtures: [`classes/${type}/check.mjs`], locks: [], network: false, timeoutSeconds: 30, expectedExit: 0, scope: "required-local", requirements: [] }],
@@ -106,22 +110,22 @@ export function exampleRecipeFoundations(): Foundations {
 }
 const reference = (slug: string) => exampleFoundations(slug).classes[0].reference;
 
-// The publish bodies of the example classes: { format: 2, class }.
+// The publish bodies of the example classes: { format: 3, class }.
 export function exampleClassEntries(): (Omit<ClassEntry, "digest"> & { digest?: string })[] {
-  return exampleRecipeFoundations().classes.map((c) => ({ format: 2, class: c.descriptor }));
+  return exampleRecipeFoundations().classes.map((c) => ({ format: 3, class: c.descriptor }));
 }
 
 export function exampleRecipeEntry(): RecipeEntry {
   return {
     foundations: exampleRecipeFoundations(),
-    format: 2,
+    format: 3,
     release: { channel: "features", fixes: [] },
     images: [exampleImage()],
     vulnerabilityWaivers: [],
     quality: null,
     recipe: {
-      format: 2,
-      name: "acme/poker-night",
+      format: 3,
+      name: acme("poker-night-recipe"),
       version: "0.1.0",
       title: "Poker Night",
       summary: "A card game for a club's league night, with house rules.",
@@ -129,19 +133,19 @@ export function exampleRecipeEntry(): RecipeEntry {
       tags: ["cards", "multiplayer"],
       targets: { client: ["web", "ios", "android", "macos"], server: ["hosting-provider"] },
       components: [
-        { id: "deck", class: reference("card-deck"), preferred: { name: "acme/card-deck", version: "0.1.0" }, configuration: {}, includedWhen: null },
-        { id: "seats", class: reference("seating"), preferred: { name: "acme/seating", version: "0.1.0" }, configuration: { minimumPlayers: 2 }, includedWhen: null },
+        { id: "deck", class: reference("card-deck"), preferred: { name: acme("card-deck"), version: "0.1.0" }, configuration: {}, includedWhen: null },
+        { id: "seats", class: reference("seating"), preferred: { name: acme("seating"), version: "0.1.0" }, configuration: { minimumPlayers: 2 }, includedWhen: null },
         {
           id: "host",
           class: reference("server-host"),
-          preferred: { name: "acme/server-host", version: "0.1.0" },
+          preferred: { name: acme("server-host"), version: "0.1.0" },
           configuration: {},
           includedWhen: null,
         },
-        { id: "apple", class: reference("apple-host"), preferred: { name: "acme/apple-host", version: "0.1.0" }, configuration: {}, includedWhen: "'ios' in targets || 'macos' in targets" },
-        { id: "tour", class: reference("guided-tour"), preferred: { name: "acme/guided-tour", version: "0.1.0" }, configuration: {}, includedWhen: "lessons" },
+        { id: "apple", class: reference("apple-host"), preferred: { name: acme("apple-host"), version: "0.1.0" }, configuration: {}, includedWhen: "'ios' in targets || 'macos' in targets" },
+        { id: "tour", class: reference("guided-tour"), preferred: { name: acme("guided-tour"), version: "0.1.0" }, configuration: {}, includedWhen: "lessons" },
       ],
-      jobs: [{ id: "server", slot: "host", overrideQuestion: "server", candidates: [{ component: "acme/server-host", profile: "free" }, { component: "acme/server-host", profile: "paid" }] }],
+      jobs: [{ id: "server", slot: "host", overrideQuestion: "server", candidates: [{ component: acme("server-host"), profile: "free" }, { component: acme("server-host"), profile: "paid" }] }],
       scale: { question: "scale", bands: [{ id: "small", label: "fewer than 10 people, occasional use", load: { concurrentPeople: 10, requestsPerDay: 2000 } }, { id: "medium", label: "up to 100 people, daily use", load: { concurrentPeople: 100, requestsPerDay: 50000 } }] },
       questions: [
         { id: "targets", ask: "unless-settled", question: "Which devices should the game run on?", type: "set", options: ["web", "ios", "android", "macos"], default: ["web", "ios", "android"], effects: [{ sets: { "host.targets": "$answer" } }] },
@@ -165,7 +169,7 @@ export function exampleRecipeEntry(): RecipeEntry {
     },
     digest: EXAMPLE_DIGEST,
     source: { repository: "acme/poker-night-recipe", tag: "v0.1.0" },
-    bundle: { asset: "poker-night-0.1.0.tar", digest: EXAMPLE_BUNDLE_DIGEST },
+    bundle: { asset: "poker-night-recipe-0.1.0.tar", digest: EXAMPLE_BUNDLE_DIGEST },
     page: {
       description: "Poker Night deals a hand for every member at the table.\n\nChoose your devices, your starting chips and whether new players get lessons.",
       diagram: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40"><rect x="2" y="2" width="50" height="36" rx="6" fill="#ddd"/><text x="10" y="25">deck</text><rect x="68" y="2" width="50" height="36" rx="6" fill="#ddd"/><text x="76" y="25">seats</text></svg>',
@@ -188,12 +192,12 @@ function component(slug: string, description: string, provides: Port[], requires
   const foundations = exampleFoundations(slug);
   return {
     foundations,
-    format: 3,
+    format: 4,
     release: { channel: "features", fixes: [] },
     images: foundations.classes[0]!.descriptor.presentation === "visual" ? [exampleImage()] : [],
     vulnerabilityWaivers: [],
     quality: null,
-    name: `acme/${slug}`,
+    name: acme(slug),
     version: "0.1.0",
     digest: EXAMPLE_DIGEST,
     description,
@@ -216,10 +220,10 @@ function component(slug: string, description: string, provides: Port[], requires
 
 export function exampleComponentEntry(): ComponentEntry {
   return {
-    ...component("card-deck", "A shuffled deck of 52 cards that deals and burns cards.", [{ id: "card-deck", type: "ae/card-deck", version: "1.0.0" }], [{ id: "random-source", type: "ae/random-source", version: "1.0.0", optional: true }], [], { ...LIBRARY, jobs: ["card-deck"] }),
+    ...component("card-deck", "A shuffled deck of 52 cards that deals and burns cards.", [{ id: "card-deck", type: "com.clodhub/card-deck", version: "1.0.0" }], [{ id: "random-source", type: "com.clodhub/random-source", version: "1.0.0", optional: true }], [], { ...LIBRARY, jobs: ["card-deck"] }),
     tags: ["cards", "deck"],
     guardians: ["Example Guardian Ltd"],
-    interfaceModules: { "ae/card-deck@1.0.0": { web: { path: "web/index.ts", installed: true }, apple: { path: "apple/Sources", installed: true } } },
+    interfaceModules: { "com.clodhub/card-deck@1.0.0": { web: { path: "web/index.ts", installed: true }, apple: { path: "apple/Sources", installed: true } } },
   };
 }
 
@@ -236,23 +240,23 @@ export function exampleComponentEntries(): ComponentEntry[] {
   };
   return [
     exampleComponentEntry(),
-    component("seating", "Seats for the people at a table.", [{ id: "seating", type: "ae/seating", version: "1.0.0" }], [{ id: "card-deck", type: "ae/card-deck", version: "1.0.0" }], [setting("minimumPlayers", "integer", "integer")], LIBRARY),
+    component("seating", "Seats for the people at a table.", [{ id: "seating", type: "com.clodhub/seating", version: "1.0.0" }], [{ id: "card-deck", type: "com.clodhub/card-deck", version: "1.0.0" }], [setting("minimumPlayers", "integer", "integer")], LIBRARY),
     component(
       "server-host",
       "Runs the game's server on a hosting provider.",
-      [{ id: "server-host", type: "ae/server-host", version: "1.0.0" }],
+      [{ id: "server-host", type: "com.clodhub/server-host", version: "1.0.0" }],
       [],
       [setting("targets", "string", "label", { required: true, hasDefault: false }), setting("expectedPeople", "integer", "integer"), setting("accountReference", "string", "slug", { secret: true, hasDefault: false })],
       hosting,
     ),
-    component("apple-host", "The iPhone, iPad and Mac shell.", [{ id: "apple-shell", type: "ae/apple-shell", version: "1.0.0" }], [], [], LIBRARY),
-    component("guided-tour", "Lessons that walk a new player through a hand.", [{ id: "guided-tour", type: "ae/guided-tour", version: "1.0.0" }], [], [setting("length", "string", "slug")], LIBRARY),
+    component("apple-host", "The iPhone, iPad and Mac shell.", [{ id: "apple-shell", type: "com.clodhub/apple-shell", version: "1.0.0" }], [], [], LIBRARY),
+    component("guided-tour", "Lessons that walk a new player through a hand.", [{ id: "guided-tour", type: "com.clodhub/guided-tour", version: "1.0.0" }], [], [setting("length", "string", "slug")], LIBRARY),
   ];
 }
 
 // Another component of the class of the example recipe's seats slot.
 export function exampleAlternativeEntry(): ComponentEntry {
-  return component("club-seating", "Seats assigned by club membership number.", [{ id: "seating", type: "ae/seating", version: "1.0.0" }], [{ id: "card-deck", type: "ae/card-deck", version: "1.0.0" }], [setting("minimumPlayers", "integer", "integer"), setting("membership", "string", "slug")], LIBRARY);
+  return component("club-seating", "Seats assigned by club membership number.", [{ id: "seating", type: "com.clodhub/seating", version: "1.0.0" }], [{ id: "card-deck", type: "com.clodhub/card-deck", version: "1.0.0" }], [setting("minimumPlayers", "integer", "integer"), setting("membership", "string", "slug")], LIBRARY);
 }
 
 // The example components as a recipe check's component source.

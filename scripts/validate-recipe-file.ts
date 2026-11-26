@@ -86,7 +86,7 @@ const NATIVE = ["apple", "android"];
 // lands at components/<short name>/<path> (inside that folder for apple and android).
 function interfacesOf(manifest: any, folder: string) {
   const listed = new Set(list(manifest.files).map((f: any) => f?.path));
-  const short = `components/${String(manifest.identity.name).split("/")[1]}/`;
+  const short = `components/${String(manifest.identity.name).slice(String(manifest.identity.name).lastIndexOf("/") + 1)}/`;
   const destinations = list(manifest.artefacts).map((a: any) => a?.destination).filter((d: unknown): d is string => typeof d === "string");
   const interfaceDigests: Record<string, string> = {};
   const interfaceModules: Record<string, Record<string, { path: string | null; installed: boolean }>> = {};

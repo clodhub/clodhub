@@ -1,5 +1,9 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex } from "@noble/hashes/utils.js";
+import { isInterfaceType, parseReference } from "./names.js";
+
+// class.json format.
+export const CLASS_FORMAT = 3;
 
 export const FOUNDATION_PLATFORMS = ["web", "server", "ios", "macos", "tvos", "android", "windows"] as const;
 export interface ClassReference { name: string; version: string; digest: string }
@@ -8,7 +12,7 @@ export const CATEGORY_PATH = /^[a-z0-9]+(-[a-z0-9]+)*(\/[a-z0-9]+(-[a-z0-9]+)*){
 export const PRESENTATIONS = ["visual", "none"] as const;
 export type Presentation = typeof PRESENTATIONS[number];
 export interface ClassDescriptor {
-  format: 2; name: string; version: string;
+  format: 3; name: string; version: string;
   title: string; summary: string; category: string; presentation: Presentation;
   provides: { type: string; version: string; path: string; modules: Record<string, string[]> }[];
   requires: { type: string; version: string }[];
@@ -59,11 +63,13 @@ function url(v: unknown, mail = false): boolean {
     return !!host && !u.username && !u.password && (!u.port || Number(u.port) >= 1) && (host.startsWith("[") || (host.length <= 253 && host.replace(/\.$/, "").split(".").every(label => /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/.test(label))));
   } catch { return false; }
 }
-// A package URL by spec section 6a (papers/catalogue-format-freeze.md), the rule aepm shares; both pass
-// shared/test/fixtures/purl-cases.json. pkg:type/namespace/name@version?qualifiers#subpath, each part percent-decoded.
+// A package URL by spec section 6a (papers/catalogue-format-freeze.md) and papers/package-urls.md section 3, the rule
+// clod shares; both pass shared/test/fixtures/purl-cases.json. pkg:type/namespace/name@version?qualifiers#subpath, each part percent-decoded.
 export interface Purl { type: string; namespace: string[]; name: string; version: string | null; qualifiers: Record<string, string>; subpath: string[] }
 
 const PURL_NAMESPACE: Record<string, number> = { maven: 1, golang: 1, github: 1, bitbucket: 1, composer: 1, swift: 2 };
+// Types whose namespace has exactly this many segments.
+const PURL_NAMESPACE_EXACT: Record<string, number> = { clod: 1 };
 const PURL_NO_NAMESPACE = new Set(["cargo", "gem", "pypi", "nuget", "hex", "pub", "cocoapods", "hackage", "conda"]);
 const PURL_FORBIDDEN = /[\p{Cc}\p{Cf}\p{Zs}\p{Zl}\p{Zp}\p{Co}\p{Cs}]/u;
 
@@ -111,6 +117,7 @@ export function parsePurl(v: unknown): Purl | null {
   if (name === "" || name.startsWith("@")) return null;
   if (PURL_NO_NAMESPACE.has(type) && namespace.length > 0) return null;
   if (namespace.length < (PURL_NAMESPACE[type] ?? 0)) return null;
+  if (type in PURL_NAMESPACE_EXACT && namespace.length !== PURL_NAMESPACE_EXACT[type]) return null;
   if (type === "swift" && !namespace[0]!.includes(".")) return null;
   if (type === "npm" && namespace.length > 0 && (namespace.length > 1 || !namespace[0]!.startsWith("@") || namespace[0]!.length < 2)) return null;
   const quals: Record<string, string> = {};
@@ -162,8 +169,10 @@ export function canonical(value: unknown): string {
   throw Error("invalid-json");
 }
 export const descriptorDigest = (value: unknown): string => bytesToHex(sha256(new TextEncoder().encode(canonical(value))));
+// { name, version, digest }: name a class package name (ending in -class), version three integers, as one versioned
+// package URL by papers/package-urls.md.
 export function isClassReference(v: unknown): v is ClassReference {
-  return keys(v, "name version digest") && /^clodhub\/[a-z][a-z0-9-]*$/.test(v.name) && version(v.version) && digest(v.digest);
+  return keys(v, "name version digest") && typeof v.name === "string" && typeof v.version === "string" && !v.name.includes("@") && parseReference(`${v.name}@${v.version}`)?.kind === "class" && digest(v.digest);
 }
 export function validLicence(v: unknown): boolean {
   if (typeof v !== "string" || !v.length || v.length > 512 || v !== v.trim()) return false;
@@ -215,8 +224,8 @@ function descriptorProblems(value: unknown, patterns: readonly string[]): string
   const e: string[] = []; const need = (ok: unknown, code: string) => { if (!ok) e.push(code); };
   if (!keys(value, "format name version title summary category presentation provides requires settings inventory verification")) return ["class-fields"];
   const c = value;
-  if (c.format !== 2) return ["class-format-refused"];
-  need(c.format === 2 && isClassReference({ name: c.name, version: c.version, digest: "0".repeat(64) }), "class-identity");
+  if (c.format !== CLASS_FORMAT) return ["class-format-refused"];
+  need(isClassReference({ name: c.name, version: c.version, digest: "0".repeat(64) }), "class-identity");
   need(text(c.title) && c.title.length <= 80 && text(c.summary) && c.summary.length <= 300, "class-title");
   need(typeof c.category === "string" && c.category.length <= 100 && CATEGORY_PATH.test(c.category), "class-category");
   need((PRESENTATIONS as readonly unknown[]).includes(c.presentation), "class-presentation");
@@ -226,7 +235,7 @@ function descriptorProblems(value: unknown, patterns: readonly string[]): string
   for (const key of ["provides", "requires"]) {
     need(Array.isArray(c[key]), "class-ports");
     for (const p of list(c[key])) {
-      need(keys(p, key === "provides" ? "type version path modules" : "type version") && text(p.type) && version(p.version), "class-port");
+      need(keys(p, key === "provides" ? "type version path modules" : "type version") && isInterfaceType(p.type) && version(p.version), "class-port");
       if (key === "provides") {
         need(path(p.path) && paths.has(p.path), "class-interface-inventory");
         need(object(p.modules) && Object.keys(p.modules).length > 0 && Object.entries(p.modules).every(([platform, entries]) => (FOUNDATION_PLATFORMS as readonly string[]).includes(platform) && strings(entries, true) && entries.every(path)), "class-modules");
