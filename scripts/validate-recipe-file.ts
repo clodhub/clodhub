@@ -1,12 +1,13 @@
 // Validates a recipe.json with the same rules the library applies on publication.
 // Usage: node scripts/validate-recipe-file.ts <recipe.json> [--components <directory>] [--no-components]
 // Each <directory>/<name>/component.json (provides, requires, collect, files, artefacts, and the provided interface
-// documents) and suitability.json (profiles) is the component source the slots are checked against: every preferred
-// component and job candidate must be there at its version and fit its slot's class by clod's fit rule. The default directory is ../../components next to the recipe's folder when it exists. The
-// recipe's own component.json supplies the settings and ports of `application`.
+// documents) and suitability.json (profiles) of a component the recipe names (a preferred component or a job candidate)
+// is the component source the slots are checked against: each must be there at its version and fit its slot's class by
+// clod's fit rule. Other folders in the directory are not read. The default directory is ../../components next to the
+// recipe's folder when it exists. The recipe's own component.json supplies the settings and ports of `application`.
 // Exit code 0: valid. 1: errors, printed one per line. 2: a file cannot be read.
 import { createHash } from "node:crypto";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -120,17 +121,24 @@ const recipeDirectory = dirname(recipePath);
 const input = readJson(recipePath);
 
 const componentsDirectory = args.includes("--no-components") ? null : flag("--components") ? resolve(flag("--components") as string) : existsSync(resolve(recipeDirectory, "../../components")) ? resolve(recipeDirectory, "../../components") : null;
+// The packages the recipe names, each read from the folder of its name.
+const named = new Set<string>(
+  [...list(input?.components).map((c: any) => c?.preferred?.name), ...list(input?.jobs).flatMap((j: any) => list(j?.candidates).map((c: any) => c?.component))].filter(
+    (n: unknown): n is string => typeof n === "string",
+  ),
+);
 const facts = new Map<string, unknown>();
 if (componentsDirectory) {
-  for (const entry of readdirSync(componentsDirectory, { withFileTypes: true })) {
-    const manifestPath = join(componentsDirectory, entry.name, "component.json");
-    if (!entry.isDirectory() || !existsSync(manifestPath)) continue;
+  for (const folderName of [...new Set([...named].map((n) => n.slice(n.lastIndexOf("/") + 1)))].sort()) {
+    const folder = join(componentsDirectory, folderName);
+    const manifestPath = join(folder, "component.json");
+    if (!existsSync(manifestPath)) continue;
     const manifest = readJson(manifestPath);
     const name = manifest?.identity?.name;
-    if (typeof name !== "string") continue;
-    const suitabilityPath = join(componentsDirectory, entry.name, "suitability.json");
+    if (typeof name !== "string" || !named.has(name)) continue;
+    const suitabilityPath = join(folder, "suitability.json");
     const profiles = existsSync(suitabilityPath) ? list(readJson(suitabilityPath).profiles).map((p: any) => ({ id: p.id, ...(p.settings ? { settings: p.settings } : {}) })) : [];
-    facts.set(name, { name, foundations: foundationsOf(manifest, join(componentsDirectory, entry.name)), version: manifest.identity.version, provides: portsOf(manifest.provides), requires: portsOf(manifest.requires), settings: settingsOf(manifest), ...interfacesOf(manifest, join(componentsDirectory, entry.name)), profiles });
+    facts.set(name, { name, foundations: foundationsOf(manifest, folder), version: manifest.identity.version, provides: portsOf(manifest.provides), requires: portsOf(manifest.requires), settings: settingsOf(manifest), ...interfacesOf(manifest, folder), profiles });
   }
 }
 const own = join(recipeDirectory, "component.json");

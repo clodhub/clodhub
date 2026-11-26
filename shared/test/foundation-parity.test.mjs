@@ -38,6 +38,8 @@ from clod.model import licence
 data = json.load(sys.stdin)
 def manifest(entry):
     f = copy.deepcopy(entry['foundations'])
+    platforms = f.get('platforms')
+    f['toolchains'] = {p: [] for p in platforms if isinstance(p, str)} if isinstance(platforms, list) else {}
     f['identity'] = {'name': entry['name'], 'version': entry['version'], 'licence': f.pop('licence')}
     f['kind'] = 'component'
     f['provides'], f['requires'] = entry['provides'], entry['requires']
