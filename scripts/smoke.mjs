@@ -61,6 +61,9 @@ async function publicChecks() {
   const health = await call("GET", "/api/health", { auth: "" });
   record(health.status === 200 && health.json?.ok === true && health.json?.links && health.json?.secrets, "health reports the link and master secrets configured", JSON.stringify(health.json));
   if (!local && !health.json?.oauth) console.log("note: GitHub sign-in is not configured (GITHUB_OAUTH_CLIENT_ID and GITHUB_OAUTH_CLIENT_SECRET)");
+  const login = await call("GET", "/api/auth/login", { auth: "" });
+  const toGitHub = login.status === 302 && (login.headers.get("Location") ?? "").includes("/login/oauth/authorize?");
+  record(health.json?.oauth ? toGitHub : login.status === 503, "GET /api/auth/login sends a browser to GitHub, or answers 503 without sign-in", String(login.status));
   for (const path of ["/agents.md", "/contract.md", "/llms.txt", "/free-tiers.md", "/cloud-assembly.md", "/aepm-assemble.yml", "/policy/levelnpolicy.json", "/docs/package-foundations.md", "/terms", "/robots.txt", "/sitemap.xml"]) {
     const res = await fetch(base + path);
     record(res.status === 200, `GET ${path}`, res.status === 200 ? "" : String(res.status));
@@ -104,6 +107,8 @@ async function textPageChecks() {
     }
     const first = entries[0];
     if (first) {
+      const latest = await call("GET", `/api/${kind}/${first.slug}/latest`, { auth: "", pattern: `/api/${kind}/<name>/latest` });
+      record(latest.status === 200 && latest.json?.version === first.version, `GET /api/${kind}/<name>/latest gives the listed version`, `${latest.status} ${latest.json?.version}`);
       expectStatus(`GET /api/${kind}/:name/:version/bundle`, await call("GET", `/api/${kind}/${first.slug}/${first.version}/bundle`, { auth: "", pattern: `/api/${kind}/:name/:version/bundle` }), 200);
       expectStatus(`GET /api/${kind}/:name/:version/deprecations`, await call("GET", `/api/${kind}/${first.slug}/${first.version}/deprecations`, { auth: "", pattern: `/api/${kind}/:name/:version/deprecations` }), 200);
       const vulns = await call("GET", `/api/${kind}/${first.slug}/${first.version}/vulnerabilities`, { auth: "", pattern: `/api/${kind}/:name/:version/vulnerabilities` });
@@ -174,7 +179,7 @@ function coverage() {
   const normalise = (e) => e.replace(/:[a-zA-Z]+/g, ":id").replace(/<[a-z]+>/g, ":id");
   const done = new Set([...exercised].map(normalise));
   const documented = documentedEndpoints().filter((e) => e.startsWith("GET ")).map(normalise);
-  const notWalked = documented.filter((e) => !done.has(e) && !(/:id\/:id/.test(e) || /\/reports$/.test(e)));
+  const notWalked = documented.filter((e) => !done.has(e) && !(/:id\/(:id|latest)/.test(e) || /\/reports$/.test(e)));
   record(notWalked.length === 0, "every GET route agents.md lists was called", notWalked.join(", "));
 }
 
