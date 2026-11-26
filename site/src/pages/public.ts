@@ -72,7 +72,7 @@ export async function landing(root: HTMLElement): Promise<void> {
 
         <section class="how" id="how">
           <div class="section-title"><h2>How a recipe is cooked</h2></div>
-          <p class="muted">Your agent answers a recipe's questions with you. The answers decide which reviewed components go in and which providers they use. clod downloads each one from its publisher, checks it and installs it without running its code. The application runs on your own accounts, <a href="https://ourapps.app">ourapps.app</a> can deliver it to your people through one link, and every update waits for your approval.</p>
+          <p class="muted">Your agent answers a recipe's questions with you. The answers decide which reviewed components go in and which providers they use. clod downloads each one from its publisher, checks it and installs it without running its code. The application runs on accounts you own, and every update waits for your approval. Delivering it to people's devices is a separate step a recipe can include, for example through <a href="https://ourapps.app">ourapps.app</a>.</p>
           ${cookingFigure()}
         </section>
 

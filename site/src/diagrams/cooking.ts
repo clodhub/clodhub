@@ -1,5 +1,5 @@
-// "How a recipe is cooked": the whole process, from a recipe in the library to an application on your people's devices
-// and every update after. Hand-laid: every coordinate is computed here from the text. One zone per party that acts;
+// "How a recipe is cooked": the whole process, from a recipe in the library to an application running on accounts you
+// own, and every update after. Hand-laid: every coordinate is computed here from the text. One zone per party that acts;
 // steps run left to right, a second row starts again at the left, and a line down the left margin carries the result
 // of one zone into the next. Regenerated into public/diagrams/cooking-a-recipe.svg by scripts/build-diagrams.ts.
 import { COLOURS, Canvas, INK, measure, pillWidth, ZTITLE, type CardBox, type Kind, type Zone } from "@clodhub/shared";
@@ -72,16 +72,15 @@ const PARTS: Part[] = [
     then: "the application",
   },
   {
-    title: "Delivery: your accounts, your people",
-    who: "your accounts and ourapps.app",
+    title: "Run: on your computer and accounts you own",
+    who: "your agent, on accounts you own",
     zone: "green",
     kind: "rooms",
     icon: "rooms",
     rows: [
       [
-        { title: "14 Your accounts", lines: ["the application runs on", "hosting, Apple and Android", "accounts you own"] },
-        { title: "15 Share link", lines: ["ourapps.app makes one", "private link per person", "or group"] },
-        { title: "16 Your people", lines: ["staff, members, customers", "open the link and install", "on their devices"] },
+        { title: "14 Build and run", lines: ["build the application for", "each device and run it", "on your computer"] },
+        { title: "15 Deploy", lines: ["servers and websites go", "to hosting on accounts", "you own"] },
       ],
     ],
     then: "later",
@@ -94,10 +93,10 @@ const PARTS: Part[] = [
     icon: "ui",
     rows: [
       [
-        { title: "17 New version", lines: ["a publisher releases a new", "version of a component"] },
-        { title: "18 Proposal", lines: ["clod proposes the update", "and shows what changes"] },
-        { title: "19 Approve", lines: ["you, the owner, approve", "it or leave it"] },
-        { title: "20 Apply", lines: ["clod applies it with", "recovery: it can return to", "the previous version; your", "people update through the", "same link"] },
+        { title: "16 New version", lines: ["a publisher releases a new", "version of a component"] },
+        { title: "17 Proposal", lines: ["clod proposes the update", "and shows what changes"] },
+        { title: "18 Approve", lines: ["you, the owner, approve", "it or leave it"] },
+        { title: "19 Apply", lines: ["clod applies it with", "recovery: it can return to", "the previous version"] },
       ],
     ],
   },
@@ -123,7 +122,7 @@ export function cookingSvg(): string {
     [
       { text: "the next step", colour: FLOW, arrow: true },
     ],
-    ["Each zone is one party that acts.", "A pill names what passes from one", "zone to the next.", "ClodHub keeps the catalogue; ourapps.app", "keeps the share links. The building happens", "in your repository, on your computer."],
+    ["Each zone is one party that acts.", "A pill names what passes from one", "zone to the next.", "ClodHub keeps the catalogue. The building", "happens in your repository, on your computer.", "Delivery to people's devices is a separate", "step a recipe can include, for example", "through ourapps.app."],
   );
 
   // Every card's size first, so every row and zone can be sized.
@@ -183,6 +182,6 @@ export function cookingSvg(): string {
     c.pill(Math.min(from.cx - pillWidth(p.then) / 2 - 16, ZX + zoneW - pillWidth(p.then) / 2 - 20), gy, p.then, INK);
   });
 
-  const header = Canvas.titleBlock("How a recipe is cooked", "From a recipe in the library to an application on your people's devices, and every update after");
+  const header = Canvas.titleBlock("How a recipe is cooked", "From a recipe in the library to an application running on accounts you own, and every update after");
   return c.svg(width, height, "How a recipe is cooked: the steps from a recipe to an application and its updates, by who acts.", header);
 }

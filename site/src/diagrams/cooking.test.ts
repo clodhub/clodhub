@@ -11,10 +11,13 @@ describe("How a recipe is cooked", () => {
   });
 
   it("shows every step and only commands that exist", () => {
-    for (const step of ["1 Find a recipe", "2 Read its questions", "3 Answer them", "4 Include components", "5 Choose providers", "6 Apply settings", "7 Check connections", "8 Resolve versions", "9 Download", "10 Check", "11 Review", "12 Install", "13 Verify", "14 Your accounts", "15 Share link", "16 Your people", "17 New version", "18 Proposal", "19 Approve", "20 Apply"]) {
+    for (const step of ["1 Find a recipe", "2 Read its questions", "3 Answer them", "4 Include components", "5 Choose providers", "6 Apply settings", "7 Check connections", "8 Resolve versions", "9 Download", "10 Check", "11 Review", "12 Install", "13 Verify", "14 Build and run", "15 Deploy", "16 New version", "17 Proposal", "18 Approve", "19 Apply"]) {
       expect(svg, step).toContain(`>${step}</text>`);
     }
     expect(svg).not.toContain("clod create");
+    // Delivery to people's devices is not part of the process; a recipe can include it.
+    expect(svg).not.toMatch(/[Ss]hare link|Your people/);
+    expect(svg).toContain("step a recipe can include");
     expect(svg).not.toMatch(/coming soon|dashed card/);
     expect(svg).toContain("Legend");
   });
@@ -35,6 +38,6 @@ describe("How a recipe is cooked", () => {
     const html = cookingFigure().html;
     expect(html).toContain(`href="${COOKING_FILE}" target="_blank"`);
     expect(html).toContain(`src="${COOKING_FILE}"`);
-    for (const words of ["find a recipe", "conditions over the answers", "sha256 digest", "share link", "you approve it"]) expect(COOKING_ALT).toContain(words);
+    for (const words of ["find a recipe", "conditions over the answers", "sha256 digest", "hosting on accounts you own", "a separate step a recipe can include", "you approve it"]) expect(COOKING_ALT).toContain(words);
   });
 });
