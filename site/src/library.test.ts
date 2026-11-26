@@ -8,7 +8,7 @@ import { html } from "./html.js";
 describe("library query", () => {
   it("reads filters, search, sort and cursor and ignores the rest", () => {
     expect(readQuery("?q=poker&category=games/cards&platform=ios&quality=reviewed&certified=true&channel=security&secure=true&licence=MIT&sort=trending&cursor=abc&x=1")).toEqual({ q: "poker", category: "games/cards", platform: "ios", quality: "reviewed", certified: "true", channel: "security", secure: "true", licence: "MIT", sort: "trending", cursor: "abc" });
-    expect(readQuery("?provides=ae/card-deck&requires=ae/random-source")).toEqual({ provides: ["ae/card-deck"], requires: ["ae/random-source"] });
+    expect(readQuery("?provides=com.clodhub/card-deck&requires=com.clodhub/random-source")).toEqual({ provides: ["com.clodhub/card-deck"], requires: ["com.clodhub/random-source"] });
     expect(readQuery("")).toEqual({});
     expect(readQuery("?category=%20&certified=maybe&secure=false")).toEqual({});
   });
@@ -25,17 +25,17 @@ describe("library query", () => {
   it("writes a canonical query string", () => {
     expect(queryString({})).toBe("");
     expect(queryString({ category: "games", q: "poker night", cursor: "x1" })).toBe("?q=poker+night&category=games&cursor=x1");
-    expect(queryString({ provides: ["ae/card-deck"] })).toBe("?provides=ae%2Fcard-deck");
-    expect(queryString({ provides: ["ae/card-deck", "ae/seating"] })).toBe("?provides=ae%2Fcard-deck&provides=ae%2Fseating");
+    expect(queryString({ provides: ["com.clodhub/card-deck"] })).toBe("?provides=com.clodhub%2Fcard-deck");
+    expect(queryString({ provides: ["com.clodhub/card-deck", "com.clodhub/seating"] })).toBe("?provides=com.clodhub%2Fcard-deck&provides=com.clodhub%2Fseating");
   });
 
   it("changes one filter, toggles it off and restarts paging", () => {
     expect(withFilter({ category: "games", cursor: "x1" }, "platform", "ios")).toEqual({ category: "games", platform: "ios" });
     expect(withFilter({ category: "games" }, "category", "games")).toEqual({});
     expect(withFilter({ category: "games", q: "x" }, "category", undefined)).toEqual({ q: "x" });
-    expect(withFilter({ provides: ["ae/card-deck"] }, "provides", "ae/seating")).toEqual({ provides: ["ae/card-deck", "ae/seating"] });
-    expect(withFilter({ provides: ["ae/card-deck", "ae/seating"] }, "provides", "ae/card-deck")).toEqual({ provides: ["ae/seating"] });
-    expect(readQuery("?provides=ae/card-deck&provides=ae/seating")).toEqual({ provides: ["ae/card-deck", "ae/seating"] });
+    expect(withFilter({ provides: ["com.clodhub/card-deck"] }, "provides", "com.clodhub/seating")).toEqual({ provides: ["com.clodhub/card-deck", "com.clodhub/seating"] });
+    expect(withFilter({ provides: ["com.clodhub/card-deck", "com.clodhub/seating"] }, "provides", "com.clodhub/card-deck")).toEqual({ provides: ["com.clodhub/seating"] });
+    expect(readQuery("?provides=com.clodhub/card-deck&provides=com.clodhub/seating")).toEqual({ provides: ["com.clodhub/card-deck", "com.clodhub/seating"] });
   });
 
   it("picks the version from the address", () => {
@@ -121,7 +121,7 @@ describe("public copy", () => {
 });
 
 describe("one story across the pages", () => {
-  const sources = import.meta.glob(["./pages/*.ts", "../index.html", "../public/agents.md", "../public/llms.txt", "../public/cloud-assembly.md", "../public/aepm-assemble.yml"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+  const sources = import.meta.glob(["./pages/*.ts", "../index.html", "../public/agents.md", "../public/llms.txt", "../public/cloud-assembly.md", "../public/clod-assemble.yml"], { query: "?raw", import: "default", eager: true }) as Record<string, string>;
   const read = (file: string) => {
     const text = sources[file];
     if (text === undefined) throw new Error(`${file} not found`);
@@ -136,16 +136,16 @@ describe("one story across the pages", () => {
   });
 
   it("no page or document tells the old story or names the old scope", () => {
-    const files = ["./pages/public.ts", "./pages/guide.ts", "./pages/small.ts", "./pages/shell.ts", "./pages/dev.ts", "./pages/prompts.ts", "./pages/terms.ts", "./pages/library.ts", "../index.html", "../public/agents.md", "../public/llms.txt", "../public/cloud-assembly.md", "../public/aepm-assemble.yml"];
+    const files = ["./pages/public.ts", "./pages/guide.ts", "./pages/small.ts", "./pages/shell.ts", "./pages/dev.ts", "./pages/prompts.ts", "./pages/terms.ts", "./pages/library.ts", "../index.html", "../public/agents.md", "../public/llms.txt", "../public/cloud-assembly.md", "../public/clod-assemble.yml"];
     for (const file of files) {
       const text = read(file);
-      for (const old of ["friends and family", "private app store", "ourapps-" + "ae", "ourapps console", "Our Agentically-Engineered"]) expect(text, `${file}: ${old}`).not.toContain(old);
+      for (const old of ["friends and family", "private app store", "ourapps-" + "ae", "ourapps console", "Our Agentically-Engineered", "ae" + "pm", "AE" + "PM", "ae" + "/"]) expect(text, `${file}: ${old}`).not.toContain(old);
     }
   });
 
   it("the landing page says in plain words what ClodHub is", () => {
     const landing = read("./pages/public.ts");
-    for (const text of ["ClodHub is a catalogue of reviewed components and recipes", "aepm", "Browse recipes", "Browse components"]) expect(landing, text).toContain(text);
+    for (const text of ["ClodHub is a catalogue of reviewed components and recipes", "clod fetch ourpoker-recipe@", "Browse recipes", "Browse components"]) expect(landing, text).toContain(text);
     const small = read("./pages/small.ts");
     expect(small).toContain("At a small organisation's size, the expensive parts are free");
     expect(small).toContain("Choose free or paid by size");
@@ -154,15 +154,25 @@ describe("one story across the pages", () => {
   it("building on GitHub is linked from the guide and the agent documents and claims only what is checked", () => {
     for (const file of ["./pages/guide.ts", "../public/agents.md", "../public/llms.txt"]) expect(read(file), file).toContain("/cloud-assembly.md");
     const doc = read("../public/cloud-assembly.md");
-    for (const text of ["AEPM_OWNER_KEY", "AEPM_PUSH_TOKEN", "OURPOKER_CLOUDFLARE_ACCOUNT_API_TOKEN", "OURPOKER_STORE_CREDENTIALS_BUILD_TOKEN", "ci-server", "ci-web", "ci-android", "apple-builds", "release", "aepm-update", "Allow GitHub Actions to create and approve pull requests", "build only on macOS runners", "These workflows are checked with actionlint", "Copyright Level N Ltd 2026"]) expect(doc, text).toContain(text);
+    for (const text of ["CLOD_OWNER_KEY", "CLOD_PUSH_TOKEN", "OURPOKER_CLOUDFLARE_ACCOUNT_API_TOKEN", "OURPOKER_STORE_CREDENTIALS_BUILD_TOKEN", "ci-server", "ci-web", "ci-android", "apple-builds", "release", "clod-update", "Allow GitHub Actions to create and approve pull requests", "build only on macOS runners", "These workflows are checked with actionlint", "Copyright Level N Ltd 2026"]) expect(doc, text).toContain(text);
     expect(doc).not.toMatch(/ran on GitHub|run on GitHub's runners|tested on GitHub/);
-    const workflow = read("../public/aepm-assemble.yml");
-    for (const step of ["aepm fetch", "aepm design", "--answers answers.json", "aepm resolve", "levelnpolicy.json", "aepm install", "secrets.AEPM_OWNER_KEY", "secrets.AEPM_PUSH_TOKEN"]) expect(workflow, step).toContain(step);
+    const workflow = read("../public/clod-assemble.yml");
+    for (const step of ["clod fetch", "clod design", "--answers answers.json", "clod resolve", "levelnpolicy.json", "clod install", "secrets.CLOD_OWNER_KEY", "secrets.CLOD_PUSH_TOKEN"]) expect(workflow, step).toContain(step);
   });
 
   it("the signed-in sidebar links the recipes and components", () => {
     const shell = read("./pages/shell.ts");
     expect(shell).toContain('href: "/recipes"');
     expect(shell).toContain('href: "/components"');
+  });
+});
+
+describe("the clod package URL type definition", () => {
+  const files = import.meta.glob("../public/purl/clod-definition.json", { query: "?raw", import: "default", eager: true }) as Record<string, string>;
+  it("is the shared file of papers/package-urls, byte for byte", async () => {
+    const text = files["../public/purl/clod-definition.json"]!;
+    const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text)))].map((b) => b.toString(16).padStart(2, "0")).join("");
+    expect(digest).toBe("c9e824cc5a80d9dfd1186eb6b8b14f4fa35cd1101668dca0b259b3cabee652f1");
+    expect(JSON.parse(text)).toMatchObject({ type: "clod", repository: { default_repository_url: "https://clodhub.com" } });
   });
 });

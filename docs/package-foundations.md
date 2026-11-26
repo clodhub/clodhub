@@ -4,7 +4,7 @@ Copyright Level N Ltd 2026
 
 ## Publication fields
 
-The publisher calls `aepm.bundle.read_archive(reference, archive_bytes)` and derives fields from the returned canonical manifest and verified payloads. Both publication bodies require `foundations`. Worker validation establishes declared metadata consistency; it does not establish archive or execution evidence.
+The publisher calls `clod.bundle.read_archive(reference, archive_bytes)` and derives fields from the returned canonical manifest and verified payloads. Both publication bodies require `foundations`. Worker validation establishes declared metadata consistency; it does not establish archive or execution evidence.
 
 | Publication field | Validated package source |
 | --- | --- |
@@ -125,8 +125,8 @@ Compatibility requires `runtimes`, `frameworks`, `dependencies` and `styles`. Ra
 
 ## Evidence and selection
 
-Version responses contain `foundationEvidence:"publisher-declared"` and a `foundations` summary (licence, platforms, implemented classes, runtimes, frameworks, maintenance and counts of the lists); the version's `details` route returns the full foundations. The Worker has no signed-review trust-policy verifier and stores no review report or signature: those are release files beside the archive that aepm fetches and checks.
+Version responses contain `foundationEvidence:"publisher-declared"` and a `foundations` summary (licence, platforms, implemented classes, runtimes, frameworks, maintenance and counts of the lists); the version's `details` route returns the full foundations. The Worker has no signed-review trust-policy verifier and stores no review report or signature: those are release files beside the archive that clod fetches and checks.
 
-Publication validates independent class digests, declared inputs and individual candidate fit. It checks graph conflicts between the recipe and each candidate, and among unconditional non-job preferred slots. It does not combine all conditional alternatives into one graph. aepm evaluates actual answers, chooses job candidates, retains `server` when declared, checks the selected graph and verifies archive bytes and signed review evidence.
+Publication validates independent class digests, declared inputs and individual candidate fit. It checks graph conflicts between the recipe and each candidate, and among unconditional non-job preferred slots. It does not combine all conditional alternatives into one graph. clod evaluates actual answers, chooses job candidates, retains `server` when declared, checks the selected graph and verifies archive bytes and signed review evidence.
 
-The source-file validator reads the recipe's own `component.json`, component manifests and class inventory bytes. It checks inventory hashes, nonempty upstream notices, bundled file hashes and lock hashes. npm and Swift pins and Gradle lock configurations are checked locally; full Gradle verification metadata and wrapper-properties byte validation remain in aepm.
+The source-file validator reads the recipe's own `component.json`, component manifests and class inventory bytes. It checks inventory hashes, nonempty upstream notices, bundled file hashes and lock hashes. npm and Swift pins and Gradle lock configurations are checked locally; full Gradle verification metadata and wrapper-properties byte validation remain in clod.

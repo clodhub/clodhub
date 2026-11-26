@@ -2,7 +2,7 @@
 // Usage: node scripts/validate-recipe-file.ts <recipe.json> [--components <directory>] [--no-components]
 // Each <directory>/<name>/component.json (provides, requires, collect, files, artefacts, and the provided interface
 // documents) and suitability.json (profiles) is the component source the slots are checked against: every preferred
-// component and job candidate must be there at its version and fit its slot's class by aepm's fit rule. The default directory is ../../components next to the recipe's folder when it exists. The
+// component and job candidate must be there at its version and fit its slot's class by clod's fit rule. The default directory is ../../components next to the recipe's folder when it exists. The
 // recipe's own component.json supplies the settings and ports of `application`.
 // Exit code 0: valid. 1: errors, printed one per line. 2: a file cannot be read.
 import { createHash } from "node:crypto";

@@ -52,8 +52,8 @@ const PARTS: Part[] = [
     then: "a design",
   },
   {
-    title: "aepm: assembles the design on your computer",
-    who: "aepm",
+    title: "clod: assembles the design on your computer",
+    who: "clod",
     zone: "amber",
     kind: "poker",
     icon: "file",
@@ -88,16 +88,16 @@ const PARTS: Part[] = [
   },
   {
     title: "Updates: you approve every change",
-    who: "aepm and you, the owner",
+    who: "clod and you, the owner",
     zone: "pink",
     kind: "ui",
     icon: "ui",
     rows: [
       [
         { title: "17 New version", lines: ["a publisher releases a new", "version of a component"] },
-        { title: "18 Proposal", lines: ["aepm proposes the update", "and shows what changes"] },
+        { title: "18 Proposal", lines: ["clod proposes the update", "and shows what changes"] },
         { title: "19 Approve", lines: ["you, the owner, approve", "it or leave it"] },
-        { title: "20 Apply", lines: ["aepm applies it with", "recovery: it can return to", "the previous version; your", "people update through the", "same link"] },
+        { title: "20 Apply", lines: ["clod applies it with", "recovery: it can return to", "the previous version; your", "people update through the", "same link"] },
       ],
     ],
   },

@@ -1,5 +1,5 @@
 // The OurPoker recipe as slots, and the catalogue entries of the 39 components it prefers, as the catalogue served them
-// on 2026-11-10, with every port id the last segment of its type. Trimmed to the fields the diagrams read.
+// on 2026-11-10 in the names of papers/package-urls.md, with every port id the name of its type. Trimmed to the fields the diagrams read.
 // Test data only.
 import type { ClassInterface, Port, Targets } from "../catalogue.js";
 import type { Condition } from "../conditions.js";
@@ -9,7 +9,7 @@ export interface FixtureComponent { name: string; version: string; category: str
 export interface FixtureSlot { id: string; class: { provides: ClassInterface[]; requires: ClassInterface[] }; preferred: { name: string; version: string }; includedWhen: Condition | null }
 
 export const OURPOKER_RECIPE: { name: string; version: string; title: string; components: FixtureSlot[]; connections: { source: { instance: string; port: string }; target: { instance: string; port: string } }[] } = {
- "name": "clodhub/ourpoker",
+ "name": "pkg:clod/com.clodhub/ourpoker-recipe",
  "version": "0.3.3",
  "title": "OurPoker",
  "components": [
@@ -18,19 +18,19 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/web-shell",
+      "type": "com.clodhub/web-shell",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/theme",
+      "type": "com.clodhub/theme",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/web-host",
+    "name": "pkg:clod/com.clodhub/web-host",
     "version": "0.3.0"
    },
    "includedWhen": "'web' in targets"
@@ -40,19 +40,19 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/apple-shell",
+      "type": "com.clodhub/apple-shell",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/theme",
+      "type": "com.clodhub/theme",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/apple-host",
+    "name": "pkg:clod/com.clodhub/apple-host",
     "version": "0.4.0"
    },
    "includedWhen": "'ios' in targets || 'macos' in targets || 'tvos' in targets"
@@ -62,19 +62,19 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/android-shell",
+      "type": "com.clodhub/android-shell",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/theme",
+      "type": "com.clodhub/theme",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/android-host",
+    "name": "pkg:clod/com.clodhub/android-host",
     "version": "0.3.0"
    },
    "includedWhen": "'android' in targets"
@@ -84,14 +84,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/desktop-host",
+      "type": "com.clodhub/desktop-host",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/windows-desktop",
+    "name": "pkg:clod/com.clodhub/windows-desktop",
     "version": "0.4.0"
    },
    "includedWhen": "'windows' in targets"
@@ -101,23 +101,23 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/server-host",
+      "type": "com.clodhub/server-host",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/room-session",
+      "type": "com.clodhub/room-session",
       "version": "1.0.0"
      },
      {
-      "type": "ae/room-directory",
+      "type": "com.clodhub/room-directory",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/server-host",
+    "name": "pkg:clod/com.clodhub/server-host",
     "version": "0.4.0"
    },
    "includedWhen": null
@@ -127,14 +127,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/release-pipeline",
+      "type": "com.clodhub/release-pipeline",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/ourapps-release",
+    "name": "pkg:clod/com.clodhub/ourapps-release",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -144,14 +144,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/updates",
+      "type": "com.clodhub/updates",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/store-update",
+    "name": "pkg:clod/com.clodhub/store-update",
     "version": "0.4.0"
    },
    "includedWhen": "updates"
@@ -161,23 +161,23 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/room-session",
+      "type": "com.clodhub/room-session",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/game-adapter",
+      "type": "com.clodhub/game-adapter",
       "version": "1.0.0"
      },
      {
-      "type": "ae/guest-identity",
+      "type": "com.clodhub/guest-identity",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/realtime-rooms",
+    "name": "pkg:clod/com.clodhub/realtime-rooms",
     "version": "0.5.0"
    },
    "includedWhen": null
@@ -187,19 +187,19 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/room-directory",
+      "type": "com.clodhub/room-directory",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/room-session",
+      "type": "com.clodhub/room-session",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/room-directory",
+    "name": "pkg:clod/com.clodhub/room-directory",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -209,14 +209,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/guest-identity",
+      "type": "com.clodhub/guest-identity",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/guest-identity",
+    "name": "pkg:clod/com.clodhub/guest-identity",
     "version": "0.4.0"
    },
    "includedWhen": null
@@ -226,19 +226,19 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/presence",
+      "type": "com.clodhub/presence",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/guest-identity",
+      "type": "com.clodhub/guest-identity",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/presence",
+    "name": "pkg:clod/com.clodhub/presence",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -248,14 +248,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/invitations",
+      "type": "com.clodhub/invitations",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/invitations",
+    "name": "pkg:clod/com.clodhub/invitations",
     "version": "0.1.1"
    },
    "includedWhen": null
@@ -265,14 +265,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/private-views",
+      "type": "com.clodhub/private-views",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/private-views",
+    "name": "pkg:clod/com.clodhub/private-views",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -282,14 +282,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/display-policy",
+      "type": "com.clodhub/display-policy",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/display-mode",
+    "name": "pkg:clod/com.clodhub/display-mode",
     "version": "0.4.0"
    },
    "includedWhen": null
@@ -299,14 +299,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/media-session",
+      "type": "com.clodhub/media-session",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/video-calls",
+    "name": "pkg:clod/com.clodhub/video-calls",
     "version": "0.4.0"
    },
    "includedWhen": "video"
@@ -316,14 +316,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/preferences",
+      "type": "com.clodhub/preferences",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/preferences",
+    "name": "pkg:clod/com.clodhub/preferences",
     "version": "0.1.1"
    },
    "includedWhen": null
@@ -333,52 +333,52 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/game-adapter",
+      "type": "com.clodhub/game-adapter",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/game-rules",
+      "type": "com.clodhub/game-rules",
       "version": "1.0.0"
      },
      {
-      "type": "ae/seating",
+      "type": "com.clodhub/seating",
       "version": "1.0.0"
      },
      {
-      "type": "ae/game-clock",
+      "type": "com.clodhub/game-clock",
       "version": "1.0.0"
      },
      {
-      "type": "ae/private-views",
+      "type": "com.clodhub/private-views",
       "version": "1.0.0"
      },
      {
-      "type": "ae/presence",
+      "type": "com.clodhub/presence",
       "version": "1.0.0"
      },
      {
-      "type": "ae/tournament",
+      "type": "com.clodhub/tournament",
       "version": "1.0.0"
      },
      {
-      "type": "ae/computer-players",
+      "type": "com.clodhub/computer-players",
       "version": "1.0.0",
       "optional": true
      },
      {
-      "type": "ae/round-history",
+      "type": "com.clodhub/round-history",
       "version": "1.0.0"
      },
      {
-      "type": "ae/rules-settings",
+      "type": "com.clodhub/rules-settings",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/turn-engine",
+    "name": "pkg:clod/com.clodhub/turn-engine",
     "version": "0.4.0"
    },
    "includedWhen": null
@@ -388,14 +388,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/game-clock",
+      "type": "com.clodhub/game-clock",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/game-clock",
+    "name": "pkg:clod/com.clodhub/game-clock",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -405,19 +405,19 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/seating",
+      "type": "com.clodhub/seating",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/guest-identity",
+      "type": "com.clodhub/guest-identity",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/seating",
+    "name": "pkg:clod/com.clodhub/seating",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -427,14 +427,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/random-source",
+      "type": "com.clodhub/random-source",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/fair-shuffle",
+    "name": "pkg:clod/com.clodhub/fair-shuffle",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -444,19 +444,19 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/card-deck",
+      "type": "com.clodhub/card-deck",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/random-source",
+      "type": "com.clodhub/random-source",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/card-deck",
+    "name": "pkg:clod/com.clodhub/card-deck",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -466,27 +466,27 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/computer-players",
+      "type": "com.clodhub/computer-players",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/player-strategy",
+      "type": "com.clodhub/player-strategy",
       "version": "1.0.0"
      },
      {
-      "type": "ae/game-clock",
+      "type": "com.clodhub/game-clock",
       "version": "1.0.0"
      },
      {
-      "type": "ae/seating",
+      "type": "com.clodhub/seating",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/computer-players",
+    "name": "pkg:clod/com.clodhub/computer-players",
     "version": "0.4.0"
    },
    "includedWhen": "computerPlayers != 'none'"
@@ -496,14 +496,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/chip-ledger",
+      "type": "com.clodhub/chip-ledger",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/chip-ledger",
+    "name": "pkg:clod/com.clodhub/chip-ledger",
     "version": "0.4.0"
    },
    "includedWhen": null
@@ -513,14 +513,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/level-schedule",
+      "type": "com.clodhub/level-schedule",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/level-schedule",
+    "name": "pkg:clod/com.clodhub/level-schedule",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -530,27 +530,27 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/tournament",
+      "type": "com.clodhub/tournament",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/chip-ledger",
+      "type": "com.clodhub/chip-ledger",
       "version": "1.0.0"
      },
      {
-      "type": "ae/level-schedule",
+      "type": "com.clodhub/level-schedule",
       "version": "1.0.0"
      },
      {
-      "type": "ae/seating",
+      "type": "com.clodhub/seating",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/tournament",
+    "name": "pkg:clod/com.clodhub/tournament",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -560,14 +560,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/round-history",
+      "type": "com.clodhub/round-history",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/round-history",
+    "name": "pkg:clod/com.clodhub/round-history",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -577,14 +577,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/rules-settings",
+      "type": "com.clodhub/rules-settings",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/rules-settings",
+    "name": "pkg:clod/com.clodhub/rules-settings",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -594,19 +594,19 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/hand-ranking",
+      "type": "com.clodhub/hand-ranking",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/card-deck",
+      "type": "com.clodhub/card-deck",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/poker-hand-ranking",
+    "name": "pkg:clod/com.clodhub/poker-hand-ranking",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -616,23 +616,23 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/poker-odds",
+      "type": "com.clodhub/poker-odds",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/hand-ranking",
+      "type": "com.clodhub/hand-ranking",
       "version": "1.0.0"
      },
      {
-      "type": "ae/card-deck",
+      "type": "com.clodhub/card-deck",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/poker-odds",
+    "name": "pkg:clod/com.clodhub/poker-odds",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -642,35 +642,35 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/game-rules",
+      "type": "com.clodhub/game-rules",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/card-deck",
+      "type": "com.clodhub/card-deck",
       "version": "1.0.0"
      },
      {
-      "type": "ae/chip-ledger",
+      "type": "com.clodhub/chip-ledger",
       "version": "1.0.0"
      },
      {
-      "type": "ae/level-schedule",
+      "type": "com.clodhub/level-schedule",
       "version": "1.0.0"
      },
      {
-      "type": "ae/hand-ranking",
+      "type": "com.clodhub/hand-ranking",
       "version": "1.0.0"
      },
      {
-      "type": "ae/rules-settings",
+      "type": "com.clodhub/rules-settings",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/holdem-rules",
+    "name": "pkg:clod/com.clodhub/holdem-rules",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -680,23 +680,23 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/player-strategy",
+      "type": "com.clodhub/player-strategy",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/hand-ranking",
+      "type": "com.clodhub/hand-ranking",
       "version": "1.0.0"
      },
      {
-      "type": "ae/poker-odds",
+      "type": "com.clodhub/poker-odds",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/poker-strategy",
+    "name": "pkg:clod/com.clodhub/poker-strategy",
     "version": "0.3.0"
    },
    "includedWhen": "computerPlayers != 'none'"
@@ -706,14 +706,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/theme",
+      "type": "com.clodhub/theme",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/theme",
+    "name": "pkg:clod/com.clodhub/theme",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -723,19 +723,19 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/controls",
+      "type": "com.clodhub/controls",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/theme",
+      "type": "com.clodhub/theme",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/controls",
+    "name": "pkg:clod/com.clodhub/controls",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -745,23 +745,23 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/table-layout",
+      "type": "com.clodhub/table-layout",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/theme",
+      "type": "com.clodhub/theme",
       "version": "1.0.0"
      },
      {
-      "type": "ae/controls",
+      "type": "com.clodhub/controls",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/table-layout",
+    "name": "pkg:clod/com.clodhub/table-layout",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -771,19 +771,19 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/card-graphics",
+      "type": "com.clodhub/card-graphics",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/theme",
+      "type": "com.clodhub/theme",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/card-graphics",
+    "name": "pkg:clod/com.clodhub/card-graphics",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -793,19 +793,19 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/chip-graphics",
+      "type": "com.clodhub/chip-graphics",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/theme",
+      "type": "com.clodhub/theme",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/chip-graphics",
+    "name": "pkg:clod/com.clodhub/chip-graphics",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -815,19 +815,19 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/sound-cues",
+      "type": "com.clodhub/sound-cues",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/preferences",
+      "type": "com.clodhub/preferences",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/sound-cues",
+    "name": "pkg:clod/com.clodhub/sound-cues",
     "version": "0.3.0"
    },
    "includedWhen": null
@@ -837,27 +837,27 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/guided-tour",
+      "type": "com.clodhub/guided-tour",
       "version": "1.0.0"
      }
     ],
     "requires": [
      {
-      "type": "ae/controls",
+      "type": "com.clodhub/controls",
       "version": "1.0.0"
      },
      {
-      "type": "ae/preferences",
+      "type": "com.clodhub/preferences",
       "version": "1.0.0"
      },
      {
-      "type": "ae/language",
+      "type": "com.clodhub/language",
       "version": "1.0.0"
      }
     ]
    },
    "preferred": {
-    "name": "clodhub/guided-tour",
+    "name": "pkg:clod/com.clodhub/guided-tour",
     "version": "0.3.0"
    },
    "includedWhen": "lessons"
@@ -867,14 +867,14 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
    "class": {
     "provides": [
      {
-      "type": "ae/language",
+      "type": "com.clodhub/language",
       "version": "1.0.0"
      }
     ],
     "requires": []
    },
    "preferred": {
-    "name": "clodhub/translations",
+    "name": "pkg:clod/com.clodhub/translations",
     "version": "0.4.0"
    },
    "includedWhen": null
@@ -1536,7 +1536,7 @@ export const OURPOKER_RECIPE: { name: string; version: string; title: string; co
 
 export const OURPOKER_CATALOGUE: FixtureComponent[] = [
  {
-  "name": "clodhub/android-host",
+  "name": "pkg:clod/com.clodhub/android-host",
   "version": "0.3.0",
   "category": "delivery",
   "targets": {
@@ -1548,14 +1548,14 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "android-shell",
-    "type": "ae/android-shell",
+    "type": "com.clodhub/android-shell",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "theme",
-    "type": "ae/theme",
+    "type": "com.clodhub/theme",
     "version": "1.0.0"
    }
   ],
@@ -1567,7 +1567,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/apple-host",
+  "name": "pkg:clod/com.clodhub/apple-host",
   "version": "0.4.0",
   "category": "delivery",
   "targets": {
@@ -1581,14 +1581,14 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "apple-shell",
-    "type": "ae/apple-shell",
+    "type": "com.clodhub/apple-shell",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "theme",
-    "type": "ae/theme",
+    "type": "com.clodhub/theme",
     "version": "1.0.0"
    }
   ],
@@ -1600,7 +1600,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/card-deck",
+  "name": "pkg:clod/com.clodhub/card-deck",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -1616,14 +1616,14 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "card-deck",
-    "type": "ae/card-deck",
+    "type": "com.clodhub/card-deck",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "random-source",
-    "type": "ae/random-source",
+    "type": "com.clodhub/random-source",
     "version": "1.0.0"
    }
   ],
@@ -1635,7 +1635,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/card-graphics",
+  "name": "pkg:clod/com.clodhub/card-graphics",
   "version": "0.3.0",
   "category": "presentation",
   "targets": {
@@ -1651,14 +1651,14 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "card-graphics",
-    "type": "ae/card-graphics",
+    "type": "com.clodhub/card-graphics",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "theme",
-    "type": "ae/theme",
+    "type": "com.clodhub/theme",
     "version": "1.0.0"
    }
   ],
@@ -1670,7 +1670,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/chip-graphics",
+  "name": "pkg:clod/com.clodhub/chip-graphics",
   "version": "0.3.0",
   "category": "presentation",
   "targets": {
@@ -1686,14 +1686,14 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "chip-graphics",
-    "type": "ae/chip-graphics",
+    "type": "com.clodhub/chip-graphics",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "theme",
-    "type": "ae/theme",
+    "type": "com.clodhub/theme",
     "version": "1.0.0"
    }
   ],
@@ -1705,7 +1705,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/chip-ledger",
+  "name": "pkg:clod/com.clodhub/chip-ledger",
   "version": "0.4.0",
   "category": "game-framework",
   "targets": {
@@ -1715,7 +1715,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "chip-ledger",
-    "type": "ae/chip-ledger",
+    "type": "com.clodhub/chip-ledger",
     "version": "1.0.0"
    }
   ],
@@ -1728,7 +1728,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/computer-players",
+  "name": "pkg:clod/com.clodhub/computer-players",
   "version": "0.4.0",
   "category": "game-framework",
   "targets": {
@@ -1738,24 +1738,24 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "computer-players",
-    "type": "ae/computer-players",
+    "type": "com.clodhub/computer-players",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "player-strategy",
-    "type": "ae/player-strategy",
+    "type": "com.clodhub/player-strategy",
     "version": "1.0.0"
    },
    {
     "id": "game-clock",
-    "type": "ae/game-clock",
+    "type": "com.clodhub/game-clock",
     "version": "1.0.0"
    },
    {
     "id": "seating",
-    "type": "ae/seating",
+    "type": "com.clodhub/seating",
     "version": "1.0.0"
    }
   ],
@@ -1767,7 +1767,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/controls",
+  "name": "pkg:clod/com.clodhub/controls",
   "version": "0.3.0",
   "category": "presentation",
   "targets": {
@@ -1783,14 +1783,14 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "controls",
-    "type": "ae/controls",
+    "type": "com.clodhub/controls",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "theme",
-    "type": "ae/theme",
+    "type": "com.clodhub/theme",
     "version": "1.0.0"
    }
   ],
@@ -1802,7 +1802,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/display-mode",
+  "name": "pkg:clod/com.clodhub/display-mode",
   "version": "0.4.0",
   "category": "rooms",
   "targets": {
@@ -1818,14 +1818,14 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "display-policy",
-    "type": "ae/display-policy",
+    "type": "com.clodhub/display-policy",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "display-mode-configuration",
-    "type": "ae/display-mode-configuration",
+    "type": "com.clodhub/display-mode-configuration",
     "version": "1.0.0",
     "optional": true
    }
@@ -1838,7 +1838,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/fair-shuffle",
+  "name": "pkg:clod/com.clodhub/fair-shuffle",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -1848,7 +1848,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "random-source",
-    "type": "ae/random-source",
+    "type": "com.clodhub/random-source",
     "version": "1.0.0"
    }
   ],
@@ -1861,7 +1861,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/game-clock",
+  "name": "pkg:clod/com.clodhub/game-clock",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -1877,7 +1877,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "game-clock",
-    "type": "ae/game-clock",
+    "type": "com.clodhub/game-clock",
     "version": "1.0.0"
    }
   ],
@@ -1890,7 +1890,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/guest-identity",
+  "name": "pkg:clod/com.clodhub/guest-identity",
   "version": "0.4.0",
   "category": "rooms",
   "targets": {
@@ -1906,7 +1906,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "guest-identity",
-    "type": "ae/guest-identity",
+    "type": "com.clodhub/guest-identity",
     "version": "1.0.0"
    }
   ],
@@ -1919,7 +1919,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/guided-tour",
+  "name": "pkg:clod/com.clodhub/guided-tour",
   "version": "0.3.0",
   "category": "presentation",
   "targets": {
@@ -1935,24 +1935,24 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "guided-tour",
-    "type": "ae/guided-tour",
+    "type": "com.clodhub/guided-tour",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "controls",
-    "type": "ae/controls",
+    "type": "com.clodhub/controls",
     "version": "1.0.0"
    },
    {
     "id": "preferences",
-    "type": "ae/preferences",
+    "type": "com.clodhub/preferences",
     "version": "1.0.0"
    },
    {
     "id": "language",
-    "type": "ae/language",
+    "type": "com.clodhub/language",
     "version": "1.0.0"
    }
   ],
@@ -1964,7 +1964,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/holdem-rules",
+  "name": "pkg:clod/com.clodhub/holdem-rules",
   "version": "0.3.0",
   "category": "poker",
   "targets": {
@@ -1980,34 +1980,34 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "game-rules",
-    "type": "ae/game-rules",
+    "type": "com.clodhub/game-rules",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "card-deck",
-    "type": "ae/card-deck",
+    "type": "com.clodhub/card-deck",
     "version": "1.0.0"
    },
    {
     "id": "chip-ledger",
-    "type": "ae/chip-ledger",
+    "type": "com.clodhub/chip-ledger",
     "version": "1.0.0"
    },
    {
     "id": "level-schedule",
-    "type": "ae/level-schedule",
+    "type": "com.clodhub/level-schedule",
     "version": "1.0.0"
    },
    {
     "id": "hand-ranking",
-    "type": "ae/hand-ranking",
+    "type": "com.clodhub/hand-ranking",
     "version": "1.0.0"
    },
    {
     "id": "rules-settings",
-    "type": "ae/rules-settings",
+    "type": "com.clodhub/rules-settings",
     "version": "1.0.0"
    }
   ],
@@ -2019,7 +2019,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/invitations",
+  "name": "pkg:clod/com.clodhub/invitations",
   "version": "0.1.1",
   "category": "rooms",
   "targets": {
@@ -2035,7 +2035,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "invitations",
-    "type": "ae/invitations",
+    "type": "com.clodhub/invitations",
     "version": "1.0.0"
    }
   ],
@@ -2048,7 +2048,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/level-schedule",
+  "name": "pkg:clod/com.clodhub/level-schedule",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -2058,7 +2058,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "level-schedule",
-    "type": "ae/level-schedule",
+    "type": "com.clodhub/level-schedule",
     "version": "1.0.0"
    }
   ],
@@ -2071,7 +2071,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/ourapps-release",
+  "name": "pkg:clod/com.clodhub/ourapps-release",
   "version": "0.3.0",
   "category": "delivery",
   "targets": {
@@ -2081,7 +2081,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "release-pipeline",
-    "type": "ae/release-pipeline",
+    "type": "com.clodhub/release-pipeline",
     "version": "1.0.0"
    }
   ],
@@ -2094,7 +2094,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/poker-hand-ranking",
+  "name": "pkg:clod/com.clodhub/poker-hand-ranking",
   "version": "0.3.0",
   "category": "poker",
   "targets": {
@@ -2104,14 +2104,14 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "hand-ranking",
-    "type": "ae/hand-ranking",
+    "type": "com.clodhub/hand-ranking",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "card-deck",
-    "type": "ae/card-deck",
+    "type": "com.clodhub/card-deck",
     "version": "1.0.0"
    }
   ],
@@ -2123,7 +2123,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/poker-odds",
+  "name": "pkg:clod/com.clodhub/poker-odds",
   "version": "0.3.0",
   "category": "poker",
   "targets": {
@@ -2133,19 +2133,19 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "poker-odds",
-    "type": "ae/poker-odds",
+    "type": "com.clodhub/poker-odds",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "hand-ranking",
-    "type": "ae/hand-ranking",
+    "type": "com.clodhub/hand-ranking",
     "version": "1.0.0"
    },
    {
     "id": "card-deck",
-    "type": "ae/card-deck",
+    "type": "com.clodhub/card-deck",
     "version": "1.0.0"
    }
   ],
@@ -2157,7 +2157,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/poker-strategy",
+  "name": "pkg:clod/com.clodhub/poker-strategy",
   "version": "0.3.0",
   "category": "poker",
   "targets": {
@@ -2167,19 +2167,19 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "player-strategy",
-    "type": "ae/player-strategy",
+    "type": "com.clodhub/player-strategy",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "hand-ranking",
-    "type": "ae/hand-ranking",
+    "type": "com.clodhub/hand-ranking",
     "version": "1.0.0"
    },
    {
     "id": "poker-odds",
-    "type": "ae/poker-odds",
+    "type": "com.clodhub/poker-odds",
     "version": "1.0.0"
    }
   ],
@@ -2191,7 +2191,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/preferences",
+  "name": "pkg:clod/com.clodhub/preferences",
   "version": "0.1.1",
   "category": "rooms",
   "targets": {
@@ -2207,7 +2207,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "preferences",
-    "type": "ae/preferences",
+    "type": "com.clodhub/preferences",
     "version": "1.0.0"
    }
   ],
@@ -2220,7 +2220,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/presence",
+  "name": "pkg:clod/com.clodhub/presence",
   "version": "0.3.0",
   "category": "rooms",
   "targets": {
@@ -2230,14 +2230,14 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "presence",
-    "type": "ae/presence",
+    "type": "com.clodhub/presence",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "guest-identity",
-    "type": "ae/guest-identity",
+    "type": "com.clodhub/guest-identity",
     "version": "1.0.0"
    }
   ],
@@ -2249,7 +2249,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/private-views",
+  "name": "pkg:clod/com.clodhub/private-views",
   "version": "0.3.0",
   "category": "rooms",
   "targets": {
@@ -2265,7 +2265,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "private-views",
-    "type": "ae/private-views",
+    "type": "com.clodhub/private-views",
     "version": "1.0.0"
    }
   ],
@@ -2278,7 +2278,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/realtime-rooms",
+  "name": "pkg:clod/com.clodhub/realtime-rooms",
   "version": "0.5.0",
   "category": "rooms",
   "targets": {
@@ -2297,19 +2297,19 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "room-session",
-    "type": "ae/room-session",
+    "type": "com.clodhub/room-session",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "game-adapter",
-    "type": "ae/game-adapter",
+    "type": "com.clodhub/game-adapter",
     "version": "1.0.0"
    },
    {
     "id": "guest-identity",
-    "type": "ae/guest-identity",
+    "type": "com.clodhub/guest-identity",
     "version": "1.0.0"
    }
   ],
@@ -2329,7 +2329,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/room-directory",
+  "name": "pkg:clod/com.clodhub/room-directory",
   "version": "0.3.0",
   "category": "rooms",
   "targets": {
@@ -2348,14 +2348,14 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "room-directory",
-    "type": "ae/room-directory",
+    "type": "com.clodhub/room-directory",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "room-session",
-    "type": "ae/room-session",
+    "type": "com.clodhub/room-session",
     "version": "1.0.0"
    }
   ],
@@ -2367,7 +2367,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/round-history",
+  "name": "pkg:clod/com.clodhub/round-history",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -2382,7 +2382,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "round-history",
-    "type": "ae/round-history",
+    "type": "com.clodhub/round-history",
     "version": "1.0.0"
    }
   ],
@@ -2395,7 +2395,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/rules-settings",
+  "name": "pkg:clod/com.clodhub/rules-settings",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -2407,7 +2407,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "rules-settings",
-    "type": "ae/rules-settings",
+    "type": "com.clodhub/rules-settings",
     "version": "1.0.0"
    }
   ],
@@ -2420,7 +2420,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/seating",
+  "name": "pkg:clod/com.clodhub/seating",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -2436,14 +2436,14 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "seating",
-    "type": "ae/seating",
+    "type": "com.clodhub/seating",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "guest-identity",
-    "type": "ae/guest-identity",
+    "type": "com.clodhub/guest-identity",
     "version": "1.0.0"
    }
   ],
@@ -2455,7 +2455,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/server-host",
+  "name": "pkg:clod/com.clodhub/server-host",
   "version": "0.4.0",
   "category": "delivery",
   "targets": {
@@ -2468,19 +2468,19 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "server-host",
-    "type": "ae/server-host",
+    "type": "com.clodhub/server-host",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "room-session",
-    "type": "ae/room-session",
+    "type": "com.clodhub/room-session",
     "version": "1.0.0"
    },
    {
     "id": "room-directory",
-    "type": "ae/room-directory",
+    "type": "com.clodhub/room-directory",
     "version": "1.0.0"
    }
   ],
@@ -2500,7 +2500,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/sound-cues",
+  "name": "pkg:clod/com.clodhub/sound-cues",
   "version": "0.3.0",
   "category": "presentation",
   "targets": {
@@ -2516,14 +2516,14 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "sound-cues",
-    "type": "ae/sound-cues",
+    "type": "com.clodhub/sound-cues",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "preferences",
-    "type": "ae/preferences",
+    "type": "com.clodhub/preferences",
     "version": "1.0.0"
    }
   ],
@@ -2535,7 +2535,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/store-update",
+  "name": "pkg:clod/com.clodhub/store-update",
   "version": "0.4.0",
   "category": "delivery",
   "targets": {
@@ -2551,7 +2551,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "updates",
-    "type": "ae/updates",
+    "type": "com.clodhub/updates",
     "version": "1.0.0"
    }
   ],
@@ -2564,7 +2564,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/table-layout",
+  "name": "pkg:clod/com.clodhub/table-layout",
   "version": "0.3.0",
   "category": "presentation",
   "targets": {
@@ -2580,19 +2580,19 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "table-layout",
-    "type": "ae/table-layout",
+    "type": "com.clodhub/table-layout",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "theme",
-    "type": "ae/theme",
+    "type": "com.clodhub/theme",
     "version": "1.0.0"
    },
    {
     "id": "controls",
-    "type": "ae/controls",
+    "type": "com.clodhub/controls",
     "version": "1.0.0"
    }
   ],
@@ -2604,7 +2604,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/theme",
+  "name": "pkg:clod/com.clodhub/theme",
   "version": "0.3.0",
   "category": "presentation",
   "targets": {
@@ -2620,7 +2620,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "theme",
-    "type": "ae/theme",
+    "type": "com.clodhub/theme",
     "version": "1.0.0"
    }
   ],
@@ -2633,7 +2633,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/tournament",
+  "name": "pkg:clod/com.clodhub/tournament",
   "version": "0.3.0",
   "category": "game-framework",
   "targets": {
@@ -2649,24 +2649,24 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "tournament",
-    "type": "ae/tournament",
+    "type": "com.clodhub/tournament",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "chip-ledger",
-    "type": "ae/chip-ledger",
+    "type": "com.clodhub/chip-ledger",
     "version": "1.0.0"
    },
    {
     "id": "level-schedule",
-    "type": "ae/level-schedule",
+    "type": "com.clodhub/level-schedule",
     "version": "1.0.0"
    },
    {
     "id": "seating",
-    "type": "ae/seating",
+    "type": "com.clodhub/seating",
     "version": "1.0.0"
    }
   ],
@@ -2678,7 +2678,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/translations",
+  "name": "pkg:clod/com.clodhub/translations",
   "version": "0.4.0",
   "category": "presentation",
   "targets": {
@@ -2694,7 +2694,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "language",
-    "type": "ae/language",
+    "type": "com.clodhub/language",
     "version": "1.0.0"
    }
   ],
@@ -2707,7 +2707,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/turn-engine",
+  "name": "pkg:clod/com.clodhub/turn-engine",
   "version": "0.4.0",
   "category": "game-framework",
   "targets": {
@@ -2717,55 +2717,55 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "game-adapter",
-    "type": "ae/game-adapter",
+    "type": "com.clodhub/game-adapter",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "game-rules",
-    "type": "ae/game-rules",
+    "type": "com.clodhub/game-rules",
     "version": "1.0.0"
    },
    {
     "id": "seating",
-    "type": "ae/seating",
+    "type": "com.clodhub/seating",
     "version": "1.0.0"
    },
    {
     "id": "game-clock",
-    "type": "ae/game-clock",
+    "type": "com.clodhub/game-clock",
     "version": "1.0.0"
    },
    {
     "id": "private-views",
-    "type": "ae/private-views",
+    "type": "com.clodhub/private-views",
     "version": "1.0.0"
    },
    {
     "id": "presence",
-    "type": "ae/presence",
+    "type": "com.clodhub/presence",
     "version": "1.0.0"
    },
    {
     "id": "tournament",
-    "type": "ae/tournament",
+    "type": "com.clodhub/tournament",
     "version": "1.0.0"
    },
    {
     "id": "computer-players",
-    "type": "ae/computer-players",
+    "type": "com.clodhub/computer-players",
     "version": "1.0.0",
     "optional": true
    },
    {
     "id": "round-history",
-    "type": "ae/round-history",
+    "type": "com.clodhub/round-history",
     "version": "1.0.0"
    },
    {
     "id": "rules-settings",
-    "type": "ae/rules-settings",
+    "type": "com.clodhub/rules-settings",
     "version": "1.0.0"
    }
   ],
@@ -2777,7 +2777,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/video-calls",
+  "name": "pkg:clod/com.clodhub/video-calls",
   "version": "0.4.0",
   "category": "rooms",
   "targets": {
@@ -2793,14 +2793,14 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "media-session",
-    "type": "ae/media-session",
+    "type": "com.clodhub/media-session",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "video-calls-configuration",
-    "type": "ae/video-calls-configuration",
+    "type": "com.clodhub/video-calls-configuration",
     "version": "1.0.0",
     "optional": true
    }
@@ -2821,7 +2821,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/web-host",
+  "name": "pkg:clod/com.clodhub/web-host",
   "version": "0.3.0",
   "category": "delivery",
   "targets": {
@@ -2833,14 +2833,14 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "web-shell",
-    "type": "ae/web-shell",
+    "type": "com.clodhub/web-shell",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "theme",
-    "type": "ae/theme",
+    "type": "com.clodhub/theme",
     "version": "1.0.0"
    }
   ],
@@ -2852,7 +2852,7 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   ]
  },
  {
-  "name": "clodhub/windows-desktop",
+  "name": "pkg:clod/com.clodhub/windows-desktop",
   "version": "0.4.0",
   "category": "delivery",
   "targets": {
@@ -2864,14 +2864,14 @@ export const OURPOKER_CATALOGUE: FixtureComponent[] = [
   "provides": [
    {
     "id": "desktop-host",
-    "type": "ae/desktop-host",
+    "type": "com.clodhub/desktop-host",
     "version": "1.0.0"
    }
   ],
   "requires": [
    {
     "id": "windows-desktop-configuration",
-    "type": "ae/windows-desktop-configuration",
+    "type": "com.clodhub/windows-desktop-configuration",
     "version": "1.0.0",
     "optional": true
    }

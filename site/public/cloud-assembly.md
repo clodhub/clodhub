@@ -1,17 +1,17 @@
 # Building an application from a recipe on GitHub, with no machine of your own
 
-GitHub Actions does the work a computer does in "Building an application from a recipe" (https://clodhub.com/agents.md): aepm fetches the recipe and its components, designs the application from your answers, resolves exact versions and installs it into your repository. The workflows the design installs then check, build, release and update it. A person can do every step below on github.com in a browser; an agent with the GitHub CLI (`gh`) signed in can do them with the commands shown.
+GitHub Actions does the work a computer does in "Building an application from a recipe" (https://clodhub.com/agents.md): clod fetches the recipe and its components, designs the application from your answers, resolves exact versions and installs it into your repository. The workflows the design installs then check, build, release and update it. A person can do every step below on github.com in a browser; an agent with the GitHub CLI (`gh`) signed in can do them with the commands shown.
 
-The examples use the OurPoker recipe (`ourpoker@0.7.0`, https://clodhub.com/recipes/ourpoker.txt). Another recipe works the same way when its design includes the `ourapps-release` component, which brings the workflows.
+The examples use the OurPoker recipe (`pkg:clod/com.clodhub/ourpoker-recipe`, short form `ourpoker-recipe@0.13.0`, https://clodhub.com/recipes/ourpoker-recipe.txt). Another recipe works the same way when its design includes the `ourapps-release` component, which brings the workflows.
 
 ## 1. The repository
 
 1. Create a private repository: on github.com, "New repository", with a README; or `gh repo create <owner>/<name> --private --add-readme`.
-2. Settings, Actions, General: tick "Allow GitHub Actions to create and approve pull requests". `aepm-update` needs it to propose updates.
+2. Settings, Actions, General: tick "Allow GitHub Actions to create and approve pull requests". `clod-update` needs it to propose updates.
 3. Add three files to the main branch ("Add file", "Create new file"; or commit them from a clone):
    - `answers.json`: the recipe's answers, an object from question id to answer. The questions, their defaults and the conditions that ask them are on the recipe's text page (`https://clodhub.com/recipes/<name>.txt`). The design must include the `ourapps-release` component: for OurPoker, `publish` or `releases` is true. Example: `{"targets": ["web", "android"], "server": "cloudflare", "hostingAccount": "ourpoker-cloudflare-account", "releases": true}`. Secret reference answers are names, never values.
    - `CHANGELOG.md`: the release notes, read by the release workflow and shown to your people. To start: `# Changelog`, then `## [0.1.0]`, `### Added`, `- First release.`
-   - `.github/workflows/aepm-assemble.yml`: a copy of https://clodhub.com/aepm-assemble.yml.
+   - `.github/workflows/clod-assemble.yml`: a copy of https://clodhub.com/clod-assemble.yml.
 
 ## 2. The secrets
 
@@ -19,10 +19,10 @@ Settings, "Secrets and variables", Actions, "New repository secret"; or `gh secr
 
 | Secret | What it is | Used by |
 |---|---|---|
-| `AEPM_OWNER_KEY` | the owner's private key: `openssl genpkey -algorithm ed25519 -out owner.pem`, then `gh secret set AEPM_OWNER_KEY --repo <owner>/<name> < owner.pem`. Keep `owner.pem` in a password manager. | `aepm-assemble` puts its public key in the policy; `aepm-update` approves each update with it |
-| `AEPM_PUSH_TOKEN` | a fine-grained personal access token for this repository only, with Contents and Workflows read and write. GitHub refuses a workflow's own token a push that adds files under `.github/workflows`. | `aepm-assemble` pushes the application with it |
+| `CLOD_OWNER_KEY` | the owner's private key: `openssl genpkey -algorithm ed25519 -out owner.pem`, then `gh secret set CLOD_OWNER_KEY --repo <owner>/<name> < owner.pem`. Keep `owner.pem` in a password manager. | `clod-assemble` puts its public key in the policy; `clod-update` approves each update with it |
+| `CLOD_PUSH_TOKEN` | a fine-grained personal access token for this repository only, with Contents and Workflows read and write. GitHub refuses a workflow's own token a push that adds files under `.github/workflows`. | `clod-assemble` pushes the application with it |
 
-Publishing needs the secrets the reference answers name. The workflows read the names from `components/ourapps-release/server/release.json`: the reference in capitals, hyphens as underscores, then a suffix. A secret that is not set is skipped, and that part stays unsigned or is not deployed. For OurPoker 0.7.0, with references starting `ourpoker-`:
+Publishing needs the secrets the reference answers name. The workflows read the names from `components/ourapps-release/server/release.json`: the reference in capitals, hyphens as underscores, then a suffix. A secret that is not set is skipped, and that part stays unsigned or is not deployed. For OurPoker 0.13.0, with references starting `ourpoker-`:
 
 | Answer (reference name) | Repository secrets | Without them |
 |---|---|---|
@@ -35,9 +35,9 @@ The recipe's `INSTRUCTIONS.md` (part 4, "Repository and releases") has the same 
 
 ## 3. Assemble
 
-Actions, aepm-assemble, "Run workflow", with the recipe `ourpoker@0.7.0`; or `gh workflow run aepm-assemble.yml --repo <owner>/<name> -f recipe=ourpoker@0.7.0`.
+Actions, clod-assemble, "Run workflow", with the recipe `ourpoker-recipe@0.13.0`; or `gh workflow run clod-assemble.yml --repo <owner>/<name> -f recipe=ourpoker-recipe@0.13.0`.
 
-It runs `aepm fetch` (checking every archive's sha256 digest and signatures), `aepm design` with `answers.json`, `aepm resolve`, makes the policy from Level N's release and guardian keys (https://clodhub.com/policy/levelnpolicy.json) and the public key of `AEPM_OWNER_KEY`, runs `aepm install` and commits the application to main. A refused design fails the run with the list of what is missing; fix `answers.json` and run it again. It refuses a repository that already holds an assembled application (a `.aepm` folder).
+It runs `clod fetch` (checking every archive's sha256 digest and signatures), `clod design` with `answers.json`, `clod resolve`, makes the policy from Level N's release and guardian keys (https://clodhub.com/policy/levelnpolicy.json) and the public key of `CLOD_OWNER_KEY`, runs `clod install` and commits the application to main. A refused design fails the run with the list of what is missing; fix `answers.json` and run it again. It refuses a repository that already holds an assembled application (a `.clod` folder).
 
 ## 4. The workflows the application brings
 
@@ -49,18 +49,18 @@ It runs `aepm fetch` (checking every archive's sha256 digest and signatures), `a
 | `platform-packages` | a push to main that changes the Windows app; by hand | the unsigned Windows installer built, installed, started and uninstalled on a Windows runner |
 | `apple-builds` | a version tag; by hand | unsigned iPhone and iPad, Mac (Mac Catalyst) and Apple TV builds on a macOS runner |
 | `release` | a version tag (`v0.1.0`); ourapps.app asking for a build; by hand | builds the web client, the Android APK and the Windows installer the design has and publishes a GitHub Release with `my-app.json` for ourapps.app |
-| `aepm-update` | weekly and by hand | see below |
+| `clod-update` | weekly and by hand | see below |
 
 `ci-web`, `ci-android`, `platform-packages` and `apple-builds` are in the design only when their devices are targets. Start one by hand with Actions, the workflow, "Run workflow"; or `gh workflow run ci-web.yml --repo <owner>/<name>`. To release a version, add its section to `CHANGELOG.md`, then create the tag from a clone (`git tag v0.1.0 && git push origin v0.1.0`) or with `gh api repos/<owner>/<name>/git/refs -f ref=refs/tags/v0.1.0 -f sha="$(gh api repos/<owner>/<name>/commits/main -q .sha)"`.
 
 ## 5. Updates
 
-`aepm-update` runs every Monday and by hand (optionally with a version). It designs the newest published recipe version with the answers recorded in `.aepm/definition.json`, has aepm stage it and run the packages' checks, and opens a pull request with the package versions that change. Merging the pull request approves the update with `AEPM_OWNER_KEY`, applies it and commits the result to main. That commit starts no other workflow; start `ci-server`, `ci-web` and `ci-android` by hand after it.
+`clod-update` runs every Monday and by hand (optionally with a version). It designs the newest published recipe version with the answers recorded in `.clod/definition.json`, has clod stage it and run the packages' checks, and opens a pull request with the package versions that change. Merging the pull request approves the update with `CLOD_OWNER_KEY`, applies it and commits the result to main. That commit starts no other workflow; start `ci-server`, `ci-web` and `ci-android` by hand after it.
 
 ## Limits
 
 - iPhone, iPad, Mac and Apple TV apps build only on macOS runners (`apple-builds`), and those builds are unsigned. TestFlight builds need the `storeCredentials` secrets and the TestFlight set-up on ourapps.app.
 - Every run uses the repository owner's GitHub Actions minutes.
-- These workflows are checked with actionlint. The browser and Android room-list checks they run were run on a Mac against a local server. `aepm-assemble` is checked with actionlint, and its fetch, design, resolve and install steps were run on a Mac with `ourpoker@0.7.0`.
+- These workflows are checked with actionlint. The browser and Android room-list checks they run were run on a Mac against a local server. `clod-assemble` is checked with actionlint, and its fetch, design, resolve and install steps were run on a Mac with `ourpoker@0.7.0`.
 
 Copyright Level N Ltd 2026.

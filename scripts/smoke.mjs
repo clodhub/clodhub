@@ -64,7 +64,11 @@ async function publicChecks() {
   const login = await call("GET", "/api/auth/login", { auth: "" });
   const toGitHub = login.status === 302 && (login.headers.get("Location") ?? "").includes("/login/oauth/authorize?");
   record(health.json?.oauth ? toGitHub : login.status === 503, "GET /api/auth/login sends a browser to GitHub, or answers 503 without sign-in", String(login.status));
-  for (const path of ["/agents.md", "/contract.md", "/llms.txt", "/free-tiers.md", "/cloud-assembly.md", "/aepm-assemble.yml", "/policy/levelnpolicy.json", "/docs/package-foundations.md", "/terms", "/robots.txt", "/sitemap.xml"]) {
+  const definition = await fetch(`${base}/purl/clod-definition.json`);
+  const served = new Uint8Array(await definition.arrayBuffer());
+  const local = new Uint8Array(readFileSync(new URL("../site/public/purl/clod-definition.json", import.meta.url)));
+  record(definition.status === 200 && served.length === local.length && served.every((b, i) => b === local[i]), "GET /purl/clod-definition.json is the shared file, byte for byte", String(definition.status));
+  for (const path of ["/agents.md", "/contract.md", "/llms.txt", "/free-tiers.md", "/cloud-assembly.md", "/clod-assemble.yml", "/policy/levelnpolicy.json", "/docs/package-foundations.md", "/terms", "/robots.txt", "/sitemap.xml"]) {
     const res = await fetch(base + path);
     record(res.status === 200, `GET ${path}`, res.status === 200 ? "" : String(res.status));
   }

@@ -108,7 +108,7 @@ export async function developerPage(root: HTMLElement, note = ""): Promise<void>
 
       <div class="card mt">
         <h2>Build an application from a recipe</h2>
-        <p class="small muted">Give this to any coding agent. It finds a recipe and its components, asks you the recipe's questions, shows you what it will install, and installs with aepm. It needs no API key.</p>
+        <p class="small muted">Give this to any coding agent. It finds a recipe and its components, asks you the recipe's questions, shows you what it will install, and installs with clod. It needs no API key.</p>
         <div class="prompt-box"><button class="btn sm secondary" data-copy="${recipePrompt}">${icon("copy")} Copy</button><pre>${recipePrompt}</pre></div>
       </div>
 

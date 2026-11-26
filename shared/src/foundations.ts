@@ -146,6 +146,13 @@ export function parsePurl(v: unknown): Purl | null {
   return { type, namespace, name, version, qualifiers: Object.fromEntries(Object.entries(quals).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))), subpath: sub };
 }
 
+// The package a package URL names, without version, qualifiers or subpath, with every part decoded: npm's
+// pkg:npm/@babel/traverse@7.23.0 and its canonical pkg:npm/%40babel/traverse@7.23.0 both give "npm/@babel/traverse".
+export function purlPackage(v: unknown): string | null {
+  const p = parsePurl(v);
+  return p === null ? null : [p.type, ...p.namespace, p.name].join("/");
+}
+
 // A package URL that is valid and pinned to `pin` (null: no version).
 function purl(v: unknown, pin: string | null = null): boolean {
   const p = parsePurl(v);

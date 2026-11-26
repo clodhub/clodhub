@@ -1,6 +1,6 @@
 # ClodHub
 
-A catalogue of reviewed components and recipes that AI agents assemble into apps with aepm.
+A catalogue of reviewed components and recipes that AI agents assemble into apps with clod.
 Live at https://clodhub.com.
 
 - A **component** is a reviewed part of an application (a card deck, a seating plan, a video
@@ -12,7 +12,7 @@ Live at https://clodhub.com.
   questions that choose between them and how they connect.
 
 A coding agent reads a recipe, asks the person its questions and installs the application with
-aepm (https://github.com/clodhub/aepm), which checks every archive's digest and signatures and
+clod (https://github.com/clodhub/clod), which checks every archive's digest and signatures and
 runs no package code while installing. Packages stay in their publishers' GitHub releases;
 ClodHub keeps the catalogue entry and a pointer.
 
@@ -23,8 +23,8 @@ ClodHub keeps the catalogue entry and a pointer.
 - `/api/...`: the read API, no key needed; `/api/dev/...`: publishing with a `ch_` API key or a
   browser session. Every endpoint: `site/public/agents.md` (served at `/agents.md`).
 - `/dev`: sign in with GitHub, save the GitHub token publishing uses, make API keys.
-- `/guide`, `/small`, `/free-tiers.md`, `/cloud-assembly.md`, `/aepm-assemble.yml`,
-  `/policy/levelnpolicy.json` (Level N's release and guardian keys for aepm's owner policy).
+- `/guide`, `/small`, `/free-tiers.md`, `/cloud-assembly.md`, `/clod-assemble.yml`,
+  `/policy/levelnpolicy.json` (Level N's release and guardian keys for clod's owner policy).
 - `CONTRACT.md` (served at `/contract.md`): what a recipe or component repository implements,
   and the publish API.
 

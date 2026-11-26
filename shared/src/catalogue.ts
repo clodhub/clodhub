@@ -507,7 +507,7 @@ export interface SettingDeclaration extends SettingKind {
   required: boolean;
   secret: boolean;
   hasDefault: boolean;
-  // The value aepm writes when a recipe leaves the setting unset; present exactly when hasDefault is true.
+  // The value clod writes when a recipe leaves the setting unset; present exactly when hasDefault is true.
   default?: SettingValue;
 }
 
@@ -524,7 +524,7 @@ export function documentModules(document: unknown): Record<string, unknown> | nu
 }
 
 // An entry module an interface document declares in "x-clodhub-modules": its path (null when the document gives no
-// text), and whether the component installs it (aepm's rule 4: the artefact destination components/<short name>/<path>,
+// text), and whether the component installs it (clod's rule 4: the artefact destination components/<short name>/<path>,
 // or for the native platforms apple and android a destination inside that folder).
 export interface EntryModule {
   path: string | null;
@@ -555,7 +555,7 @@ export interface RecipeContext {
   application?: { settings: SettingDeclaration[]; provides: Port[]; requires: Port[] };
 }
 
-// Anchored setting grammars from aepm/application.py.
+// Anchored setting grammars from clod/application.py.
 export const GRAMMAR_PATTERNS: Readonly<Record<string, string>> = {
   identifier: "^[A-Za-z][A-Za-z0-9_]{0,63}$",
   qualified: "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)+$",
@@ -731,7 +731,7 @@ export function interfaceKey(p: { type: string; version: string }): string {
 // Candidate ports, setting declarations and package foundations used by fit.
 export type FitFacts = Pick<ComponentFacts, "name" | "foundations" | "provides" | "requires" | "settings">;
 
-// aepm.recipe.fit on publisher-declared facts and independent class authority.
+// clod.recipe.fit on publisher-declared facts and independent class authority.
 export function fit(reference: ClassReference, c: FitFacts, authority: Foundations | null, targets?: string[]): string[] {
   if (!isClassReference(reference)) return ["invalid-class-reference"];
   if (authority === null) return [`class-unavailable:${reference.name}`];

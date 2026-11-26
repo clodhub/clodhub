@@ -3,6 +3,8 @@ export interface Env {
   CATALOGUE: R2Bucket;
   // Numeric GitHub user ids, comma-separated, who may set quality and publish the category tree.
   CATALOGUE_CURATORS?: string;
+  // Namespaces assigned to GitHub owners, comma-separated namespace=owner; io.github.<owner> needs no assignment.
+  NAMESPACE_OWNERS?: string;
   OSV_API_BASE?: string;
   // Images one developer may upload in 24 hours (default 300).
   IMAGE_UPLOADS_PER_DAY?: string;
