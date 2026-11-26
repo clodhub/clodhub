@@ -88,7 +88,7 @@ export function validateBuildReport(input: unknown): Result<"report", BuildRepor
   const errors: string[] = [];
   if (!isRecord(input)) return { ok: false, errors: ["the body must be a build report object"] };
   exactKeys(input, ["format", "kind", "recipe", "clod", "date", "agent", "prompt", "conditions", "answers", "measured", "results", "update", "problems", "rating"], "report", errors);
-  if (input.format !== BUILD_REPORT_FORMAT) errors.push(`format-refused: the build report format is ${BUILD_REPORT_FORMAT}${typeof input.format === "number" && input.format < BUILD_REPORT_FORMAT ? `; a format ${input.format} build report is refused, write it again in format ${BUILD_REPORT_FORMAT} with clod in place of aepm` : ""}`);
+  if (input.format !== BUILD_REPORT_FORMAT) errors.push(`format-refused: the build report format is ${BUILD_REPORT_FORMAT}${typeof input.format === "number" && input.format < BUILD_REPORT_FORMAT ? `; a format ${input.format} build report is refused, write it again in format ${BUILD_REPORT_FORMAT}` : ""}`);
   if (input.kind !== BUILD_REPORT_KIND) errors.push(`kind must be ${BUILD_REPORT_KIND}`);
   const need = (ok: boolean, message: string) => void (ok || errors.push(message));
   const r = input.recipe;

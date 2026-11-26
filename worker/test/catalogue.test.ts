@@ -1484,7 +1484,6 @@ describe("build reports", () => {
     expect((await error((r) => (r.problems = ["one\ttwo"])))[1]).toContain("problems must list");
     expect((await error((r) => (r.extra = 1)))[1]).toContain("report.extra is not a field");
     expect((await error((r) => (r.format = 1)))[1]).toContain("format-refused: the build report format is 2; a format 1 build report is refused");
-    expect((await error((r) => ((r.aepm = r.clod), delete r.clod)))[1]).toContain("report.aepm is not a field");
     expect((await error((r) => (r.rating.score = 11)))[1]).toContain("rating.score");
     expect((await error((r) => (r.results[0].built = "yes")))[1]).toContain("results[0].built");
     expect((await error((r) => (r.recipe.name = "pkg:clod/com.clodhub/other-recipe")))[1]).toContain("not pkg:clod/com.clodhub/ourpoker-recipe");
