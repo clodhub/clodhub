@@ -17,9 +17,9 @@
 - `site/public/contract.md`, `site/public/docs/package-foundations.md` and `site/public/free-tiers.md` are generated (gitignored); edit `CONTRACT.md`, `docs/package-foundations.md` and `site/src/freeTiers.ts`.
 - `catalogue_fts` rows are not removed with their entries: remove entries only through `CatalogueDb`, and clear the full-text tables before the entry tables in test cleanup (`clearDb`). Deleting a developer orphans their entries.
 - Search text goes through `ftsQuery`; never pass user text to `MATCH`.
-- Catalogue names use the short name (`slug`) in routes and are unique across scopes.
+- Catalogue names use the short name (`slug`, from `slugOf`) in routes and are unique across namespaces. Never split a package name on "/" and take index 1: `pkg:clod/com.clodhub/x` splits into three parts.
 - A recipe's `page.diagram` is SVG text served as an image from the Worker, never inserted into a page as markup.
 - SQLite CHECKs pass on NULL: `CHECK (a IS NOT NULL OR b = 'x')` accepts a NULL `b`; use `COALESCE(b, '')`.
 - Unauthenticated `api.github.com` asset requests return JSON metadata unless `Accept: application/octet-stream` is sent; `fetchUpstream` sets it.
-- Class references must be `clodhub/<name>` (`isClassReference` in `shared/src/foundations.ts`). Interface documents declare entry modules under `x-clodhub-modules` (`INTERFACE_MODULES_KEYWORD`, read through `documentModules` in `shared/src/catalogue.ts`); no other prefix is accepted.
+- Class references are `{ name, version, digest }` with `name` a class package name and a version without preview (`isClassReference` in `shared/src/foundations.ts`). The `clod` package URL type needs exactly one namespace segment in the general parser too (`parsePurl`). An upstream npm scope may be written `@` or `%40`; compare upstream purls with `purlPackage`, which decodes them. OSV answers both forms the same. Interface documents declare entry modules under `x-clodhub-modules` (`INTERFACE_MODULES_KEYWORD`, read through `documentModules` in `shared/src/catalogue.ts`); no other prefix is accepted.
 - Changing `docs/package-foundations.md`'s example descriptor changes its digest; the parity test in `shared/test/foundation-parity.test.mjs` checks it.

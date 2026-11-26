@@ -160,7 +160,7 @@ describe("recipe page", () => {
     const html = recipeBody(recipeView(), "latest").html;
     expect(html).toContain("Poker Night");
     expect(html).toContain("Build an application from the Poker Night recipe");
-    expect(html).not.toMatch(/coming soon|aepm create/);
+    expect(html).not.toMatch(/coming soon|clod create/);
     expect(html).toContain("Poker Night deals a hand");
     expect(html).toContain('src="https://clodhub.com/api/recipes/poker-night-recipe/0.1.0/diagram.svg"');
     expect(html).toContain("Publisher's diagram");

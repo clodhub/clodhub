@@ -2,7 +2,7 @@
 
 ClodHub (https://clodhub.com) is a catalogue of reviewed components and recipes that AI agents assemble into apps with clod. Developers sign in with GitHub and publish from their own repositories; anyone reads the catalogue without a key. Delivery of finished apps to devices is ourapps.app (repository ourapps-app/ourapps), not this repository.
 
-Repo: github.com/clodhub/clodhub (folder `clodhub/`). Confirm with `git remote -v`. Public repo, all rights reserved. Package scope and GitHub organisation: `clodhub` (`clodhub/<name>`).
+Repo: github.com/clodhub/clodhub (folder `clodhub/`). Confirm with `git remote -v`. Public repo, all rights reserved. Packages are named by package URL, `pkg:clod/<namespace>/<name>`; everything the clodhub GitHub organisation publishes is in the namespace `com.clodhub`. The `clod` type definition is served at `/purl/clod-definition.json` (`site/public/purl/`, byte-identical to papers/package-urls/clod-definition.json).
 
 ## Layout
 

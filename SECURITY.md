@@ -28,7 +28,7 @@ yields no plaintext token, no usable API key or session, and no way to forge one
 - API keys have a scope (`read` or `manage`) and an optional expiry of at most one year. Keys
   cannot create or revoke keys, delete the account or sign out sessions. Every key is revocable
   alone or all at once.
-- The token is decrypted only while publishing, checking class scope membership, or making and
+- The token is decrypted only while publishing, checking namespace membership, or making and
   serving a bundle link.
 - Security events (sign-in, sign-out, token saves and removals, key creation and revocation,
   publishing, unlisting and deprecation) are written to the audit log and shown on the developer
@@ -43,9 +43,10 @@ yields no plaintext token, no usable API key or session, and no way to forge one
   name and publisher name only, or by nothing once the publisher deleted their account.
 - Publishing needs a browser session with the current terms accepted, or a `manage` API key. The
   service checks with the publisher's saved GitHub token that they can push to the named
-  repository and that the tagged release holds the named asset; a name's scope must equal the
-  repository owner, and a name stays with its first developer and repository. Class scopes need
-  membership of the GitHub organisation, read at sign-in with `read:org`.
+  repository and that the tagged release holds the named asset. The repository must belong to
+  the owner of the name's namespace (`io.github.<owner>`, or an owner ClodHub assigns), and the
+  publisher must be that owner or an active member of it, read at sign-in with `read:org`; the
+  same holds for classes. A name stays with its first developer and repository.
 - Only `CATALOGUE_CURATORS` (numeric GitHub ids) may set quality, publish build reports or the
   category tree.
 - A version is bound to its digest. Unlisting hides a version and keeps its digest.
