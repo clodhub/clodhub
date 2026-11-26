@@ -447,7 +447,7 @@ export const CATEGORIES: Category[] = [
   {
     id: "ft-signin",
     title: "Sign-in",
-    why: "A share link already decides who can install an app, so many small apps need no accounts at all: a name typed once and a random token kept on the device is often enough. When you do need sign-in, these cost nothing.",
+    why: "When only the people you share an app with can install it, many small apps need no accounts at all: a name typed once and a random token kept on the device is often enough. When you do need sign-in, these cost nothing.",
     practices: [
       "Start without accounts; add sign-in only when data must follow a person across devices.",
       "Prefer passkeys or Sign in with Apple over passwords: nothing to leak, nothing to reset.",
@@ -667,7 +667,7 @@ export const CATEGORIES: Category[] = [
           "Add a manifest and service worker; `pushManager.subscribe()` from a button; send with the `web-push` package.",
         ],
         env: ["VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY"],
-        fits: "Web apps shared through ourapps.app: their banner offers adding them to the home screen, which iPhone needs for web push.",
+        fits: "Web apps built with the web-host component: its banner offers adding them to the home screen, which iPhone needs for web push.",
         sources: ["https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/"],
       },
       {
@@ -889,7 +889,7 @@ export const CATEGORIES: Category[] = [
     why: "Each release builds an .apk, an .ipa and a web bundle. Linux builds are cheap; iPhone builds need a Mac, which is where the free minutes go.",
     practices: [
       "Build Android and web on Linux runners; use a macOS runner only for the iPhone step, or build iPhone locally on your Mac.",
-      "Skip the iPhone build until TestFlight is set up for the app: HEAD on the signing URL answers 200 from then on.",
+      "When the recipe delivers through ourapps.app, skip the iPhone build until TestFlight is set up for the app: HEAD on the signing URL answers 200 from then on.",
     ],
     services: [
       {
@@ -899,8 +899,8 @@ export const CATEGORIES: Category[] = [
         verdict: "pick",
         free: ["Public repositories: free standard runners. Private: 2,000 minutes a month, which macOS uses about 10 times faster (unverified ratio; macOS is $0.062 a minute against Linux $0.006)."],
         catches: ["With no payment method, runs stop when the minutes run out."],
-        setup: ["Add `.github/workflows/release.yml` (the ourapps.app repository prompt writes it); store signing material as repository secrets."],
-        fits: "Every ourapps.app release pipeline.",
+        setup: ["Copy `/clod-assemble.yml` into `.github/workflows/` and run it (the guide's \"Build on GitHub\"); the recipe's workflows come with the design. Store signing material as repository secrets."],
+        fits: "Building, checking and updating an application from a recipe, with no machine of your own.",
         sources: ["https://docs.github.com/en/billing/reference/actions-runner-pricing"],
       },
       {
