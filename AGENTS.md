@@ -1,6 +1,6 @@
 # ClodHub
 
-Catalogue of reviewed components and recipes that AI agents assemble into apps with aepm, live at https://clodhub.com.
+Catalogue of reviewed components and recipes that AI agents assemble into apps with clod, live at https://clodhub.com.
 
 Read `.opencode/knowledge/00-index.md` first, then `workflow.md` before building, deploying, committing or pushing.
 

@@ -1,12 +1,12 @@
 {
-  "format": 1,
+  "format": 2,
   "kind": "recipe-build",
-  "recipe": {"name": "clodhub/ourpoker", "version": "0.8.0", "digest": "sha256:9e2d05972a7b43505315509a573c7416284b499922d41bc120c8b0ae183d4871"},
-  "aepm": {"repository": "clodhub/aepm", "commit": "0d81b77"},
+  "recipe": {"name": "pkg:clod/com.clodhub/ourpoker-recipe", "version": "0.8.0", "digest": "sha256:9e2d05972a7b43505315509a573c7416284b499922d41bc120c8b0ae183d4871"},
+  "clod": {"repository": "clodhub/clod", "commit": "0d81b77"},
   "date": "2026-11-20",
   "agent": {"harness": "OpenCode 2.3.2", "model": "anthropic/claude-opus-5-5", "session": "a new session given only the prompt"},
-  "prompt": "Build an application from the OurPoker recipe: https://ourapps.app/recipes/ourpoker.txt",
-  "conditions": "The session was opened in the recipe author's workspace and read the workspace's knowledge index first, then built in a new temporary folder with a fresh copy of aepm. The person answered the agent's questions.",
+  "prompt": "Build an application from the OurPoker recipe: https://clodhub.com/recipes/ourpoker-recipe.txt",
+  "conditions": "The session was opened in the recipe author's workspace and read the workspace's knowledge index first, then built in a new temporary folder with a fresh copy of clod. The person answered the agent's questions.",
   "answers": {"targets": ["web", "ios", "android", "macos", "windows", "tvos"], "server": "cloudflare", "hostingAccount": "cloudflare", "video": true, "videoServiceUrl": "", "publish": false, "releases": false, "otherQuestions": "defaults"},
   "measured": {
     "method": "OpenCode's per-message records, from the prompt to the agent's final report; active time is elapsed time less the time the questions waited for the person's answers",
@@ -31,8 +31,8 @@
   "problems": [
     "A first deploy of a new worker with the pinned Wrangler 4.151.1 failed when turning on its workers.dev address; the agent deleted the half-made worker, deployed again and turned the address on through Cloudflare's API.",
     "The hostingAccount answer reads as a secret reference; the answer is the plain reference name, not {\"ref\": ...}.",
-    "aepm verify needs --trusted, which the instructions do not say; the updated application was not verified.",
-    "The recipe text page leaves out aepm doctor and the two-step deploy, which are only in INSTRUCTIONS.md.",
+    "clod verify needs --trusted, which the instructions do not say; the updated application was not verified.",
+    "The recipe text page leaves out clod doctor and the two-step deploy, which are only in INSTRUCTIONS.md.",
     "One line of INSTRUCTIONS.md is over 2,000 characters and the agent's file reader cut it off.",
     "The agent asked the questions in two rounds and skipped two it was told to ask (scale and repository)."
   ],

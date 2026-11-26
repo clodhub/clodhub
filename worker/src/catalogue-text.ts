@@ -1,5 +1,5 @@
 // Plain-text pages of the recipe library and component catalogue, for agents that read without a browser.
-import { ASK_HEADINGS, buildingItSection, groupHasMore, recipeBuildSteps, PACKAGE_CHECK, PACKAGE_WHERE, QUALITY_TEXT, SIGNATURES_NOTE, classSettings, deprecationLine, describeCondition, kindText, markdownSections, questionGroups, recipeUseSentence } from "@clodhub/shared";
+import { ASK_HEADINGS, shortForm, buildingItSection, groupHasMore, recipeBuildSteps, PACKAGE_CHECK, PACKAGE_WHERE, QUALITY_TEXT, SIGNATURES_NOTE, classSettings, deprecationLine, describeCondition, kindText, markdownSections, questionGroups, recipeUseSentence } from "@clodhub/shared";
 import type { CategoryCount, ClassList, ClassVersionView, ClassInterface, ComponentList, ComponentSummary, ComponentVersionView, Condition, Deprecation, FoundationSummary, EntryPort, Foundations, ListQuery, PackageContents, PackageDetails, Port, Quality, RecipeList, RecipeQuestion, RecipeSlotView, RecipeSummary, RecipeVersionView, SettingDeclaration, SlotDetails, Suitability, Targets } from "@clodhub/shared";
 
 const COPYRIGHT = "Copyright Level N Ltd 2026";
@@ -25,13 +25,13 @@ const packageLines = (v: { bundle: { asset: string }; source: { repository: stri
 };
 // A described interface: its id, type and version, then what its document says it is.
 const portLines = (p: EntryPort[], also: (p: EntryPort) => string): string[] => (p.length === 0 ? ["- none"] : p.flatMap((x) => [`- ${x.id} (${x.type} ${x.version}${x.optional ? ", optional" : ""})${x.description ? `: ${x.description}` : ""}`, `  ${also(x)}`]));
-// The steps an agent runs to build an application from this recipe with aepm, then the recipe's own "Building it".
+// The steps an agent runs to build an application from this recipe with clod, then the recipe's own "Building it".
 const buildSteps = (v: RecipeVersionView, origin: string): string[] => {
   const own = buildingItSection(v.description);
   const steps = recipeBuildSteps(v);
   return [
     "",
-    "Build it (aepm, Python 3.12, Node.js, Graphviz)",
+    "Build it (clod, Python 3.12, Node.js, Graphviz)",
     ...steps.flatMap((s, i) => (s.command ? [`${i + 1}. ${s.command}`, `   ${s.text}`] : [`${i + 1}. ${s.text}`])),
     ...(own ? ["", "From the recipe (its description, \"Building it\")", own.text, ...(own.cut ? [`The rest: ${detailsAddress(v, origin)}`] : [])] : []),
   ];
@@ -105,7 +105,7 @@ export function componentListText(l: ComponentList, origin: string): string {
   return page("ClodHub components", [
     `${totalText(l.total)} components match; this page shows ${l.components.length}, sorted by ${l.query.sort}.`,
     `Categories here: ${counts(l.categories, "components")}`,
-    `${LIST_HELP} Components also take class (scope/name), provides and requires (each may repeat; a component matches every one).`,
+    `${LIST_HELP} Components also take class (a class package name such as pkg:clod/com.clodhub/card-deck-class, percent-encoded), provides and requires (interface types such as com.clodhub/card-deck) (each may repeat; a component matches every one).`,
     `JSON: ${listUrl(origin, "/api/components", l.query, {})}. Recipes: ${origin}/recipes.txt. Classes: ${origin}/classes.txt`,
     "",
     ...(l.components.length === 0 ? ["No components match."] : l.components.flatMap(componentLine)),
@@ -129,6 +129,7 @@ export function classText(c: ClassVersionView, origin: string): string {
   return page(`${c.title} (${c.name}) ${c.version}`, [
     c.summary,
     "",
+    `Package URL: ${c.name}@${c.version}`,
     `Category: ${c.category}; ${c.presentation === "visual" ? "implementations render something people see (each shows images)" : "no visual output"}`,
     `Digest: sha256:${c.digest}`,
     `Provides: ${list(c.provides.map((p) => `${p.type} ${p.version} (entry modules ${list(Object.entries(p.modules).map(([k, v]) => `${k} ${v.join(" ")}`))})`))}`,
@@ -213,7 +214,7 @@ function slotLines(s: RecipeSlotView, more: SlotDetails, recipe: string): string
   if (s.deprecation) out.push(`    DEPRECATION WARNING: ${deprecationLine(s.deprecation)}`);
   if (s.catalogue) out.push(`    guardians: ${list(s.catalogue.guardians)}`);
   if (more.suitability) out.push(`    suitable for jobs: ${list(more.suitability.jobs)}`, ...suitabilityLines(more.suitability));
-  out.push(`    other components of this class (${s.alternatives.count}): ${s.alternatives.url}`, `    python3 -m aepm alternatives ${recipe} ${s.id} --store store`);
+  out.push(`    other components of this class (${s.alternatives.count}): ${s.alternatives.url}`, `    clod alternatives ${recipe} ${s.id} --store store`);
   return out;
 }
 
@@ -272,6 +273,7 @@ export function recipeText(v: RecipeVersionView, origin: string): string {
     ...(v.deprecations.length > 0 ? [...warnings(v.deprecations), `Deprecation tree: ${origin}/api/recipes/${v.slug}/${v.version}/deprecations`, ""] : []),
     v.summary,
     "",
+    `Package URL: ${v.name}@${v.version}`,
     `Targets: ${targets(v.targets)}`,
     `Category: ${v.category}; tags ${list(v.tags)}`,
     publisherLine(v.publisher),
@@ -284,7 +286,7 @@ export function recipeText(v: RecipeVersionView, origin: string): string {
     `Questions (${v.questions.length})`,
     ...questionGroups(v.questions).flatMap((g) => ["", `${g.heading} (${g.questions.length})`, ...g.questions.flatMap(question)]),
     "",
-    `Slots (${v.components.length}): each needs a component of its class; the preferred component fills it unless another component that fits the class is substituted (python3 -m aepm alternatives ${v.slug}@${v.version} SLOT --store store)`,
+    `Slots (${v.components.length}): each needs a component of its class; the preferred component fills it unless another component that fits the class is substituted (clod alternatives ${shortForm(v.name, v.version)} SLOT --store store)`,
     ...v.components.flatMap(slotLine),
     "",
     ...jobLines(v),
@@ -313,7 +315,7 @@ export function recipeDetailsText(v: RecipeVersionView, slots: SlotDetails[], de
     v.description,
     "",
     `Slot details (${v.components.length})`,
-    ...v.components.flatMap((s, i) => slotLines(s, slots[i]!, `${v.slug}@${v.version}`)),
+    ...v.components.flatMap((s, i) => slotLines(s, slots[i]!, shortForm(v.name, v.version))),
     "",
     ...connectionLines(v),
     `Tested answer sets: default${v.tests.answerSets.length > 0 ? `, ${v.tests.answerSets.map((s) => s.id).join(", ")}` : ""}`,
@@ -342,7 +344,7 @@ function classLines(f: FoundationSummary): string[] {
   ]);
 }
 
-// The recipe.json slot that names this component, and the aepm commands that use it in another slot of its class.
+// The recipe.json slot that names this component, and the clod commands that use it in another slot of its class.
 function recipeUseLines(v: ComponentVersionView): string[] {
   const c = v.foundations.implements[0]?.reference;
   if (!c) return ["How to use in a recipe: this component implements no class, so no slot can name it"];
@@ -351,7 +353,7 @@ function recipeUseLines(v: ComponentVersionView): string[] {
     "How to use in a recipe",
     recipeUseSentence(v),
     `- as a slot in recipe.json components: ${JSON.stringify(slot)}`,
-    `- in place of another component of the class: python3 -m aepm fetch ${v.name}@${v.version} --store store --from https://clodhub.com, then python3 -m aepm design RECIPE@VERSION --store store --answers answers.json --substitute SLOT=${v.name}@${v.version} --out definition.json`,
+    `- in place of another component of the class: clod fetch ${shortForm(v.name, v.version)} --store store --from https://clodhub.com, then clod design RECIPE@VERSION --store store --answers answers.json --substitute SLOT=${shortForm(v.name, v.version)} --out definition.json`,
   ];
 }
 
@@ -370,6 +372,7 @@ export function componentText(v: ComponentVersionView, origin: string): string {
     ...(about.intro && about.intro !== v.description ? ["", about.intro] : []),
     ...(examples ? ["", "Examples", examples] : []),
     "",
+    `Package URL: ${v.name}@${v.version}`,
     `Class: ${v.class.title} (${v.class.name}@${v.class.version}): ${v.classInfo.summary}. Any component of this class can fill a recipe slot that asks for it. Category ${v.category}; ${v.classInfo.url}.txt; ${v.classInfo.others} other component${v.classInfo.others === 1 ? "" : "s"} of this class: ${v.classInfo.othersUrl.replace("/components?", "/components.txt?")}`,
     "",
     `Provides (${v.provides.length})`,

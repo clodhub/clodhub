@@ -18,6 +18,10 @@ import {
   componentFacts,
   isCatalogueName,
   isCatalogueSlug,
+  isInterfaceType,
+  purlPackage,
+  nameRule,
+  namespaceOwner,
   isPackageVersion,
   packageContents,
   recipeComponentsSvg,
@@ -95,10 +99,13 @@ function db(env: Env): CatalogueDb {
   return new CatalogueDb(env.DB);
 }
 
-function word(url: URL, key: string, pattern: RegExp): string | undefined {
+type Check = RegExp | ((value: string) => boolean);
+const passes = (check: Check, value: string): boolean => (typeof check === "function" ? check(value) : check.test(value));
+
+function word(url: URL, key: string, check: Check): string | undefined {
   const value = url.searchParams.get(key)?.trim();
   if (!value) return undefined;
-  if (!pattern.test(value)) throw new HttpError(400, `${key} is not valid`);
+  if (!passes(check, value)) throw new HttpError(400, `${key} is not valid`);
   return value;
 }
 
@@ -125,10 +132,10 @@ function intParam(url: URL, key: string, fallback: number, min: number, max: num
 }
 
 // Every value of a repeated parameter: a component must match each one.
-function words(url: URL, key: string, pattern: RegExp, max: number): string[] | undefined {
+function words(url: URL, key: string, check: Check, max: number): string[] | undefined {
   const values = [...new Set(url.searchParams.getAll(key).map((v) => v.trim()).filter(Boolean))];
   if (values.length > max) throw new HttpError(400, `${key} may be given at most ${max} times`);
-  for (const value of values) if (!pattern.test(value)) throw new HttpError(400, `${key} is not valid`);
+  for (const value of values) if (!passes(check, value)) throw new HttpError(400, `${key} is not valid`);
   return values.length === 0 ? undefined : values;
 }
 
@@ -141,7 +148,7 @@ export function listQuery(url: URL, kind: Kind): ListQuery {
   const query: ListQuery = {
     q,
     category: word(url, "category", CATEGORY_PATH),
-    class: kind === "component" ? word(url, "class", /^[a-z0-9-]{1,39}\/[a-z0-9-]{1,40}$/) : undefined,
+    class: kind === "component" ? word(url, "class", (v) => isCatalogueName(v, "class")) : undefined,
     platform: oneOf(url, "platform", FOUNDATION_PLATFORMS),
     licence: licenceParam(url),
     quality: oneOf(url, "quality", QUALITY_LEVELS),
@@ -149,8 +156,8 @@ export function listQuery(url: URL, kind: Kind): ListQuery {
     channel: oneOf<Channel>(url, "channel", CHANNELS),
     secure: yes(url, "secure"),
     publisher: word(url, "publisher", /^[a-z0-9-]{1,40}$/),
-    provides: kind === "component" ? words(url, "provides", /^[A-Za-z0-9_.:/-]{1,80}$/, 10) : undefined,
-    requires: kind === "component" ? words(url, "requires", /^[A-Za-z0-9_.:/-]{1,80}$/, 10) : undefined,
+    provides: kind === "component" ? words(url, "provides", isInterfaceType, 10) : undefined,
+    requires: kind === "component" ? words(url, "requires", isInterfaceType, 10) : undefined,
     deprecated: oneOf(url, "deprecated", DEPRECATED_FILTERS) ?? "include",
     sort,
     cursor: word(url, "cursor", /^[A-Za-z0-9_-]{1,400}$/),
@@ -167,7 +174,7 @@ function licenceParam(url: URL): string | undefined {
   return value;
 }
 
-function slugOf(input: string): string {
+function routeSlug(input: string): string {
   if (!isCatalogueSlug(input)) throw new HttpError(404, "not found");
   return input;
 }
@@ -317,7 +324,7 @@ function reportView(env: Env, slug: string, r: { id: string; version: string; di
 // GET /api/recipes/:name/reports and /api/recipes/:name/reports/:id
 export async function buildReports(env: Env, name: string, id: string | null): Promise<Response> {
   const d = db(env);
-  const entry = await d.entryBySlug("recipe", slugOf(name));
+  const entry = await d.entryBySlug("recipe", routeSlug(name));
   if (!entry) throw new HttpError(404, "not found");
   const views = (await d.buildReports(entry.name, 200)).map((r) => reportView(env, entry.slug, r, entry.latestVersion));
   if (id !== null) {
@@ -350,7 +357,7 @@ export async function publishBuildReport(request: Request, env: Env, deps: Deps,
   if (!result.ok) throw new HttpError(400, `invalid report: ${result.errors.slice(0, 10).join("; ")}${result.errors.length > 10 ? `; and ${result.errors.length - 10} more` : ""}`);
   const r = result.report;
   const d = db(env);
-  const entry = await d.entryBySlug("recipe", slugOf(name));
+  const entry = await d.entryBySlug("recipe", routeSlug(name));
   if (!entry) throw new HttpError(404, "not found");
   if (entry.name !== r.recipe.name) throw new HttpError(400, `the report is of ${r.recipe.name}, not ${entry.name}`);
   const now = deps.now();
@@ -435,7 +442,7 @@ export async function list(env: Env, kind: Kind, url: URL): Promise<Response> {
 // ---------------------------------------------------------------- one version
 
 async function found(env: Env, d: CatalogueDb, kind: Kind, name: string, version: string): Promise<{ entry: SummaryRow; row: VersionRow }> {
-  const f = await d.version(kind, slugOf(name), versionOf(version));
+  const f = await d.version(kind, routeSlug(name), versionOf(version));
   if (!f) throw new HttpError(404, `no such ${kind} version`);
   return f;
 }
@@ -474,6 +481,15 @@ export async function vulnerabilities(env: Env, kind: Kind, name: string, versio
   return json(await vulnerabilityReport(env, db(env), kind, name, version));
 }
 
+// Whether an advisory's affected package (a package URL, or "<ecosystem>:<name>" when OSV gives no purl) is the package
+// of a version's purl. A purl is compared decoded, so an npm scope written as "@" or as its canonical "%40" is the same.
+function sameAffected(affected: string, purl: string): boolean {
+  const ours = purlPackage(purl);
+  if (ours === null) return false;
+  if (affected.startsWith("pkg:")) return purlPackage(affected) === ours;
+  return affected.endsWith(`:${ours.slice(ours.indexOf("/") + 1)}`);
+}
+
 export async function vulnerabilityReport(env: Env, d: CatalogueDb, kind: Kind, name: string, version: string): Promise<VulnerabilityReport> {
   const f = await found(env, d, kind, name, version);
   const waived = new Map(f.row.waivers.map((w) => [w.id, w.reason]));
@@ -482,7 +498,7 @@ export async function vulnerabilityReport(env: Env, d: CatalogueDb, kind: Kind, 
     summary: a.summary,
     severity: a.severity,
     affected: a.purls,
-    fixedIn: [...new Set(Object.entries(a.fixed).filter(([pkg]) => a.purls.some((p) => p.startsWith(pkg.split("@")[0]!) || pkg.endsWith(`:${p.split("/").pop()!.split("@")[0]}`))).flatMap(([, v]) => v))],
+    fixedIn: [...new Set(Object.entries(a.fixed).filter(([pkg]) => a.purls.some((p) => sameAffected(pkg, p))).flatMap(([, v]) => v))],
     waived: waived.get(a.id) ?? null,
   }));
   return { name: f.entry.name, version: f.row.version, checkedAt: f.row.vulnerabilitiesCheckedAt, count: f.row.vulnerabilities, advisories, unqueryable: await d.unqueryablePurls(kind, f.entry.id, f.row.version) };
@@ -799,7 +815,7 @@ export async function classList(env: Env, d: CatalogueDb, url: URL): Promise<Cla
 }
 
 export async function classView(env: Env, d: CatalogueDb, name: string, version: string): Promise<ClassVersionView> {
-  const row = await d.classBySlug(slugOf(name));
+  const row = await d.classBySlug(routeSlug(name));
   if (!row) throw new HttpError(404, "no such class");
   const wanted = version === "latest" ? (row.latest_version as string) : versionOf(version);
   const v = await d.classVersion(row.id as string, wanted);
@@ -858,16 +874,17 @@ interface Candidate {
 
 // Checks the name against the repository and the publisher, finds or makes the entry, and decides what to do with the version.
 async function prepare(env: Env, d: CatalogueDb, deps: Deps, dev: AuthedDeveloper, c: Candidate): Promise<{ entry: EntryRow | null; fresh: EntryRow; existing: "none" | "same"; unlisted: boolean }> {
-  const { scope, slug } = splitName(c.name)!;
-  const owner = c.source.repository.split("/")[0]!.toLowerCase();
-  if (scope !== owner) throw new HttpError(400, `the name's scope ${scope} must be the owner of ${c.source.repository}`);
+  const { namespace, slug } = splitName(c.name)!;
+  if (!(await loadSecrets(env, dev.id, ["githubToken"])).githubToken) throw new HttpError(409, NO_SAVED_TOKEN);
+  const owner = await namespacePublisher(env, deps, dev, namespace);
+  if (c.source.repository.split("/")[0]!.toLowerCase() !== owner) throw new HttpError(400, `${c.name} must be published from a repository of ${owner}, the owner of the namespace ${namespace}, not ${c.source.repository}`);
   const entry = await d.entryBySlug(c.kind, slug);
   if (entry && entry.developerId === null) throw new HttpError(409, "that name belongs to a developer who deleted their account; it cannot be published to");
   if (entry && entry.developerId !== dev.id) throw new HttpError(409, "that name belongs to another developer");
   if (entry && entry.name !== c.name) throw new HttpError(409, `the name ${slug} is already published as ${entry.name}`);
   if (entry && entry.repo.toLowerCase() !== c.source.repository.toLowerCase()) throw new HttpError(409, `${entry.name} is published from ${entry.repo}; every version comes from that repository`);
   const now = deps.now().toISOString();
-  const fresh: EntryRow = { seq: 0, id: entry?.id ?? randomId(8), name: c.name, scope, slug, developerId: dev.id, repo: c.source.repository, latestVersion: null, flag: null, createdAt: now, updatedAt: now };
+  const fresh: EntryRow = { seq: 0, id: entry?.id ?? randomId(8), name: c.name, namespace, slug, developerId: dev.id, repo: c.source.repository, latestVersion: null, flag: null, createdAt: now, updatedAt: now };
   if (!entry) {
     const cap = c.kind === "recipe" ? MAX_RECIPES_PER_DEVELOPER : MAX_COMPONENTS_PER_DEVELOPER;
     if (!curator(env, dev) && (await d.countByDeveloper(c.kind, dev.id)) >= cap) throw new HttpError(409, `a developer can publish at most ${cap} ${plural(c.kind)}`);
@@ -882,10 +899,12 @@ async function prepare(env: Env, d: CatalogueDb, deps: Deps, dev: AuthedDevelope
   return { entry, fresh, existing: "none", unlisted: false };
 }
 
+const NO_SAVED_TOKEN = "save a GitHub token at /dev first: it checks your release and serves the bundle";
+
 // The publisher must be able to push to the repository, and the release must hold the bundle.
 async function verifyRelease(env: Env, deps: Deps, dev: AuthedDeveloper, c: Candidate): Promise<void> {
   const token = (await loadSecrets(env, dev.id, ["githubToken"])).githubToken;
-  if (!token) throw new HttpError(409, "save a GitHub token at /dev first: it checks your release and serves the bundle");
+  if (!token) throw new HttpError(409, NO_SAVED_TOKEN);
   let repo: Response;
   try {
     repo = await fetchUpstream(env, deps, `${env.GITHUB_API_BASE}/repos/${c.source.repository}`, token, "application/vnd.github+json");
@@ -1059,12 +1078,8 @@ export async function publishClass(request: Request, env: Env, deps: Deps, dev: 
   const c = result.entry.class;
   const d = db(env);
   if (!(await d.categoryExists(c.category))) throw problems([`class.category ${c.category} is not in the category tree (classes/categories.json, POST /api/dev/categories)`]);
-  const { scope, slug } = splitName(c.name)!;
-  // The scope is the developer's own login, or a GitHub organisation the developer belongs to; within a scope the first
-  // developer to publish a class keeps it.
-  const holder = await d.scopeHolder(scope);
-  if (holder && holder !== dev.id) throw new HttpError(409, `the class scope ${scope} belongs to another developer`);
-  if (!holder && scope !== dev.githubLogin.toLowerCase() && !(await memberOf(env, deps, dev, scope))) throw new HttpError(403, `publish ${scope}/... classes as ${scope} or as a member of the ${scope} organisation on GitHub; a member of an organisation that restricts third-party apps grants ClodHub access to it (GitHub Settings, Applications, Authorized OAuth Apps, ClodHub, Grant) and signs in to clodhub.com again`);
+  const { namespace, slug } = splitName(c.name)!;
+  await namespacePublisher(env, deps, dev, namespace);
   const existing = await d.classByName(c.name);
   const bySlug = existing ?? (await d.classBySlug(slug));
   if (bySlug && bySlug.name !== c.name) throw new HttpError(409, `the name ${slug} is already published as ${bySlug.name}`);
@@ -1079,9 +1094,17 @@ export async function publishClass(request: Request, env: Env, deps: Deps, dev: 
   } else if (!curator(env, dev) && ((await env.DB.prepare("SELECT COUNT(*) AS n FROM classes WHERE developer_id = ?").bind(dev.id).first<{ n: number }>())?.n ?? 0) >= MAX_CLASSES_PER_DEVELOPER) {
     throw new HttpError(409, `a developer can publish at most ${MAX_CLASSES_PER_DEVELOPER} classes`);
   }
-  await d.publishClass(existing, { id: randomId(8), name: c.name, scope, slug, developerId: dev.id }, c, result.entry.digest, deps.now().toISOString());
+  await d.publishClass(existing, { id: randomId(8), name: c.name, namespace, slug, developerId: dev.id }, c, result.entry.digest, deps.now().toISOString());
   await audit(request, env, deps, dev.id, "class-published", `${c.name} ${c.version}`);
   return json(url, 201);
+}
+
+// The GitHub owner of a namespace, once the developer is that owner or an active member of it; 403 otherwise.
+async function namespacePublisher(env: Env, deps: Deps, dev: AuthedDeveloper, namespace: string): Promise<string> {
+  const owner = namespaceOwner(namespace, env.NAMESPACE_OWNERS);
+  if (owner === null) throw new HttpError(403, `the namespace ${namespace} has no owner on ClodHub: publish in io.github.<your GitHub login or organisation>, or ask for ${namespace} to be assigned to a GitHub owner`);
+  if (owner === dev.githubLogin.toLowerCase() || (await memberOf(env, deps, dev, owner))) return owner;
+  throw new HttpError(403, `publish in ${namespace} as ${owner} or as an active member of the ${owner} organisation on GitHub; a member of an organisation that restricts third-party apps grants ClodHub access to it (GitHub Settings, Applications, Authorized OAuth Apps, ClodHub, Grant) and signs in to clodhub.com again`);
 }
 
 // Whether the developer is an active member of the organisation: by the memberships read at their last sign-in, or
@@ -1164,7 +1187,7 @@ export async function setDeprecation(request: Request, env: Env, deps: Deps, dev
   const body = deprecate ? await optionalJson(request) : {};
   let replacement: string | null = null;
   if (deprecate && body.replacement !== undefined && body.replacement !== null) {
-    if (!isCatalogueName(body.replacement)) throw new HttpError(400, "replacement must be a name such as scope/name");
+    if (!isCatalogueName(body.replacement, kind)) throw new HttpError(400, `replacement must be ${nameRule(kind)}`);
     if (body.replacement === entry.name) throw new HttpError(400, "an entry cannot replace itself");
     const target = await d.entryBySlug(kind, splitName(body.replacement)!.slug);
     if (!target || target.name !== body.replacement) throw new HttpError(400, `replacement must be a published ${kind} name`);

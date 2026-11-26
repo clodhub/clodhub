@@ -30,9 +30,9 @@ function recipeView(patch: Partial<RecipeVersionView> = {}): RecipeVersionView {
   const suitability = exampleComponentEntry().suitability;
   return {
     ...versionCommon,
-    foundations: summariseFoundations(e.foundations, `${origin}/api/recipes/poker-night/0.1.0/details`), foundationEvidence: "publisher-declared",
+    foundations: summariseFoundations(e.foundations, `${origin}/api/recipes/poker-night-recipe/0.1.0/details`), foundationEvidence: "publisher-declared",
     name: r.name,
-    slug: "poker-night",
+    slug: "poker-night-recipe",
     version: r.version,
     title: r.title,
     summary: r.summary,
@@ -42,18 +42,18 @@ function recipeView(patch: Partial<RecipeVersionView> = {}): RecipeVersionView {
     publishedAt: "2026-10-16T10:00:00.000Z",
     publisher,
     repository: e.source.repository,
-    url: `${origin}/recipes/poker-night`,
+    url: `${origin}/recipes/poker-night-recipe`,
     status: "active",
     deprecations: [],
     digest: e.digest,
     source: e.source,
-    bundle: { ...e.bundle, url: `${origin}/api/recipes/poker-night/0.1.0/bundle` },
+    bundle: { ...e.bundle, url: `${origin}/api/recipes/poker-night-recipe/0.1.0/bundle` },
     description: e.page.description,
-    diagram: `${origin}/api/recipes/poker-night/0.1.0/diagram.svg`,
+    diagram: `${origin}/api/recipes/poker-night-recipe/0.1.0/diagram.svg`,
     contents: packageContents(e.foundations),
     components: r.components.map((c) => ({
       ...c,
-      classInfo: { title: classDescriptor(c.class, e.foundations)!.title, summary: classDescriptor(c.class, e.foundations)!.summary, url: `${origin}/classes/${c.class.name.split("/")[1]}` },
+      classInfo: { title: classDescriptor(c.class, e.foundations)!.title, summary: classDescriptor(c.class, e.foundations)!.summary, url: `${origin}/classes/${c.class.name.split("/").at(-1)}` },
       preferred: { ...c.preferred, url: c.id === "deck" ? `${origin}/components/card-deck` : null },
       catalogue: c.id === "deck" ? { description: "A shuffled deck.", profiles: suitability.profiles.map(({ id, cost, load }) => ({ id, cost, load })), guardians: ["Example Guardian Ltd"], quality: null, thumbnail: null } : null,
       deprecation: null,
@@ -77,14 +77,14 @@ function componentView(patch: Partial<ComponentVersionView> = {}): ComponentVers
     ...versionCommon,
     foundations: summariseFoundations(e.foundations, `${origin}/api/components/card-deck/0.1.0/details`), foundationEvidence: "publisher-declared",
     about: e.page.description,
-    classInfo: { summary: "A deck of playing cards", url: `${origin}/classes/card-deck-class`, others: 2, othersUrl: `${origin}/components?class=clodhub%2Fcard-deck-class` },
+    classInfo: { summary: "A deck of playing cards", url: `${origin}/classes/card-deck-class`, others: 2, othersUrl: `${origin}/components?class=pkg%3Aclod%2Fcom.clodhub%2Fcard-deck-class` },
     contents: packageContents(e.foundations),
     name: e.name,
     slug: "card-deck",
     version: e.version,
     description: e.description,
     category: "games/cards",
-    class: { name: "clodhub/card-deck-class", version: "1.0.0", title: "Card deck" },
+    class: { name: "pkg:clod/com.clodhub/card-deck-class", version: "1.0.0", title: "Card deck" },
     tags: e.tags,
     targets: e.targets,
     provides: e.provides,
@@ -106,7 +106,7 @@ function componentView(patch: Partial<ComponentVersionView> = {}): ComponentVers
     source: e.source,
     bundle: { ...e.bundle, url: `${origin}/api/components/card-deck/0.1.0/bundle` },
     versions: [{ version: e.version, digest: e.digest, publishedAt: "2026-10-16T10:00:00.000Z", channel: "features", fixes: [] }],
-    usedBy: [{ name: "acme/poker-night", slug: "poker-night", title: "Poker Night", version: "0.1.0", url: `${origin}/recipes/poker-night`, slots: [{ id: "deck", preferred: true }, { id: "spare", preferred: false }] }],
+    usedBy: [{ name: "pkg:clod/io.github.acme/poker-night", slug: "poker-night-recipe", title: "Poker Night", version: "0.1.0", url: `${origin}/recipes/poker-night-recipe`, slots: [{ id: "deck", preferred: true }, { id: "spare", preferred: false }] }],
     ...patch,
   };
 }
@@ -114,9 +114,9 @@ function componentView(patch: Partial<ComponentVersionView> = {}): ComponentVers
 describe("recipe page", () => {
   it("shows package facts as counts with one link to the lists, after what a reader needs first", () => {
     const text = recipeBody(recipeView(), "latest").html;
-    expect(text).toContain("clodhub/card-deck-class"); expect(text).toContain("A deck that shuffles, deals and burns cards");
+    expect(text).toContain("pkg:clod/com.clodhub/card-deck-class"); expect(text).toContain("A deck that shuffles, deals and burns cards");
     expect(text).toContain("Package facts"); expect(text).toContain(escapeHtml(SIGNATURES_NOTE)); expect(text).not.toContain("verified record");
-    expect(text).toContain('<a href="/recipes/poker-night/details?version=0.1.0">Sources and dependencies</a>');
+    expect(text).toContain('<a href="/recipes/poker-night-recipe/details?version=0.1.0">Sources and dependencies</a>');
     expect(text).toMatch(/\d+ upstream sources?, \d+ exact dependenc(y|ies), \d+ class(es)?, \d+ files?/);
     expect(text).not.toContain("Upstream code");
     const order = ['id="what-you-download"', 'id="build-it"', 'id="about"', 'id="questions"', 'id="slots"', 'id="package-facts"'].map((x) => text.indexOf(x));
@@ -148,25 +148,25 @@ describe("recipe page", () => {
     const html = recipeBody(recipeView(), "latest").html;
     expect(html).toContain("<th>Slot</th><th>What it is</th><th>Preferred component</th><th>Alternatives</th>");
     expect(html).toContain("<code>seats</code>");
-    expect(html).toContain('<span class="small faint"><code>clodhub/seating-class</code> 1.0.0</span>');
+    expect(html).toContain('<span class="small faint"><code>pkg:clod/com.clodhub/seating-class</code> 1.0.0</span>');
     expect(html).toContain("<summary>Where it runs and who reviewed it</summary>");
     expect(html).toContain('<a href="/components/card-deck">card-deck</a> <span class="small faint">0.1.0</span><br /><span class="small muted">A shuffled deck.</span>');
     expect(html).toContain('<a href="/classes/seating-class">Seating</a>');
-    expect(html).toContain('<a href="/components?class=clodhub%2Fseating-class">1 other</a>');
-    expect(html).toContain('<a href="/components?class=clodhub%2Fcard-deck-class">0 others</a>');
+    expect(html).toContain('<a href="/components?class=pkg%3Aclod%2Fcom.clodhub%2Fseating-class">1 other</a>');
+    expect(html).toContain('<a href="/components?class=pkg%3Aclod%2Fcom.clodhub%2Fcard-deck-class">0 others</a>');
   });
 
   it("shows description, diagram, questions, components with suitability and guardians, targets, answer sets and versions", () => {
     const html = recipeBody(recipeView(), "latest").html;
     expect(html).toContain("Poker Night");
     expect(html).toContain("Build an application from the Poker Night recipe");
-    expect(html).not.toMatch(/coming soon|aepm create/);
+    expect(html).not.toMatch(/coming soon|clod create/);
     expect(html).toContain("Poker Night deals a hand");
-    expect(html).toContain('src="https://clodhub.com/api/recipes/poker-night/0.1.0/diagram.svg"');
+    expect(html).toContain('src="https://clodhub.com/api/recipes/poker-night-recipe/0.1.0/diagram.svg"');
     expect(html).toContain("Publisher's diagram");
     expect(html).toContain("How its components connect");
-    expect(html).toContain('href="/api/recipes/poker-night/0.1.0/components.svg" target="_blank"');
-    expect(html).toContain('src="/api/recipes/poker-night/0.1.0/components.svg"');
+    expect(html).toContain('href="/api/recipes/poker-night-recipe/0.1.0/components.svg" target="_blank"');
+    expect(html).toContain('src="/api/recipes/poker-night-recipe/0.1.0/components.svg"');
     expect(html.indexOf("components.svg")).toBeLessThan(html.indexOf("diagram.svg"));
     expect(html).toContain("Questions it asks (7)");
     expect(html).toContain("Starting chips?");
@@ -183,14 +183,14 @@ describe("recipe page", () => {
     expect(html).toContain("Hosting provider");
     expect(html).toContain("<b>web-only</b>");
     expect(html).toContain("<b>0.1.0</b>");
-    expect(html).toContain('href="/recipes/poker-night.txt"');
-    expect(html).toContain('href="/recipes/poker-night.json"');
+    expect(html).toContain('href="/recipes/poker-night-recipe.txt"');
+    expect(html).toContain('href="/recipes/poker-night-recipe.json"');
     expect(html).toContain("https://github.com/acme/poker-night-recipe/releases/tag/v0.1.0");
   });
 
   it("links the variants to the shown version when one is chosen", () => {
     const html = recipeBody(recipeView(), "0.1.0").html;
-    expect(html).toContain('href="/recipes/poker-night.json?version=0.1.0"');
+    expect(html).toContain('href="/recipes/poker-night-recipe.json?version=0.1.0"');
   });
 
   it("escapes publisher text and leaves out an absent diagram and empty parts", () => {
@@ -207,44 +207,44 @@ describe("recipe page", () => {
   it("shows jobs and the scale question when the recipe has them", () => {
     const html = recipeBody(recipeView(), "latest").html;
     expect(html).toContain("Choosing by suitability");
-    expect(html).toContain("acme/server-host (free), acme/server-host (paid)");
+    expect(html).toContain("pkg:clod/io.github.acme/server-host (free), pkg:clod/io.github.acme/server-host (paid)");
     expect(html).toContain("restricts the candidates first");
   });
 
   it("names the condition of a job candidate", () => {
     const r = recipeView();
-    const html = recipeBody(recipeView({ jobs: [{ ...r.jobs[0], candidates: [{ component: "acme/free-host", profile: "free" }, { component: "acme/server-host", profile: "paid", includedWhen: "server == 'paid'" }, { component: "acme/big-host", profile: "paid", includedWhen: "size(targets) > 2" }] }] }), "latest").html;
-    expect(html).toContain("acme/free-host (free), acme/server-host (paid) when server is paid, acme/big-host (paid) when <code>size(targets) &gt; 2</code>");
+    const html = recipeBody(recipeView({ jobs: [{ ...r.jobs[0], candidates: [{ component: "pkg:clod/io.github.acme/free-host", profile: "free" }, { component: "pkg:clod/io.github.acme/server-host", profile: "paid", includedWhen: "server == 'paid'" }, { component: "pkg:clod/io.github.acme/big-host", profile: "paid", includedWhen: "size(targets) > 2" }] }] }), "latest").html;
+    expect(html).toContain("pkg:clod/io.github.acme/free-host (free), pkg:clod/io.github.acme/server-host (paid) when server is paid, pkg:clod/io.github.acme/big-host (paid) when <code>size(targets) &gt; 2</code>");
   });
 });
 
 describe("component page", () => {
   it("names the recipes that use it and the slot in each", () => {
     const html = componentBody(componentView(), "latest").html;
-    expect(html).toContain('<a href="/recipes/poker-night">Poker Night</a> 0.1.0: slot <code>deck</code>, slot <code>spare</code> as a job candidate');
+    expect(html).toContain('<a href="/recipes/poker-night-recipe">Poker Night</a> 0.1.0: slot <code>deck</code>, slot <code>spare</code> as a job candidate');
   });
 
   it("shows interfaces, suitability, guardians, migration, recipes that use it and versions", () => {
     const html = componentBody(componentView(), "latest").html;
-    expect(html).toContain("acme/card-deck");
+    expect(html).toContain("pkg:clod/io.github.acme/card-deck");
     expect(html).toContain("What it connects to");
     expect(html).toContain('href="/api/components/card-deck/0.1.0/connections.svg" target="_blank"');
     expect(html).toContain('src="/api/components/card-deck/0.1.0/connections.svg"');
     expect(html).toContain("Example Guardian Ltd");
-    expect(html).toContain("ae/card-deck");
-    expect(html).toContain('href="/components?requires=ae%2Fcard-deck"');
-    expect(html).toContain('href="/components?provides=ae%2Frandom-source"');
+    expect(html).toContain("com.clodhub/card-deck");
+    expect(html).toContain('href="/components?requires=com.clodhub%2Fcard-deck"');
+    expect(html).toContain('href="/components?provides=com.clodhub%2Frandom-source"');
     expect(html).toContain("no practical limit");
     expect(html).toContain("No cost");
     expect(html).toContain("This component keeps no data.");
-    expect(html).toContain('href="/recipes/poker-night"');
+    expect(html).toContain('href="/recipes/poker-night-recipe"');
     expect(html).toContain('href="/components/card-deck.json"');
   });
 
   it("leads with what it is and its class, then what it provides and needs, its settings and how a recipe uses it", () => {
     const html = componentBody(componentView(), "latest").html;
-    expect(html).toContain('{&quot;id&quot;:&quot;card-deck&quot;,&quot;class&quot;:{&quot;name&quot;:&quot;clodhub/card-deck-class&quot;,&quot;version&quot;:&quot;1.0.0&quot;,&quot;digest&quot;:');
-    expect(html).toContain("--substitute SLOT=acme/card-deck@0.1.0");
+    expect(html).toContain('{&quot;id&quot;:&quot;card-deck&quot;,&quot;class&quot;:{&quot;name&quot;:&quot;pkg:clod/com.clodhub/card-deck-class&quot;,&quot;version&quot;:&quot;1.0.0&quot;,&quot;digest&quot;:');
+    expect(html).toContain("--substitute SLOT=io.github.acme/card-deck@0.1.0");
     expect(html).toContain('<a href="/components/card-deck/details?version=0.1.0">Sources and dependencies</a>');
     const order = ['id="about"', 'id="class"', 'id="interfaces"', 'id="settings"', 'id="use-it"', 'id="more"', 'id="what-you-download"', 'id="platforms"', 'id="package-facts"'].map((x) => html.indexOf(x));
     expect(order.every((at, i) => at > 0 && (i === 0 || at > order[i - 1])), JSON.stringify(order)).toBe(true);
@@ -267,21 +267,21 @@ describe("component page", () => {
     const card = html.slice(html.indexOf('id="class"'), html.indexOf('id="interfaces"'));
     expect(card).toContain('<h2>Its class: <a href="/classes/card-deck-class">Card deck</a></h2>');
     expect(card).toContain("A deck of playing cards.");
-    expect(card).toContain('<a href="/components?class=clodhub%2Fcard-deck-class">2 other components implement it</a>');
-    expect(card).toContain("<td>Web</td><td><code>ae/card-deck</code></td><td><code>index.mjs</code></td>");
+    expect(card).toContain('<a href="/components?class=pkg%3Aclod%2Fcom.clodhub%2Fcard-deck-class">2 other components implement it</a>');
+    expect(card).toContain("<td>Web</td><td><code>com.clodhub/card-deck</code></td><td><code>index.mjs</code></td>");
   });
 
   it("describes each interface it provides and needs, linked to the components on the other side", () => {
     const html = componentBody(componentView(), "latest").html;
-    expect(html).toContain('<a class="small" href="/components?requires=ae%2Fcard-deck">ae/card-deck 1.0.0</a><br /><span class="small muted">The ae/card-deck interface: what a card deck offers the application.</span>');
-    expect(html).toContain('<a class="small" href="/components?provides=ae%2Frandom-source">ae/random-source 1.0.0</a>');
+    expect(html).toContain('<a class="small" href="/components?requires=com.clodhub%2Fcard-deck">com.clodhub/card-deck 1.0.0</a><br /><span class="small muted">The com.clodhub/card-deck interface: what a card deck offers the application.</span>');
+    expect(html).toContain('<a class="small" href="/components?provides=com.clodhub%2Frandom-source">com.clodhub/random-source 1.0.0</a>');
   });
 
   it("shows each setting's default and says in words how a recipe uses the component", () => {
     const html = componentBody(componentView({ settings: [{ id: "decks", type: "integer", grammar: "integer", required: false, secret: false, hasDefault: true, default: 1 }, { id: "house", type: "string", grammar: "slug", required: true, secret: false, hasDefault: false }] }), "latest").html;
     expect(html).toContain("<tr><td><code>decks</code></td><td>whole number</td><td><code>1</code></td><td>may set it</td></tr>");
     expect(html).toContain("<td><span class=\"muted\">none</span></td><td>must set it</td>");
-    expect(html).toContain("A recipe uses it through a slot of class Card deck (clodhub/card-deck-class 1.0.0), naming acme/card-deck as the slot&#39;s preferred component");
+    expect(html).toContain("A recipe uses it through a slot of class Card deck (pkg:clod/com.clodhub/card-deck-class 1.0.0), naming pkg:clod/io.github.acme/card-deck as the slot&#39;s preferred component");
     expect(html).toContain("The recipe sets decks and house; house has no default, so the recipe always sets it.");
   });
 
@@ -290,28 +290,28 @@ describe("component page", () => {
     const card = html.slice(html.indexOf('id="what-you-download"'), html.indexOf('id="platforms"'));
     expect(card).toContain("<code>card-deck-0.1.0.tar</code>, one archive from");
     expect(card).toContain("Installing copies");
-    expect(card).toContain('the components that provide what it needs (<a href="/components?provides=ae%2Frandom-source">ae/random-source</a>)');
+    expect(card).toContain('the components that provide what it needs (<a href="/components?provides=com.clodhub%2Frandom-source">com.clodhub/random-source</a>)');
     expect(card).not.toContain("The working implementation for each device");
   });
 
   it("marks an optional requirement", () => {
-    const html = componentBody(componentView({ requires: [{ id: "random-source", type: "ae/random-source", version: "1.0.0", optional: true, description: "" }, { id: "audit", type: "ae/audit", version: "1.0.0", description: "" }] }), "latest").html;
+    const html = componentBody(componentView({ requires: [{ id: "random-source", type: "com.clodhub/random-source", version: "1.0.0", optional: true, description: "" }, { id: "audit", type: "com.clodhub/audit", version: "1.0.0", description: "" }] }), "latest").html;
     expect(html).toContain('<code>random-source</code> <span class="small muted">optional</span>');
     expect(html).not.toContain('<code>audit</code> <span class="small muted">optional</span>');
   });
 
   it("describes a data-keeping component and no guardian", () => {
-    const html = componentBody(componentView({ guardians: [], usedBy: [], migration: { stores: [{ id: "rooms", schema: { name: "ae/room-state", version: "1.0.0" } }], formats: ["ndjson"], portable: true, requiresStop: true, retentionDays: 30 } }), "latest").html;
+    const html = componentBody(componentView({ guardians: [], usedBy: [], migration: { stores: [{ id: "rooms", schema: { name: "com.clodhub/room-state", version: "1.0.0" } }], formats: ["ndjson"], portable: true, requiresStop: true, retentionDays: 30 } }), "latest").html;
     expect(html).toContain("Guardians: none recorded for this version");
-    expect(html).toContain("rooms (ae/room-state 1.0.0)");
+    expect(html).toContain("rooms (com.clodhub/room-state 1.0.0)");
     expect(html).toContain("it must stop while data moves");
     expect(html).toContain("kept 30 days after removal");
     expect(html).toContain("No listed recipe names it yet.");
   });
 });
 
-const orphan: Deprecation = { name: "acme/card-deck", version: "0.1.0", status: "orphaned", reason: "owner-deleted", since: "2026-11-01T09:00:00.000Z", via: [] };
-const deprecatedPart: Deprecation = { name: "acme/seating", version: "0.1.0", status: "deprecated", reason: "owner-deprecated", since: "2026-11-02T09:00:00.000Z", replacement: "acme/seating-two", via: ["acme/poker-night"] };
+const orphan: Deprecation = { name: "pkg:clod/io.github.acme/card-deck", version: "0.1.0", status: "orphaned", reason: "owner-deleted", since: "2026-11-01T09:00:00.000Z", via: [] };
+const deprecatedPart: Deprecation = { name: "pkg:clod/io.github.acme/seating", version: "0.1.0", status: "deprecated", reason: "owner-deprecated", since: "2026-11-02T09:00:00.000Z", replacement: "pkg:clod/io.github.acme/seating-two", via: ["pkg:clod/io.github.acme/poker-night"] };
 
 describe("deprecation banner", () => {
   it("shows nothing for an active entry", () => {
@@ -332,14 +332,14 @@ describe("deprecation banner", () => {
   it("lists flagged components under a recipe, with the replacement as a link", () => {
     const html = recipeBody(recipeView({ deprecations: [deprecatedPart] }), "latest").html;
     expect(html).toContain("This recipe uses deprecated or orphaned components.");
-    expect(html).toContain("acme/seating 0.1.0 is deprecated by its publisher (since 2026-11-02, used by acme/poker-night)");
+    expect(html).toContain("pkg:clod/io.github.acme/seating 0.1.0 is deprecated by its publisher (since 2026-11-02, used by pkg:clod/io.github.acme/poker-night)");
     expect(html).toContain('href="/components/seating-two"');
-    expect(html).toContain('href="/api/recipes/poker-night/0.1.0/deprecations"');
+    expect(html).toContain('href="/api/recipes/poker-night-recipe/0.1.0/deprecations"');
   });
 
   it("flags a deprecated recipe itself and links its replacement as a recipe", () => {
-    const own: Deprecation = { name: "acme/poker-night", version: "0.1.0", status: "deprecated", reason: "owner-deprecated", since: "2026-11-03T09:00:00.000Z", replacement: "acme/poker-night-two", via: [] };
-    const html = deprecationBanner({ name: "acme/poker-night", version: "0.1.0", status: "deprecated", deprecations: [own] }, "recipes").html;
+    const own: Deprecation = { name: "pkg:clod/io.github.acme/poker-night", version: "0.1.0", status: "deprecated", reason: "owner-deprecated", since: "2026-11-03T09:00:00.000Z", replacement: "pkg:clod/io.github.acme/poker-night-two", via: [] };
+    const html = deprecationBanner({ name: "pkg:clod/io.github.acme/poker-night", version: "0.1.0", status: "deprecated", deprecations: [own] }, "recipes").html;
     expect(html).toContain("Deprecated.");
     expect(html).toContain('href="/recipes/poker-night-two"');
     expect(html).not.toContain("uses deprecated");
@@ -355,7 +355,7 @@ describe("deprecation banner", () => {
   });
 
   it("lists what a component builds on", () => {
-    const html = componentBody(componentView({ dependencies: [{ name: "acme/random-pool", version: "0.2.0" }] }), "latest").html;
+    const html = componentBody(componentView({ dependencies: [{ name: "pkg:clod/io.github.acme/random-pool", version: "0.2.0" }] }), "latest").html;
     expect(html).toContain("Builds on");
     expect(html).toContain('href="/components/random-pool"');
   });
@@ -364,7 +364,7 @@ describe("deprecation banner", () => {
 describe("cards", () => {
   it("link to the page and filter by category", () => {
     const r: RecipeSummary = { ...recipeView(), publisher };
-    expect(recipeCard(r).html).toContain('href="/recipes/poker-night"');
+    expect(recipeCard(r).html).toContain('href="/recipes/poker-night-recipe"');
     expect(recipeCard(r).html).toContain('href="/recipes?category=games"');
     const c: ComponentSummary = { ...componentView() };
     const html = componentCard(c).html;
@@ -386,7 +386,7 @@ describe("sources and dependencies", () => {
     expect(html).toContain("fetched at build time by npm, pinned by package-lock.json");
     expect(html).toContain("<summary><b>Exact dependencies (1)</b></summary>");
     expect(html).toContain(`<summary><b>Files (${e.foundations.files.length})</b></summary>`);
-    expect(html).toContain("clodhub/card-deck-class");
+    expect(html).toContain("pkg:clod/com.clodhub/card-deck-class");
     expect(html).toContain(escapeHtml(SIGNATURES_NOTE));
     expect(html).not.toContain("<details open");
     expect(html).toContain('href="/api/components/card-deck/0.1.0/details"');
@@ -417,9 +417,9 @@ describe("the format round on pages", () => {
   });
 
   it("compares a class's implementations side by side", () => {
-    const html = classBody({ name: "clodhub/card-deck-class", slug: "card-deck-class", version: "1.0.0", title: "Card deck", summary: "A deck", category: "games/cards", presentation: "visual", implementations: 2, publisher: null, url: "", digest: "c".repeat(64), provides: [], requires: [], settings: { type: "object", properties: {}, required: [], additionalProperties: false }, suites: [{ id: "behaviour", argv: ["node", "check.mjs"], network: false, timeoutSeconds: 30 }], versions: [{ version: "1.0.0", digest: "c".repeat(64), publishedAt: "2026-11-01T00:00:00.000Z" }], implementationList: [{ name: "acme/card-deck", slug: "card-deck", version: "0.1.0", description: "A deck", thumbnail: image.thumbnail, quality: { level: "integration-tested", certified: false, liveTested: null }, platforms: ["web", "ios"], downloads: 40, vulnerabilities: 0, url: "" }, { name: "acme/fancy-deck", slug: "fancy-deck", version: "1.0.0", description: "Fancy", thumbnail: null, quality: null, platforms: ["web"], downloads: 3, vulnerabilities: null, url: "" }] }).html;
+    const html = classBody({ name: "pkg:clod/com.clodhub/card-deck-class", slug: "card-deck-class", version: "1.0.0", title: "Card deck", summary: "A deck", category: "games/cards", presentation: "visual", implementations: 2, publisher: null, url: "", digest: "c".repeat(64), provides: [], requires: [], settings: { type: "object", properties: {}, required: [], additionalProperties: false }, suites: [{ id: "behaviour", argv: ["node", "check.mjs"], network: false, timeoutSeconds: 30 }], versions: [{ version: "1.0.0", digest: "c".repeat(64), publishedAt: "2026-11-01T00:00:00.000Z" }], implementationList: [{ name: "pkg:clod/io.github.acme/card-deck", slug: "card-deck", version: "0.1.0", description: "A deck", thumbnail: image.thumbnail, quality: { level: "integration-tested", certified: false, liveTested: null }, platforms: ["web", "ios"], downloads: 40, vulnerabilities: 0, url: "" }, { name: "pkg:clod/io.github.acme/fancy-deck", slug: "fancy-deck", version: "1.0.0", description: "Fancy", thumbnail: null, quality: null, platforms: ["web"], downloads: 3, vulnerabilities: null, url: "" }] }).html;
     expect(html).toContain("Implementations (2)");
-    expect(html).toContain('<a href="/components/card-deck">acme/card-deck</a> 0.1.0');
+    expect(html).toContain('<a href="/components/card-deck">pkg:clod/io.github.acme/card-deck</a> 0.1.0');
     expect(html).toContain("Integration-tested");
     expect(html).toContain("not assessed");
     expect(html).toContain("not checked");
@@ -432,7 +432,7 @@ describe("build reports on the recipe page", () => {
     id: `id${version.replace(/\./g, "")}`, version, digest: `sha256:${"a".repeat(64)}`, date, publishedAt: `${date}T12:00:00Z`, current,
     agent: { harness: "OpenCode 2.3.2", model: "anthropic/claude-opus-5-5" }, activeMinutes: 27.6, costUsd: 1.85,
     results: [{ target: "server", built: true, tested: "37 of 37 tests", ran: "deployed" }, { target: "ios", built: false, tested: "<b>not built</b>", ran: "not launched" }],
-    problems: ["a first deploy failed"], rating: { score: 7, of: 10, by: "the building agent", mostHelpful: "make the first deploy work" }, url: "https://clodhub.com/api/recipes/poker-night/reports/x",
+    problems: ["a first deploy failed"], rating: { score: 7, of: 10, by: "the building agent", mostHelpful: "make the first deploy work" }, url: "https://clodhub.com/api/recipes/poker-night-recipe/reports/x",
   });
 
   it("lists each report after Build it with its targets, problems and rating, and notes a report of another version", () => {
@@ -451,14 +451,14 @@ describe("build reports on the recipe page", () => {
 });
 
 describe("build steps on the recipe page", () => {
-  it("lists the aepm steps with the digest, doctor and verify, and the recipe's Building it section", () => {
+  it("lists the clod steps with the digest, doctor and verify, and the recipe's Building it section", () => {
     const v = recipeView({ description: "Intro.\n\n## Building it\n\nDeploy the server with `npm run deploy` first.\n\n## Status\n\nDone." });
     const html = recipeBody(v, "latest").html;
     const at = (s: string) => html.indexOf(s);
-    expect(at(`tar -xf store/objects/${v.digest.slice(7)}.tar INSTRUCTIONS.md`)).toBeGreaterThan(at("python3 -m aepm fetch poker-night@0.1.0"));
-    expect(at("python3 -m aepm doctor poker-night@0.1.0 --store store --answers answers.json")).toBeGreaterThan(at("python3 -m aepm design"));
-    expect(at("trustedExecution")).toBeGreaterThan(at("python3 -m aepm install"));
-    expect(at("python3 -m aepm verify app --policy policy.json --trusted --allow-network")).toBeGreaterThan(at("trustedExecution"));
+    expect(at(`tar -xf store/objects/${v.digest.slice(7)}.tar INSTRUCTIONS.md`)).toBeGreaterThan(at("clod fetch io.github.acme/poker-night-recipe@0.1.0"));
+    expect(at("clod doctor io.github.acme/poker-night-recipe@0.1.0 --store store --answers answers.json")).toBeGreaterThan(at("clod design"));
+    expect(at("trustedExecution")).toBeGreaterThan(at("clod install"));
+    expect(at("clod verify app --policy policy.json --trusted --allow-network")).toBeGreaterThan(at("trustedExecution"));
     expect(at("<h3 class=\"mt\">From the recipe</h3>")).toBeGreaterThan(at("--trusted"));
     expect(at("<h3 class=\"mt\">From the recipe</h3>")).toBeLessThan(at("<h2>About</h2>"));
     expect(html).toContain("<code>npm run deploy</code>");
@@ -466,7 +466,7 @@ describe("build steps on the recipe page", () => {
 
   it("shows no recipe section when the description has no Building it", () => {
     const html = recipeBody(recipeView(), "latest").html;
-    expect(html).toContain("python3 -m aepm verify app --policy policy.json --trusted --allow-network");
+    expect(html).toContain("clod verify app --policy policy.json --trusted --allow-network");
     expect(html).not.toContain("From the recipe");
   });
 });

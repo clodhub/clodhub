@@ -4,7 +4,7 @@
 // from top to bottom, and the gaps between rows form horizontal channels. Every line runs in channels only: out of
 // the provider's right side, along channels, into the consumer's side. Each line gets its own track in each channel
 // it uses, so lines never overlap and never cross a card.
-import { portId, type ClassInterface, type Port } from "./catalogue.js";
+import { portId, slugOf, type ClassInterface, type Port } from "./catalogue.js";
 import { describeCondition, type Condition } from "./conditions.js";
 import { COLOURS, Canvas, LINE_COLOURS, MUTED, ZTITLE, measure, pillWidth, rowY, wrap, type CardBox, type Kind, type Zone } from "./diagram-kit.js";
 
@@ -213,9 +213,9 @@ function model(input: RecipeDiagramInput) {
   const portType = (instance: string, port: string, side: "provides" | "requires"): string | null => parts.get(instance)?.class[side].find((p) => portId(p.type) === port)?.type ?? null;
   const typeOf = (c: (typeof connections)[number]) => portType(c.source.instance, c.source.port, "provides") ?? portType(c.target.instance, c.target.port, "requires");
   const types = [...new Set(connections.map(typeOf).filter((t): t is string => t !== null))];
-  const scopes = new Set(types.map((t) => (t.includes("/") ? t.split("/")[0] : "")));
-  const scope = scopes.size === 1 && [...scopes][0] ? [...scopes][0]! : null;
-  const short = (t: string) => (scope && t.startsWith(scope + "/") ? t.slice(scope.length + 1) : t);
+  const namespaces = new Set(types.map((t) => (t.includes("/") ? t.split("/")[0] : "")));
+  const namespace = namespaces.size === 1 && [...namespaces][0] ? [...namespaces][0]! : null;
+  const short = (t: string) => (namespace && t.startsWith(namespace + "/") ? t.slice(namespace.length + 1) : t);
 
   // Zones in category order of first appearance; "Other" for components the catalogue does not list.
   const categories: string[] = [];
@@ -258,7 +258,7 @@ function model(input: RecipeDiagramInput) {
     const c = p.entry ? (p.entry.category ?? "other") : "other";
     const z = categories.indexOf(c);
     // The card is the preferred component; the slot id labels it when the two names differ.
-    const short = p.name.slice(p.name.indexOf("/") + 1);
+    const short = slugOf(p.name);
     const head = [...(p.id === short ? [] : [`slot ${p.id}`]), p.name, `version ${p.version}`];
     if (!p.entry) head.push("not in the catalogue");
     if (p.includedWhen) head.push(...wrap(`when ${describeCondition(p.includedWhen, answerWords) ?? p.includedWhen}`, 34));
@@ -284,7 +284,7 @@ function model(input: RecipeDiagramInput) {
   }
   const labels = [...new Set([...nets.values()].map((n) => n.label))];
   for (const n of nets.values()) n.colour = LINE_COLOURS[labels.indexOf(n.label) % LINE_COLOURS.length]!;
-  return { zones, nets: [...nets.values()], nodes, connections, scope };
+  return { zones, nets: [...nets.values()], nodes, connections, namespace };
 }
 
 // Zones that mostly provide go above zones that mostly use; the application is always last.
@@ -444,7 +444,7 @@ function plan(input: RecipeDiagramInput, columns: number) {
   return { m, zones, routes, t, width, used, chX, chW, colX, colW };
 }
 
-function legendFor(c: Canvas, zones: ZoneModel[], scope: string | null): CardBox {
+function legendFor(c: Canvas, zones: ZoneModel[], namespace: string | null): CardBox {
   const chips: [string, string][] = [];
   for (const z of zones) {
     const n = z.nodes[0];
@@ -464,7 +464,7 @@ function legendFor(c: Canvas, zones: ZoneModel[], scope: string | null): CardBox
     ],
     [
       "Each line is one interface. Its colour stands for the",
-      "interface type and its pill names the type" + (scope ? ` (scope ${scope}/).` : "."),
+      "interface type and its pill names the type" + (namespace ? ` (namespace ${namespace}/).` : "."),
       "A line leaves a card at the row of the interface it",
       "provides and enters at the row of the interface it",
       "requires. A dot joins branches of one line.",
@@ -481,7 +481,7 @@ export function recipeComponentsSvg(input: RecipeDiagramInput): string {
   const { m, zones, routes, t, chX, colX } = p;
 
   const c = new Canvas();
-  const legend = legendFor(c, zones, m.scope);
+  const legend = legendFor(c, zones, m.namespace);
   const width = Math.max(p.width, legend.right + M);
 
   // Vertical geometry: zone by zone, gap, row, gap, row ... gap.

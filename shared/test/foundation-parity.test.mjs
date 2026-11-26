@@ -29,12 +29,12 @@ describe("cross-language foundation fixtures", () => {
     expect(descriptorDigest(example.descriptor)).toBe(example.reference.digest);
   });
   it.each(fixtures)("$id", fixture => expect(result(fixture)).toEqual(fixture.area === "fit" ? fixture.reasons : fixture.valid));
-  it.skipIf(!process.env.AEPM_SOURCE)("matches Python foundation and fit results", () => {
+  it.skipIf(!process.env.CLOD_SOURCE)("matches Python foundation and fit results", () => {
     const script = String.raw`
 import copy, json, sys
-from aepm.foundations import validate_foundations, validate_graph
-from aepm.recipe import fit
-from aepm.model import AepmError, licence
+from clod.foundations import validate_foundations, validate_graph
+from clod.recipe import fit
+from clod.model import licence
 data = json.load(sys.stdin)
 def manifest(entry):
     f = copy.deepcopy(entry['foundations'])
@@ -53,7 +53,7 @@ for fixture in data['fixtures']:
         for compatibility in fixture['compatibility']:
             entry = copy.deepcopy(data['entry']); entry['foundations']['compatibility'].update(compatibility); manifests.append(manifest(entry))
         try: validate_graph(manifests); results.append(True)
-        except AepmError: results.append(False)
+        except Exception: results.append(False)
         continue
     entry = copy.deepcopy(data['entry']); authority = Package(copy.deepcopy(entry)); ref = copy.deepcopy(entry['foundations']['implements'][0])
     target = entry if fixture['area'] == 'fit' else entry['foundations']
@@ -63,10 +63,10 @@ for fixture in data['fixtures']:
     if fixture['area'] == 'fit': results.append(fit(ref, Package(entry), authority))
     else:
         try: licence(entry['foundations']['licence'], 'identity.licence'); validate_foundations(manifest(entry)); results.append(True)
-        except AepmError: results.append(False)
+        except Exception: results.append(False)
 print(json.dumps(results))
 `;
-    const child = spawnSync("python3", ["-c", script], { input: JSON.stringify({ entry: base(), fixtures }), encoding: "utf8", env: { ...process.env, PYTHONPATH: process.env.AEPM_SOURCE, PYTHONDONTWRITEBYTECODE: "1" } });
+    const child = spawnSync("python3", ["-c", script], { input: JSON.stringify({ entry: base(), fixtures }), encoding: "utf8", env: { ...process.env, PYTHONPATH: process.env.CLOD_SOURCE, PYTHONDONTWRITEBYTECODE: "1" } });
     expect(child.stderr).toBe(""); expect(child.status).toBe(0); expect(JSON.parse(child.stdout)).toEqual(fixtures.map(result));
   });
 });

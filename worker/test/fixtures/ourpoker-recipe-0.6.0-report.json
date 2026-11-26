@@ -1,11 +1,11 @@
 {
-  "format": 1,
+  "format": 2,
   "kind": "recipe-build",
-  "recipe": {"name": "clodhub/ourpoker", "version": "0.6.0", "digest": "sha256:9a5bad0c674ecb28f6a8d6212e17753d1e6151dd0d5e6c81f9f429b327f352e5"},
-  "aepm": {"repository": "clodhub/aepm", "commit": "d1688ec"},
+  "recipe": {"name": "pkg:clod/com.clodhub/ourpoker-recipe", "version": "0.6.0", "digest": "sha256:9a5bad0c674ecb28f6a8d6212e17753d1e6151dd0d5e6c81f9f429b327f352e5"},
+  "clod": {"repository": "clodhub/clod", "commit": "d1688ec"},
   "date": "2026-11-16",
   "agent": {"harness": "OpenCode", "model": "anthropic/claude-opus-5-5", "session": "a new session given only the prompt"},
-  "prompt": "Build an application from the OurPoker recipe: https://ourapps.app/recipes/ourpoker.txt",
+  "prompt": "Build an application from the OurPoker recipe: https://clodhub.com/recipes/ourpoker-recipe.txt",
   "conditions": "The session was opened in the recipe author's workspace; it read no files of the workspace's own knowledge. The person answered the agent's questions.",
   "answers": {"targets": ["web", "ios", "android", "macos", "windows", "tvos"], "server": "cloudflare", "publish": false, "releases": false, "otherQuestions": "defaults or the agent's choice"},
   "measured": {

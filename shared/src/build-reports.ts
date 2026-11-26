@@ -1,7 +1,7 @@
 // Build reports (spec section 6b): one run of an agent building an application from a recipe, as the person saw it.
-import { isCatalogueName, isDigest, isPackageVersion, isRepository, type Result } from "./catalogue.js";
+import { isCatalogueName, isDigest, nameRule, isPackageVersion, isRepository, type Result } from "./catalogue.js";
 
-export const BUILD_REPORT_FORMAT = 1;
+export const BUILD_REPORT_FORMAT = 2;
 export const BUILD_REPORT_KIND = "recipe-build";
 // The most bytes a report's JSON may take.
 export const BUILD_REPORT_BYTES = 32 * 1024;
@@ -16,10 +16,10 @@ export interface BuildResult {
 export type AnswerValue = string | number | boolean | null | string[];
 
 export interface BuildReport {
-  format: 1;
+  format: 2;
   kind: "recipe-build";
   recipe: { name: string; version: string; digest: string };
-  aepm: { repository: string; commit: string };
+  clod: { repository: string; commit: string };
   date: string;
   agent: { harness: string; model: string; session: string };
   prompt: string;
@@ -87,24 +87,24 @@ function validDate(v: unknown): v is string {
 export function validateBuildReport(input: unknown): Result<"report", BuildReport> {
   const errors: string[] = [];
   if (!isRecord(input)) return { ok: false, errors: ["the body must be a build report object"] };
-  exactKeys(input, ["format", "kind", "recipe", "aepm", "date", "agent", "prompt", "conditions", "answers", "measured", "results", "update", "problems", "rating"], "report", errors);
-  if (input.format !== BUILD_REPORT_FORMAT) errors.push(`format-refused: format must be ${BUILD_REPORT_FORMAT}`);
+  exactKeys(input, ["format", "kind", "recipe", "clod", "date", "agent", "prompt", "conditions", "answers", "measured", "results", "update", "problems", "rating"], "report", errors);
+  if (input.format !== BUILD_REPORT_FORMAT) errors.push(`format-refused: the build report format is ${BUILD_REPORT_FORMAT}${typeof input.format === "number" && input.format < BUILD_REPORT_FORMAT ? `; a format ${input.format} build report is refused, write it again in format ${BUILD_REPORT_FORMAT} with clod in place of aepm` : ""}`);
   if (input.kind !== BUILD_REPORT_KIND) errors.push(`kind must be ${BUILD_REPORT_KIND}`);
   const need = (ok: boolean, message: string) => void (ok || errors.push(message));
   const r = input.recipe;
   if (!isRecord(r)) errors.push("recipe must be { name, version, digest }");
   else {
     exactKeys(r, ["name", "version", "digest"], "recipe", errors);
-    need(isCatalogueName(r.name), "recipe.name must be scope/name");
+    need(isCatalogueName(r.name, "recipe"), `recipe.name must be ${nameRule("recipe")}`);
     need(isPackageVersion(r.version), "recipe.version must be a package version");
     need(isDigest(r.digest), "recipe.digest must be sha256:<64 hex>");
   }
-  const a = input.aepm;
-  if (!isRecord(a)) errors.push("aepm must be { repository, commit }");
+  const a = input.clod;
+  if (!isRecord(a)) errors.push("clod must be { repository, commit }");
   else {
-    exactKeys(a, ["repository", "commit"], "aepm", errors);
-    need(isRepository(a.repository), "aepm.repository must be owner/name");
-    need(typeof a.commit === "string" && /^[0-9a-f]{7,40}$/.test(a.commit), "aepm.commit must be 7 to 40 hex digits");
+    exactKeys(a, ["repository", "commit"], "clod", errors);
+    need(isRepository(a.repository), "clod.repository must be owner/name");
+    need(typeof a.commit === "string" && /^[0-9a-f]{7,40}$/.test(a.commit), "clod.commit must be 7 to 40 hex digits");
   }
   need(validDate(input.date), "date must be YYYY-MM-DD");
   const g = input.agent;

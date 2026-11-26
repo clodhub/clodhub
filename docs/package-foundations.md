@@ -4,7 +4,7 @@ Copyright Level N Ltd 2026
 
 ## Publication fields
 
-The publisher calls `aepm.bundle.read_archive(reference, archive_bytes)` and derives fields from the returned canonical manifest and verified payloads. Both publication bodies require `foundations`. Worker validation establishes declared metadata consistency; it does not establish archive or execution evidence.
+The publisher calls `clod.bundle.read_archive(reference, archive_bytes)` and derives fields from the returned canonical manifest and verified payloads. Both publication bodies require `foundations`. Worker validation establishes declared metadata consistency; it does not establish archive or execution evidence.
 
 | Publication field | Validated package source |
 | --- | --- |
@@ -29,7 +29,7 @@ The publisher calls `aepm.bundle.read_archive(reference, archive_bytes)` and der
 | Recipe `page` | Packaged description text, safe diagram text and screenshot addresses |
 | `source`, `bundle.asset` | Publisher release repository/tag and validated archive asset name |
 
-Component publication keys are `format,name,version,digest,description,tags,targets,guardians,provides,requires,settings,interfaceDigests,interfaceModules,dependencies,suitability,migration,source,bundle,foundations,release,images,vulnerabilityWaivers` and, from the catalogue's curators only, `quality`. Recipe publication keys are `format,recipe,digest,source,bundle,page,foundations,release,images,vulnerabilityWaivers` and `quality`. `format` is `2`; the full contract is in CONTRACT.md, "Catalogue publish API". A component's listing category is the category of the class it implements. Descriptions, tags, guardian names and release pointers are publisher-provided presentation facts.
+Component publication keys are `format,name,version,digest,description,tags,targets,guardians,provides,requires,settings,interfaceDigests,interfaceModules,dependencies,suitability,migration,source,bundle,foundations,release,images,vulnerabilityWaivers` and, from the catalogue's curators only, `quality`. Recipe publication keys are `format,recipe,digest,source,bundle,page,foundations,release,images,vulnerabilityWaivers` and `quality`. A component entry is `format` 4 and a recipe entry `format` 3; names are package URLs `pkg:clod/<namespace>/<name>`; the full contract is in CONTRACT.md, "Catalogue publish API". A component's listing category is the category of the class it implements. Descriptions, tags, guardian names and release pointers are publisher-provided presentation facts.
 
 ## Class schema example
 
@@ -38,13 +38,13 @@ This descriptor and its digest-bound reference are independent of any preferred 
 ```json
 {
   "reference": {
-    "name": "clodhub/counter-class",
+    "name": "pkg:clod/com.clodhub/counter-class",
     "version": "1.0.0",
-    "digest": "f525dc2e914f12672127d0c7d517a2a1934c3ef3d0177e14b8b56e4764683900"
+    "digest": "138a3db25a73bafd64e2efe581e62cbc00c1390b3d66aab67587995cf5a5a443"
   },
   "descriptor": {
-    "format": 2,
-    "name": "clodhub/counter-class",
+    "format": 3,
+    "name": "pkg:clod/com.clodhub/counter-class",
     "version": "1.0.0",
     "title": "Counter",
     "summary": "A number people can raise and lower together",
@@ -52,7 +52,7 @@ This descriptor and its digest-bound reference are independent of any preferred 
     "presentation": "visual",
     "provides": [
       {
-        "type": "counter",
+        "type": "com.clodhub/counter",
         "version": "1.0.0",
         "path": "classes/counter/interface.json",
         "modules": {
@@ -125,8 +125,8 @@ Compatibility requires `runtimes`, `frameworks`, `dependencies` and `styles`. Ra
 
 ## Evidence and selection
 
-Version responses contain `foundationEvidence:"publisher-declared"` and a `foundations` summary (licence, platforms, implemented classes, runtimes, frameworks, maintenance and counts of the lists); the version's `details` route returns the full foundations. The Worker has no signed-review trust-policy verifier and stores no review report or signature: those are release files beside the archive that aepm fetches and checks.
+Version responses contain `foundationEvidence:"publisher-declared"` and a `foundations` summary (licence, platforms, implemented classes, runtimes, frameworks, maintenance and counts of the lists); the version's `details` route returns the full foundations. The Worker has no signed-review trust-policy verifier and stores no review report or signature: those are release files beside the archive that clod fetches and checks.
 
-Publication validates independent class digests, declared inputs and individual candidate fit. It checks graph conflicts between the recipe and each candidate, and among unconditional non-job preferred slots. It does not combine all conditional alternatives into one graph. aepm evaluates actual answers, chooses job candidates, retains `server` when declared, checks the selected graph and verifies archive bytes and signed review evidence.
+Publication validates independent class digests, declared inputs and individual candidate fit. It checks graph conflicts between the recipe and each candidate, and among unconditional non-job preferred slots. It does not combine all conditional alternatives into one graph. clod evaluates actual answers, chooses job candidates, retains `server` when declared, checks the selected graph and verifies archive bytes and signed review evidence.
 
-The source-file validator reads the recipe's own `component.json`, component manifests and class inventory bytes. It checks inventory hashes, nonempty upstream notices, bundled file hashes and lock hashes. npm and Swift pins and Gradle lock configurations are checked locally; full Gradle verification metadata and wrapper-properties byte validation remain in aepm.
+The source-file validator reads the recipe's own `component.json`, component manifests and class inventory bytes. It checks inventory hashes, nonempty upstream notices, bundled file hashes and lock hashes. npm and Swift pins and Gradle lock configurations are checked locally; full Gradle verification metadata and wrapper-properties byte validation remain in clod.

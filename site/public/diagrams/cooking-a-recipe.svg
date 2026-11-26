@@ -12,11 +12,11 @@
 <rect x="54" y="174" width="14" height="14" rx="3" fill="#5E35B1"/>
 <text x="76" y="185" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a step by the recipe evaluation</text>
 <rect x="54" y="198" width="14" height="14" rx="3" fill="#FB8C00"/>
-<text x="76" y="209" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a step by aepm</text>
+<text x="76" y="209" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a step by clod</text>
 <rect x="54" y="222" width="14" height="14" rx="3" fill="#43A047"/>
 <text x="76" y="233" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a step by your accounts and ourapps.app</text>
 <rect x="54" y="246" width="14" height="14" rx="3" fill="#AD1457"/>
-<text x="76" y="257" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a step by aepm and you, the owner</text>
+<text x="76" y="257" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">a step by clod and you, the owner</text>
 <path d="M 54 287 L 84 287" stroke="#455A64" stroke-width="2" marker-end="url(#arr-455A64)" fill="none" stroke-linecap="round"/>
 <text x="94" y="291" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">the next step</text>
 <text x="381.35" y="161" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">Each zone is one party that acts.</text>
@@ -99,7 +99,7 @@
 <rect x="84" y="857" width="1066" height="301" rx="10" fill="#FFF8E1" stroke="#FFB300" stroke-width="1.6"/>
 <path d="M 84 867 a10 10 0 0 1 10 -10 h1046 a10 10 0 0 1 10 10 v34 h-1066 z" fill="#FFB300" fill-opacity="0.92"/>
 <circle cx="101" cy="884" r="2.6" fill="white"/><circle cx="111" cy="884" r="2.6" fill="white"/><circle cx="106" cy="874" r="2.6" fill="white"/><path d="M 106 874 L 101 884 M 106 874 L 111 884 M 101 884 H 111" stroke="white" stroke-width="1.4"/>
-<text x="124" y="885" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">aepm: assembles the design on your computer</text>
+<text x="124" y="885" font-family="Helvetica Neue,Arial,sans-serif" font-size="15" font-weight="bold" fill="white">clod: assembles the design on your computer</text>
 <g><rect x="110" y="925" width="210" height="74" rx="8" fill="#FFF3E0" stroke="#FB8C00" stroke-width="1.4"/>
 <path d="M 110 933 a8 8 0 0 1 8 -8 h194 a8 8 0 0 1 8 8 v22 h-210 z" fill="#FB8C00"/>
 <path d="M 121 932 h8 l4 4 v12 h-12 z" fill="none" stroke="white" stroke-width="1.8"/><path d="M 129 932 v4 h4" fill="none" stroke="white" stroke-width="1.4"/>
@@ -194,7 +194,7 @@
 <path d="M 363 1525 a8 8 0 0 1 8 -8 h168 a8 8 0 0 1 8 8 v22 h-184 z" fill="#AD1457"/>
 <path d="M 380 1525 a7 7 0 1 0 0 14 c1.6 0 2 -1.2 1.2 -2.4 c-.8 -1.2 -.2 -2.6 1.4 -2.6 h2 a2.4 2.4 0 0 0 2.4 -2.4 c0 -3.8 -3.2 -6.6 -7 -6.6 z" fill="none" stroke="white" stroke-width="1.6"/><circle cx="377" cy="1531" r="1.1" fill="white"/><circle cx="380.5" cy="1528.5" r="1.1" fill="white"/>
 <text x="395" y="1537" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">18 Proposal</text>
-<text x="375" y="1566" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">aepm proposes the update</text>
+<text x="375" y="1566" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">clod proposes the update</text>
 <text x="375" y="1581" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">and shows what changes</text>
 </g>
 <path d="M 307 1561 L 362 1561" fill="none" stroke="#455A64" stroke-width="2" marker-end="url(#arr-455A64)" stroke-linejoin="round" stroke-linecap="round"/>
@@ -210,7 +210,7 @@
 <path d="M 836 1525 a8 8 0 0 1 8 -8 h181 a8 8 0 0 1 8 8 v22 h-197 z" fill="#AD1457"/>
 <path d="M 853 1525 a7 7 0 1 0 0 14 c1.6 0 2 -1.2 1.2 -2.4 c-.8 -1.2 -.2 -2.6 1.4 -2.6 h2 a2.4 2.4 0 0 0 2.4 -2.4 c0 -3.8 -3.2 -6.6 -7 -6.6 z" fill="none" stroke="white" stroke-width="1.6"/><circle cx="850" cy="1531" r="1.1" fill="white"/><circle cx="853.5" cy="1528.5" r="1.1" fill="white"/>
 <text x="868" y="1537" font-family="Menlo,Consolas,monospace" font-size="12" font-weight="bold" fill="white" xml:space="preserve">20 Apply</text>
-<text x="848" y="1566" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">aepm applies it with</text>
+<text x="848" y="1566" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">clod applies it with</text>
 <text x="848" y="1581" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">recovery: it can return to</text>
 <text x="848" y="1596" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">the previous version; your</text>
 <text x="848" y="1611" font-family="Menlo,Consolas,monospace" font-size="11" fill="#263238" xml:space="preserve">people update through the</text>

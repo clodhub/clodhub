@@ -1,6 +1,6 @@
 // The recipe library and the component catalogue: browse, search, and read one entry.
 import type { BuildReportView, CategoryCount, ClassList, ClassVersionView, FoundationSummary, Foundations, ImageView, LineView, PackageDetails, Quality, VersionRef, VulnerabilityReport, VulnerabilitySummary } from "@clodhub/shared";
-import { buildingItSection, groupHasMore, markdownSections, recipeBuildSteps, recipeUseSentence, PACKAGE_CHECK, PACKAGE_WHERE, QUALITY_LEVELS, QUALITY_TEXT, SIGNATURES_NOTE, classSettings, questionGroups, settingTypeWords, type BundleLink, type ClassInterface, type EntryPort, type PackageContents, type ComponentList, type ComponentSummary, type ComponentVersionView, type Deprecation, type EntryStatus, type Profile, type RecipeList, type RecipeSlotView, type RecipeSummary, type RecipeVersionView, type SettingDeclaration } from "@clodhub/shared";
+import { slugOf, shortForm, buildingItSection, groupHasMore, markdownSections, recipeBuildSteps, recipeUseSentence, PACKAGE_CHECK, PACKAGE_WHERE, QUALITY_LEVELS, QUALITY_TEXT, SIGNATURES_NOTE, classSettings, questionGroups, settingTypeWords, type BundleLink, type ClassInterface, type EntryPort, type PackageContents, type ComponentList, type ComponentSummary, type ComponentVersionView, type Deprecation, type EntryStatus, type Profile, type RecipeList, type RecipeSlotView, type RecipeSummary, type RecipeVersionView, type SettingDeclaration } from "@clodhub/shared";
 import { ApiError, api, whoAmI } from "../api.js";
 import { html, mount, raw, type Raw } from "../html.js";
 import { svgFigure } from "../figures.js";
@@ -49,7 +49,7 @@ export function deprecationBanner(v: { name: string; version: string; status: En
   const parts = v.deprecations.filter((d) => d !== own);
   const replacement = (d: Deprecation) => {
     if (!d.replacement) return none;
-    const slug = d.replacement.split("/")[1];
+    const slug = slugOf(d.replacement);
     return html` Replacement: <a href="/${d.name === v.name ? kind : "components"}/${slug}">${d.replacement}</a>.`;
   };
   return html`
@@ -59,7 +59,7 @@ export function deprecationBanner(v: { name: string; version: string; status: En
         html`
           ${own ? html`<p><b>${statusLabel(v.status)}.</b> ${deprecationSentence(own, v.name)}${replacement(own)} ${deprecationAdvice(v.status)}</p>` : none}
           ${parts.length > 0 ? html`<p><b>${kind === "recipes" ? "This recipe uses" : "This component builds on"} deprecated or orphaned components.</b> ${deprecationAdvice(parts.some((d) => d.status === "orphaned") ? "orphaned" : "deprecated")}</p><ul class="bullets">${parts.map((d) => html`<li>${deprecationSentence(d, v.name)}${replacement(d)}</li>`)}</ul>` : none}
-          <p class="small">Machine-readable: <a href="/api/${kind}/${encodeURIComponent(v.name.split("/")[1])}/${v.version}/deprecations">deprecations</a>.</p>
+          <p class="small">Machine-readable: <a href="/api/${kind}/${encodeURIComponent(slugOf(v.name))}/${v.version}/deprecations">deprecations</a>.</p>
         `,
       )}
     </div>
@@ -168,7 +168,7 @@ export function componentCard(c: ComponentSummary): Raw {
       <div class="body">
         <h3><a href="/components/${c.slug}">${c.name}</a></h3>
         <p class="muted small" style="margin:0">${c.description}</p>
-        <p class="small" style="margin:0">Class <a href="/classes/${c.class.name.split("/")[1]}">${c.class.title}</a></p>
+        <p class="small" style="margin:0">Class <a href="/classes/${slugOf(c.class.name)}">${c.class.title}</a></p>
         <div class="row wrap" style="gap:6px">${statusPill(c.status, c.deprecations)}${qualityBadge(c.quality)}${vulnerabilityBadge(c.vulnerabilities)}</div>
         ${cardMeta(c)}
       </div>
@@ -320,7 +320,7 @@ function wireBundle(root: HTMLElement, url: string): void {
 }
 
 // What a download is, at a glance: the same words appear in the plain-text pages and the documents.
-// The aepm steps the agent runs, then the recipe author's own "Building it" section.
+// The clod steps the agent runs, then the recipe author's own "Building it" section.
 export function buildStepsHtml(v: RecipeVersionView): Raw {
   const own = buildingItSection(v.description);
   return html`
@@ -404,7 +404,7 @@ function slotRow(s: RecipeSlotView): Raw {
         ${s.catalogue.profiles.map((p) => html`<div><b>${p.id}</b>: ${costLabel(p.cost)}, ${loadText(p.load)}</div>`)}
         <p class="muted">Guardians: ${s.catalogue.guardians.length > 0 ? s.catalogue.guardians.join(", ") : "none recorded"}</p>
       </details>` : ""}</td>
-    <td>${s.preferred.url ? html`<a href="${relative(s.preferred.url)}">${s.preferred.name.split("/")[1]}</a>` : s.preferred.name}${s.deprecation ? html` ${statusPill(s.deprecation.status, [s.deprecation])}` : none} <span class="small faint">${s.preferred.version}</span>${s.catalogue ? html`<br /><span class="small muted">${s.catalogue.description}</span>` : html`<br /><span class="small muted">Not in the catalogue.</span>`}</td>
+    <td>${s.preferred.url ? html`<a href="${relative(s.preferred.url)}">${slugOf(s.preferred.name)}</a>` : s.preferred.name}${s.deprecation ? html` ${statusPill(s.deprecation.status, [s.deprecation])}` : none} <span class="small faint">${s.preferred.version}</span>${s.catalogue ? html`<br /><span class="small muted">${s.catalogue.description}</span>` : html`<br /><span class="small muted">Not in the catalogue.</span>`}</td>
     <td><a href="${relative(s.alternatives.url)}">${s.alternatives.count} other${s.alternatives.count === 1 ? "" : "s"}</a></td>
   </tr>`;
 }
@@ -444,6 +444,11 @@ export function factsCard(f: FoundationSummary, kind: Kind, slug: string, versio
   </div>`;
 }
 
+// The versioned package URL of the shown version.
+function purlLine(name: string, version: string): Raw {
+  return html`<p class="small faint">Package URL <code>${name}@${version}</code></p>`;
+}
+
 export function recipeBody(v: RecipeVersionView, requested: string): Raw {
   const [intro, rest] = splitDescription(v.description);
   return html`
@@ -454,6 +459,7 @@ export function recipeBody(v: RecipeVersionView, requested: string): Raw {
               <span class="pill accent">${v.category}</span> <span class="pill">${v.version}</span>
               <h1 style="margin-top:10px">${v.title}</h1>
               <p class="lead muted">${v.summary}</p>
+              ${purlLine(v.name, v.version)}
             </div>
           </div>
           ${deprecationBanner(v, "recipes")}
@@ -465,7 +471,7 @@ export function recipeBody(v: RecipeVersionView, requested: string): Raw {
 
           <div class="card mt" id="build-it">
             <h2>Build it</h2>
-            <p class="muted">Give your coding agent this line. The page it reads lists the aepm steps: fetch the recipe and its components, ask you the questions below, design, install, then build and run. <a href="/agents.md">Tools and instructions for agents</a>. With no machine of your own: <a href="/cloud-assembly.md">build it in GitHub Actions</a>.</p>
+            <p class="muted">Give your coding agent this line. The page it reads lists the clod steps: fetch the recipe and its components, ask you the questions below, design, install, then build and run. <a href="/agents.md">Tools and instructions for agents</a>. With no machine of your own: <a href="/cloud-assembly.md">build it in GitHub Actions</a>.</p>
             ${copyRow(`Build an application from the ${v.title} recipe: https://clodhub.com/recipes/${v.slug}.txt`)}
             ${buildStepsHtml(v)}
           </div>
@@ -490,7 +496,7 @@ export function recipeBody(v: RecipeVersionView, requested: string): Raw {
 
           <div class="card mt" id="slots">
             <h2>Its parts (${v.components.length} slots)</h2>
-            <p class="muted small">Each slot is one part of the application, filled by a component of the slot's class. The recipe prefers one component; your agent may fill the slot with any other component of the class (<code>aepm alternatives</code> lists them, <code>aepm design --substitute</code> uses one). Every component is checked at build time for the release and guardian signatures the owner trusts.</p>
+            <p class="muted small">Each slot is one part of the application, filled by a component of the slot's class. The recipe prefers one component; your agent may fill the slot with any other component of the class (<code>clod alternatives</code> lists them, <code>clod design --substitute</code> uses one). Every component is checked at build time for the release and guardian signatures the owner trusts.</p>
             <table class="table" style="table-layout:fixed">
               <colgroup><col style="width:18%" /><col style="width:34%" /><col style="width:36%" /><col style="width:12%" /></colgroup>
               <tr><th>Slot</th><th>What it is</th><th>Preferred component</th><th>Alternatives</th></tr>
@@ -575,8 +581,9 @@ export function componentBody(v: ComponentVersionView, requested: string): Raw {
           <p class="small"><a href="/components">All components</a></p>
           <div>
             <span class="pill accent">${v.category}</span> <span class="pill">${v.version}</span>
-            <h1 style="margin-top:10px">${v.name}</h1>
+            <h1 style="margin-top:10px">${slugOf(v.name)}</h1>
             <p class="lead muted">${v.description}</p>
+            ${purlLine(v.name, v.version)}
           </div>
           ${deprecationBanner(v, "components")}
           <div class="row wrap" style="gap:8px">${qualityBadge(v.quality)}${vulnerabilityBadge(v.vulnerabilities)}${targetPills(v.targets)}${tagPills(v.tags, "components")}</div>
@@ -616,7 +623,7 @@ export function componentBody(v: ComponentVersionView, requested: string): Raw {
           <div class="card mt" id="use-it">
             <h2>Use it in a recipe</h2>
             ${snippet
-              ? html`<p>${recipeUseSentence(v)}</p><p class="small muted mt-s">The slot in <code>recipe.json</code> <code>components</code>:</p>${copyRow(snippet)}<p class="small muted mt-s">In place of another component of its class: <code>aepm fetch ${v.name}@${v.version} --from https://clodhub.com</code>, then <code>aepm design ... --substitute SLOT=${v.name}@${v.version}</code>.</p>`
+              ? html`<p>${recipeUseSentence(v)}</p><p class="small muted mt-s">The slot in <code>recipe.json</code> <code>components</code>:</p>${copyRow(snippet)}<p class="small muted mt-s">In place of another component of its class: <code>clod fetch ${shortForm(v.name, v.version)} --from https://clodhub.com</code>, then <code>clod design ... --substitute SLOT=${shortForm(v.name, v.version)}</code>.</p>`
               : html`<p class="muted">It implements no class, so no slot can name it.</p>`}
             <p class="small muted">Guardians: ${v.guardians.length === 0 ? "none recorded for this version" : v.guardians.join(", ")}.</p>
             <h3 class="mt">Recipes that use it</h3>
@@ -634,7 +641,7 @@ export function componentBody(v: ComponentVersionView, requested: string): Raw {
             ${svgFigure(`/api/components/${v.slug}/${v.version}/connections.svg`, `Diagram of ${v.name} ${v.version}: on the left the ${v.requires.length} interfaces it requires and the catalogue components that provide them, on the right the ${v.provides.length} interfaces it provides and the catalogue components that require them.`)}
           </div>
 
-          ${v.dependencies.length > 0 ? html`<div class="card mt"><h2>Builds on</h2><ul class="bullets">${v.dependencies.map((d) => html`<li><a href="/components/${d.name.split("/")[1]}">${d.name}</a> ${d.version}</li>`)}</ul></div>` : none}
+          ${v.dependencies.length > 0 ? html`<div class="card mt"><h2>Builds on</h2><ul class="bullets">${v.dependencies.map((d) => html`<li><a href="/components/${slugOf(d.name)}">${d.name}</a> ${d.version}</li>`)}</ul></div>` : none}
 
           ${packageCard(v, notIncluded)}
 
@@ -766,7 +773,7 @@ export function classBody(c: ClassVersionView): Raw {
       <span class="pill accent">${c.category}</span> <span class="pill">${c.version}</span> <span class="pill">${c.presentation === "visual" ? "visual" : "no visual output"}</span>
       <h1 style="margin-top:10px">${c.title}</h1>
       <p class="lead muted">${c.summary}</p>
-      <p class="small faint"><code>${c.name}</code> sha256 <code>${c.digest.slice(0, 16)}</code></p>
+      <p class="small faint">Package URL <code>${c.name}@${c.version}</code>, sha256 <code>${c.digest.slice(0, 16)}</code></p>
 
       <div class="card mt" id="implementations">
         <h2>Implementations (${fmtCount(c.implementations)})</h2>
@@ -790,7 +797,7 @@ export function classBody(c: ClassVersionView): Raw {
 
       <div class="card mt">
         <h2>Shared checks</h2>
-        <p class="muted small">Every implementation passes these checks; aepm runs them when a component is substituted.</p>
+        <p class="muted small">Every implementation passes these checks; clod runs them when a component is substituted.</p>
         <table class="table small"><tr><th>Check</th><th>Command</th><th>Limit</th></tr>${c.suites.map((s) => html`<tr><td>${s.id}</td><td><code>${s.argv.join(" ")}</code></td><td>${s.timeoutSeconds} s${s.network ? ", network" : ""}</td></tr>`)}</table>
       </div>
 

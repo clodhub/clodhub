@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { EXAMPLE_BUNDLE_DIGEST, EXAMPLE_DIGEST, descriptorDigest, exampleFoundations, exampleRecipeEntry, interfaceKey, type ComponentEntry, type RecipeEntry } from "@clodhub/shared";
+import { slugOf, splitName, EXAMPLE_BUNDLE_DIGEST, EXAMPLE_DIGEST, descriptorDigest, exampleFoundations, exampleRecipeEntry, interfaceKey, type ComponentEntry, type RecipeEntry } from "@clodhub/shared";
 import { OURPOKER_CATALOGUE, OURPOKER_RECIPE } from "../../shared/src/fixtures/ourpoker.js";
 import { CatalogueDb, type EntryRow } from "../src/catalogue-db.js";
 import type { Env } from "../src/env.js";
@@ -14,8 +14,8 @@ const now = "2026-11-10T10:00:00.000Z";
 const get = (path: string) => handle(api(null, "GET", path), env, deps);
 
 function entry(name: string, developerId: string): EntryRow {
-  const [scope, slug] = name.split("/") as [string, string];
-  return { seq: 0, id: `id-${slug}`, name, scope, slug, developerId, repo: `${scope}/${slug}`, latestVersion: null, flag: null, createdAt: now, updatedAt: now };
+  const { namespace, slug } = splitName(name)!;
+  return { seq: 0, id: `id-${slug}`, name, namespace, slug, developerId, repo: `clodhub/${slug}`, latestVersion: null, flag: null, createdAt: now, updatedAt: now };
 }
 
 // The OurPoker recipe and its 39 components, stored as publishing stores them: each component implements its slot's
@@ -37,7 +37,7 @@ async function seed(): Promise<void> {
     const cls = classes[i]!;
     const e: ComponentEntry = {
       foundations: { ...exampleFoundations(), classes: [cls], implements: [cls.reference] },
-      format: 3,
+      format: 4,
       release: { channel: "features", fixes: [] },
       images: [],
       vulnerabilityWaivers: [],
@@ -58,10 +58,10 @@ async function seed(): Promise<void> {
       dependencies: [],
       suitability: { format: 1, jobs: [], profiles: c.profiles.map((p) => ({ id: p.id, load: {}, cost: "none", regions: ["any"], compliance: [], provider: null, notes: "", settings: p.settings })), notes: "" },
       migration: null,
-      source: { repository: c.name, tag: `v${c.version}` },
+      source: { repository: `clodhub/${slugOf(c.name)}`, tag: `v${c.version}` },
       bundle: { asset: "bundle.tar", digest: EXAMPLE_BUNDLE_DIGEST },
     };
-    const slug = c.name.split("/")[1]!;
+    const slug = slugOf(c.name);
     const document = await putDocument(env, "component", slug, c.version, e);
     const listing = { description: e.description, title: "", summary: "", category: cls.descriptor.category, className: cls.descriptor.name, classVersion: cls.descriptor.version, classTitle: cls.descriptor.title, platforms: e.foundations.platforms, targets: e.targets, tags: [], licence: "Apache-2.0", thumbnail: null };
     await d.publish("component", null, entry(c.name, developerId), { version: c.version, digest: e.digest, channel: "features", fixes: [], images: [], waivers: [], quality: null, source: e.source, bundle: e.bundle, document, listing, purls: [], description: e.description, guardians: [], suitability: e.suitability, classDigest: cls.reference.digest, provides: e.provides, requires: e.requires, dependencies: [] }, now);
@@ -71,7 +71,7 @@ async function seed(): Promise<void> {
     ...base,
     foundations: { ...exampleFoundations(), classes, implements: [] },
     recipe: { ...base.recipe, name: OURPOKER_RECIPE.name, version: OURPOKER_RECIPE.version, title: OURPOKER_RECIPE.title, components: OURPOKER_RECIPE.components.map((c, i) => ({ ...c, class: classes[i].reference, configuration: {} })), connections: OURPOKER_RECIPE.connections, jobs: [], scale: null, questions: [] },
-    source: { repository: "clodhub/ourpoker", tag: `v${OURPOKER_RECIPE.version}` },
+    source: { repository: "pkg:clod/com.clodhub/ourpoker-recipe", tag: `v${OURPOKER_RECIPE.version}` },
   };
   const document = await putDocument(env, "recipe", "ourpoker", OURPOKER_RECIPE.version, r);
   const listing = { description: "", title: r.recipe.title, summary: r.recipe.summary, category: groups[0]!, className: null, classVersion: null, classTitle: null, platforms: r.foundations.platforms, targets: r.recipe.targets, tags: [], licence: "Apache-2.0", thumbnail: null };
@@ -96,7 +96,7 @@ function expectSvgResponse(res: Response): void {
 describe("recipe component diagram", () => {
   it("draws every component of the recipe, by exact version and as latest", async () => {
     for (const version of [OURPOKER_RECIPE.version, "latest"]) {
-      const res = await get(`/api/recipes/ourpoker/${version}/components.svg`);
+      const res = await get(`/api/recipes/ourpoker-recipe/${version}/components.svg`);
       expectSvgResponse(res);
       const svg = await res.text();
       expect(svg.startsWith("<svg")).toBe(true);
@@ -109,13 +109,13 @@ describe("recipe component diagram", () => {
 
   it("puts components the catalogue does not list in Other", async () => {
     await env.DB.prepare("UPDATE component_versions SET unlisted_at = ? WHERE component_id = 'id-card-deck'").bind(now).run();
-    const svg = await (await get("/api/recipes/ourpoker/latest/components.svg")).text();
+    const svg = await (await get("/api/recipes/ourpoker-recipe/latest/components.svg")).text();
     expect(svg).toContain("Other: 1 component");
     expect(svg).toContain("not in the catalogue");
   });
 
   it("404s unknown recipes and versions", async () => {
-    for (const path of ["/api/recipes/nope/latest/components.svg", "/api/recipes/ourpoker/9.9.9/components.svg", "/api/recipes/ourpoker/bad/components.svg", "/api/components/ourpoker/latest/components.svg"]) expect((await get(path)).status, path).toBe(404);
+    for (const path of ["/api/recipes/nope/latest/components.svg", "/api/recipes/ourpoker-recipe/9.9.9/components.svg", "/api/recipes/ourpoker-recipe/bad/components.svg", "/api/components/ourpoker-recipe/latest/components.svg"]) expect((await get(path)).status, path).toBe(404);
   });
 });
 
@@ -124,16 +124,16 @@ describe("component connections diagram", () => {
     const res = await get("/api/components/turn-engine/latest/connections.svg");
     expectSvgResponse(res);
     const svg = await res.text();
-    const engine = OURPOKER_CATALOGUE.find((c) => c.name === "clodhub/turn-engine")!;
+    const engine = OURPOKER_CATALOGUE.find((c) => c.name === "pkg:clod/com.clodhub/turn-engine")!;
     expect(engine.requires).toHaveLength(9);
     for (const p of [...engine.requires, ...engine.provides]) expect(svg, p.type).toContain(`${p.type} ${p.version}`);
-    for (const name of ["holdem-rules", "seating", "game-clock", "private-views", "presence", "tournament", "computer-players", "round-history", "rules-settings", "realtime-rooms"]) expect(svg, name).toContain(`clodhub/${name}<`);
+    for (const name of ["holdem-rules", "seating", "game-clock", "private-views", "presence", "tournament", "computer-players", "round-history", "rules-settings", "realtime-rooms"]) expect(svg, name).toContain(`pkg:clod/com.clodhub/${name}<`);
     expect(svg).toContain("optional: may stay unconnected");
   });
 
   it("lists the four most downloaded users of a popular interface and counts the rest", async () => {
     const svg = await (await get("/api/components/theme/0.3.0/connections.svg")).text();
-    const users = OURPOKER_CATALOGUE.filter((c) => c.requires.some((p) => p.type === "ae/theme")).map((c) => c.name);
+    const users = OURPOKER_CATALOGUE.filter((c) => c.requires.some((p) => p.type === "com.clodhub/theme")).map((c) => c.name);
     expect(users.length).toBeGreaterThan(4);
     expect(users.filter((name) => svg.includes(`${name}<`))).toHaveLength(4);
     expect(svg).toContain(`>${users.length - 4} more</text>`);
@@ -142,7 +142,7 @@ describe("component connections diagram", () => {
   it("shows a requirement no catalogue component provides as supplied by the application", async () => {
     const svg = await (await get("/api/components/video-calls/latest/connections.svg")).text();
     expect(svg).toContain("supplied by the application");
-    expect(svg).toContain("ae/video-calls-configuration 1.0.0");
+    expect(svg).toContain("com.clodhub/video-calls-configuration 1.0.0");
   });
 
   it("404s unknown components and versions", async () => {

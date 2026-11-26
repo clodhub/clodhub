@@ -32,7 +32,7 @@ export interface EntryRow {
   seq: number;
   id: string;
   name: string;
-  scope: string;
+  namespace: string;
   slug: string;
   // Null once the developer deleted the account.
   developerId: string | null;
@@ -48,7 +48,7 @@ function flagOf(r: Raw): Flag | null {
 }
 
 function entryRow(r: Raw): EntryRow {
-  return { seq: r.seq as number, id: r.id as string, name: r.name as string, scope: r.scope as string, slug: r.slug as string, developerId: (r.developer_id as string | null) ?? null, repo: r.repo as string, latestVersion: (r.latest_version as string | null) ?? null, flag: flagOf(r), createdAt: r.created_at as string, updatedAt: r.updated_at as string };
+  return { seq: r.seq as number, id: r.id as string, name: r.name as string, namespace: r.namespace as string, slug: r.slug as string, developerId: (r.developer_id as string | null) ?? null, repo: r.repo as string, latestVersion: (r.latest_version as string | null) ?? null, flag: flagOf(r), createdAt: r.created_at as string, updatedAt: r.updated_at as string };
 }
 
 export function entryStatus(developerId: string | null, flag: Flag | null): EntryStatus {
@@ -337,7 +337,7 @@ export class CatalogueDb {
   // ---------------------------------------------------------------- entries
 
   async entryBySlug(kind: Kind, slug: string): Promise<EntryRow | null> {
-    const r = await this.first(this.d1.prepare(`SELECT seq, id, name, scope, slug, developer_id, repo, latest_version, deprecated_at, deprecated_reason, replacement, created_at, updated_at FROM ${TABLES[kind].entries} WHERE slug = ?`).bind(slug));
+    const r = await this.first(this.d1.prepare(`SELECT seq, id, name, namespace, slug, developer_id, repo, latest_version, deprecated_at, deprecated_reason, replacement, created_at, updated_at FROM ${TABLES[kind].entries} WHERE slug = ?`).bind(slug));
     return r ? entryRow(r) : null;
   }
 
@@ -385,7 +385,7 @@ export class CatalogueDb {
     const t = TABLES[kind];
     const target = entry ?? fresh;
     const statements: D1PreparedStatement[] = [];
-    if (!entry) statements.push(this.d1.prepare(`INSERT INTO ${t.entries} (id, name, scope, slug, developer_id, repo, latest_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)`).bind(fresh.id, fresh.name, fresh.scope, fresh.slug, fresh.developerId, fresh.repo, fresh.createdAt, fresh.updatedAt));
+    if (!entry) statements.push(this.d1.prepare(`INSERT INTO ${t.entries} (id, name, namespace, slug, developer_id, repo, latest_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)`).bind(fresh.id, fresh.name, fresh.namespace, fresh.slug, fresh.developerId, fresh.repo, fresh.createdAt, fresh.updatedAt));
     const q = v.quality;
     const common = [v.version, v.digest, v.listing.licence, ` ${v.listing.platforms.join(" ")} `, v.channel, JSON.stringify(v.fixes), JSON.stringify(v.images), JSON.stringify(v.waivers), qualityNumber(q), q?.certified ? 1 : 0, q?.liveTested?.at ?? null, q?.liveTested?.platform ?? null, v.purls.length === 0 ? 0 : null, v.purls.length === 0 ? now : null, v.source.repository, v.source.tag, v.bundle.asset, v.bundle.digest, v.document, JSON.stringify(v.listing), now];
     const commonColumns = "version, digest, licence, platforms, channel, fixes, images, waivers, quality, certified, live_tested_at, live_tested_platform, vulnerabilities, vulnerabilities_checked_at, source_repo, source_tag, bundle_asset, bundle_digest, document, listing, published_at";
@@ -912,11 +912,6 @@ export class CatalogueDb {
     return this.first(this.d1.prepare("SELECT c.*, d.slug AS publisher_slug, d.display_name AS publisher_name FROM classes c LEFT JOIN developers d ON d.id = c.developer_id WHERE c.slug = ?").bind(slug));
   }
 
-  // The developer who published the first class of a scope, or null.
-  async scopeHolder(scope: string): Promise<string | null> {
-    return (await this.first<{ developer_id: string | null }>(this.d1.prepare("SELECT developer_id FROM classes WHERE scope = ? ORDER BY created_at, seq LIMIT 1").bind(scope)))?.developer_id ?? null;
-  }
-
   async classByName(name: string): Promise<Raw | null> {
     return this.first(this.d1.prepare("SELECT * FROM classes WHERE name = ?").bind(name));
   }
@@ -931,11 +926,11 @@ export class CatalogueDb {
   }
 
   // Records a class version. The class row shows its newest version's title, summary, category and presentation.
-  async publishClass(existing: Raw | null, fresh: { id: string; name: string; scope: string; slug: string; developerId: string }, descriptor: ClassDescriptor, digest: string, now: string): Promise<void> {
+  async publishClass(existing: Raw | null, fresh: { id: string; name: string; namespace: string; slug: string; developerId: string }, descriptor: ClassDescriptor, digest: string, now: string): Promise<void> {
     const statements: D1PreparedStatement[] = [];
     const id = (existing?.id as string | undefined) ?? fresh.id;
     const newest = !existing || compareVersions(descriptor.version, existing.latest_version as string) > 0;
-    if (!existing) statements.push(this.d1.prepare("INSERT INTO classes (id, name, scope, slug, developer_id, latest_version, title, summary, category, presentation, implementations, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COUNT(*) FROM components WHERE class_name = ? AND latest_version IS NOT NULL), ?, ?)").bind(id, fresh.name, fresh.scope, fresh.slug, fresh.developerId, descriptor.version, descriptor.title, descriptor.summary, descriptor.category, descriptor.presentation, fresh.name, now, now));
+    if (!existing) statements.push(this.d1.prepare("INSERT INTO classes (id, name, namespace, slug, developer_id, latest_version, title, summary, category, presentation, implementations, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, (SELECT COUNT(*) FROM components WHERE class_name = ? AND latest_version IS NOT NULL), ?, ?)").bind(id, fresh.name, fresh.namespace, fresh.slug, fresh.developerId, descriptor.version, descriptor.title, descriptor.summary, descriptor.category, descriptor.presentation, fresh.name, now, now));
     else if (newest) statements.push(this.d1.prepare("UPDATE classes SET latest_version = ?, title = ?, summary = ?, category = ?, presentation = ?, updated_at = ? WHERE id = ?").bind(descriptor.version, descriptor.title, descriptor.summary, descriptor.category, descriptor.presentation, now, id));
     statements.push(this.d1.prepare("INSERT INTO class_versions (class_id, version, digest, descriptor, published_at) VALUES (?, ?, ?, ?, ?)").bind(id, descriptor.version, digest, JSON.stringify(descriptor), now));
     const before = existing ? (existing.category as string) : null;

@@ -1,16 +1,17 @@
-// Recipe library and component catalogue: names, versions, recipe.json (format 1) and the
-// catalogue entry for a component version. Format authority: .opencode/knowledge/component-standard.md
+// Catalogue: names, versions, recipe.json (format 3) and the catalogue entries for components, recipes and classes.
+// Package names are package URLs (papers/package-urls.md, shared/src/names.ts). Format authority: .opencode/knowledge/component-standard.md
 // in the workspace root.
 import { isAppTarget, type AppTarget } from "./targets.js";
 import { checkCondition, confinements, type Condition, type ConditionExpr } from "./conditions.js";
 import { valueProblem } from "./json-schema.js";
-import { CATEGORY_PATH, canonical, classDescriptor, descriptorDigest, graphProblems, isClassReference, selectedTargets, validateDescriptor, validateFoundations, type ClassDescriptor, type ClassReference, type Foundations } from "./foundations.js";
+import { isInterfaceType, isPackageName, isPackageShortName, parsePackageName, type PackageKind } from "./names.js";
+import { CATEGORY_PATH, CLASS_FORMAT, canonical, classDescriptor, descriptorDigest, graphProblems, isClassReference, selectedTargets, validateDescriptor, validateFoundations, type ClassDescriptor, type ClassReference, type Foundations } from "./foundations.js";
 
 // suitability.json and migration.json.
 export const CATALOGUE_FORMAT = 1;
 // The bodies of the publish routes: recipe and class entries, and component entries.
-export const ENTRY_FORMAT = 2;
-export const COMPONENT_ENTRY_FORMAT = 3;
+export const ENTRY_FORMAT = 3;
+export const COMPONENT_ENTRY_FORMAT = 4;
 
 const SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/;
@@ -23,10 +24,7 @@ const DIGEST = /^sha256:[0-9a-f]{64}$/;
 const REPOSITORY = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
 const TAG = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$/;
 const ASSET = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
-const PORT_TYPE = /^[A-Za-z][A-Za-z0-9_.:/-]{0,79}$/;
 
-// Names a recipe or component may not take, because routes use them.
-export const RESERVED_NAMES: ReadonlySet<string> = new Set(["search"]);
 
 export const QUESTION_TYPES = ["set", "choice", "boolean", "integer", "text", "secretRef", "account"] as const;
 export type QuestionType = typeof QUESTION_TYPES[number];
@@ -51,24 +49,31 @@ export const LIMITS = {
   screenshots: 10,
 } as const;
 
+// A catalogue slug is a package's name without its namespace, unique across namespaces.
 export function isCatalogueSlug(value: unknown): value is string {
-  return typeof value === "string" && value.length >= 2 && value.length <= 40 && SLUG.test(value) && !RESERVED_NAMES.has(value);
+  return isPackageShortName(value);
 }
 
-export function isCatalogueScope(value: unknown): value is string {
-  return typeof value === "string" && value.length >= 1 && value.length <= 39 && SLUG.test(value);
+// A package name pkg:clod/<namespace>/<name>, of the given kind when one is named.
+export function isCatalogueName(value: unknown, kind?: PackageKind): value is string {
+  return isPackageName(value, kind);
 }
 
-export function isCatalogueName(value: unknown): value is string {
-  return splitName(value) !== null;
+// "pkg:clod/com.clodhub/seating" -> { namespace: "com.clodhub", slug: "seating" }
+export function splitName(value: unknown): { namespace: string; slug: string } | null {
+  const p = parsePackageName(value);
+  return p === null ? null : { namespace: p.namespace, slug: p.name };
 }
 
-// "clodhub/seating" -> { scope: "clodhub", slug: "seating" }
-export function splitName(value: unknown): { scope: string; slug: string } | null {
-  if (typeof value !== "string") return null;
-  const parts = value.split("/");
-  if (parts.length !== 2 || !isCatalogueScope(parts[0]) || !isCatalogueSlug(parts[1])) return null;
-  return { scope: parts[0], slug: parts[1] };
+// The short name (slug) of a package name: its last segment.
+export function slugOf(name: string): string {
+  return name.slice(name.lastIndexOf("/") + 1);
+}
+
+const KIND_SUFFIX: Record<PackageKind, string> = { component: "a name ending in neither -class nor -recipe", class: "a name ending in -class", recipe: "a name ending in -recipe" };
+// What a name of the kind looks like, for messages.
+export function nameRule(kind: PackageKind): string {
+  return `a package name pkg:clod/<namespace>/<name> with ${KIND_SUFFIX[kind]}`;
 }
 
 export function isVersion(value: unknown): value is string {
@@ -401,23 +406,24 @@ export function validateCategories(input: unknown): Result<"categories", Categor
 }
 
 export interface ClassEntry {
-  format: 2;
+  format: 3;
   class: ClassDescriptor;
   digest: string;
 }
 
-// The publish body for a class: { format: 2, class: <class.json> }. The digest is computed, never sent.
+// The publish body for a class: { format: 3, class: <class.json> }. The digest is computed, never sent.
 export function validateClassEntry(input: unknown): Result<"entry", ClassEntry> {
   const errors: string[] = [];
   if (!isRecord(input)) return { ok: false, errors: ["the body must be a JSON object"] };
   unknownKeys(input, ["format", "class"], "body", errors);
   readEntryFormat(input.format, errors);
   const problems = validateDescriptor(input.class, Object.values(GRAMMAR_PATTERNS));
-  errors.push(...problems.map((p) => `class: ${p}`));
-  if (problems.length === 0 && !isCatalogueName((input.class as Rec).name)) errors.push("class.name must be <scope>/<name>");
+  const format = isRecord(input.class) ? input.class.format : undefined;
+  errors.push(...problems.map((p) => (p === "class-format-refused" ? `class: class-format-refused: class.json format is ${CLASS_FORMAT}${typeof format === "number" && format < CLASS_FORMAT ? `; a format ${format} class.json is refused, write it again in format ${CLASS_FORMAT} with package URL names` : ""}` : `class: ${p}`)));
+  if (problems.length === 0 && !isCatalogueName((input.class as Rec).name, "class")) errors.push(`class.name must be ${nameRule("class")}`);
   if (errors.length > 0) return { ok: false, errors };
   const c = input.class as ClassDescriptor;
-  return { ok: true, entry: { format: 2, class: c, digest: descriptorDigest(c) } };
+  return { ok: true, entry: { format: ENTRY_FORMAT, class: c, digest: descriptorDigest(c) } };
 }
 
 // ---------------------------------------------------------------- recipe.json
@@ -459,7 +465,7 @@ export interface RecipeJob {
   overrideQuestion?: string;
 }
 
-// The port id of an interface type: its last segment (ae/card-deck -> card-deck).
+// The port id of an interface type: its name (com.clodhub/card-deck -> card-deck).
 export function portId(type: string): string {
   return type.slice(type.lastIndexOf("/") + 1);
 }
@@ -501,7 +507,7 @@ export interface SettingDeclaration extends SettingKind {
   required: boolean;
   secret: boolean;
   hasDefault: boolean;
-  // The value aepm writes when a recipe leaves the setting unset; present exactly when hasDefault is true.
+  // The value clod writes when a recipe leaves the setting unset; present exactly when hasDefault is true.
   default?: SettingValue;
 }
 
@@ -518,7 +524,7 @@ export function documentModules(document: unknown): Record<string, unknown> | nu
 }
 
 // An entry module an interface document declares in "x-clodhub-modules": its path (null when the document gives no
-// text), and whether the component installs it (aepm's rule 4: the artefact destination components/<short name>/<path>,
+// text), and whether the component installs it (clod's rule 4: the artefact destination components/<short name>/<path>,
 // or for the native platforms apple and android a destination inside that folder).
 export interface EntryModule {
   path: string | null;
@@ -549,7 +555,7 @@ export interface RecipeContext {
   application?: { settings: SettingDeclaration[]; provides: Port[]; requires: Port[] };
 }
 
-// Anchored setting grammars from aepm/application.py.
+// Anchored setting grammars from clod/application.py.
 export const GRAMMAR_PATTERNS: Readonly<Record<string, string>> = {
   identifier: "^[A-Za-z][A-Za-z0-9_]{0,63}$",
   qualified: "^[a-z][a-z0-9]*(\\.[a-z][a-z0-9]*)+$",
@@ -577,11 +583,11 @@ export function matchesGrammar(grammar: string, value: string): boolean {
   }
 }
 
-// recipe.json format 2.
-export const RECIPE_FORMAT = 2;
+// recipe.json format 3.
+export const RECIPE_FORMAT = 3;
 
 export interface Recipe {
-  format: 2;
+  format: 3;
   name: string;
   version: string;
   title: string;
@@ -725,7 +731,7 @@ export function interfaceKey(p: { type: string; version: string }): string {
 // Candidate ports, setting declarations and package foundations used by fit.
 export type FitFacts = Pick<ComponentFacts, "name" | "foundations" | "provides" | "requires" | "settings">;
 
-// aepm.recipe.fit on publisher-declared facts and independent class authority.
+// clod.recipe.fit on publisher-declared facts and independent class authority.
 export function fit(reference: ClassReference, c: FitFacts, authority: Foundations | null, targets?: string[]): string[] {
   if (!isClassReference(reference)) return ["invalid-class-reference"];
   if (authority === null) return [`class-unavailable:${reference.name}`];
@@ -753,7 +759,7 @@ export function fit(reference: ClassReference, c: FitFacts, authority: Foundatio
   const required = Array.isArray(cls.configuration.required) ? cls.configuration.required : [];
   for (const s of c.settings) if (s.required && !s.hasDefault && !required.includes(s.id)) reasons.push(`unset-setting:${s.id}`);
   const supported = [...new Set(declaration.provides.flatMap(p => Object.keys(p.modules)))].sort();
-  const short = `components/${c.name.split("/")[1]}/`;
+  const short = `components/${slugOf(c.name)}/`;
   for (const platform of supported.filter(p => !targets || targets.includes(p))) {
     if (!c.foundations.platforms.includes(platform)) reasons.push(`platform:${platform}`);
     for (const p of declaration.provides) for (const path of p.modules[platform] ?? [])
@@ -957,8 +963,8 @@ export function validateRecipe(input: unknown, context: RecipeContext = {}): Res
   if (!isRecord(input)) return { ok: false, errors: ["recipe.json must be a JSON object"] };
   if (JSON.stringify(input).length > LIMITS.recipeJson) return { ok: false, errors: [`recipe.json is larger than ${LIMITS.recipeJson} characters`] };
   unknownKeys(input, RECIPE_FIELDS, "recipe", errors);
-  if (input.format !== RECIPE_FORMAT) errors.push(`format-refused: recipe.json format is ${RECIPE_FORMAT}${input.format === 1 ? "; a format 1 recipe.json (question text in ask) is refused, write it again in format 2" : ""}`);
-  if (!isCatalogueName(input.name)) errors.push("name must be <scope>/<name>: lowercase letters, digits and single hyphens");
+  if (input.format !== RECIPE_FORMAT) errors.push(`format-refused: recipe.json format is ${RECIPE_FORMAT}${typeof input.format === "number" && input.format < RECIPE_FORMAT ? `; a format ${input.format} recipe.json is refused, write it again in format ${RECIPE_FORMAT} with package URL names` : ""}`);
+  if (!isCatalogueName(input.name, "recipe")) errors.push(`name must be ${nameRule("recipe")}`);
   if (!isPackageVersion(input.version)) errors.push("version must be three integers, for example 0.2.0");
   if (!text(input.title, LIMITS.title)) errors.push(`title must be text of at most ${LIMITS.title} characters`);
   if (!text(input.summary, LIMITS.summary)) errors.push(`summary must be text of at most ${LIMITS.summary} characters`);
@@ -1020,8 +1026,8 @@ export function validateRecipe(input: unknown, context: RecipeContext = {}): Res
       if (!isRecord(c.preferred)) errors.push(`${where}.preferred must be an object with name and version`);
       else {
         unknownKeys(c.preferred, ["name", "version"], `${where}.preferred`, errors);
-        if (!isCatalogueName(c.preferred.name)) errors.push(`${where}.preferred.name must be <scope>/<name>`);
-        else if (c.preferred.name.split("/")[1] === APPLICATION_INSTANCE) errors.push(`${where}.preferred.name ${c.preferred.name} is not allowed: no component is named ${APPLICATION_INSTANCE}`);
+        if (!isCatalogueName(c.preferred.name, "component")) errors.push(`${where}.preferred.name must be ${nameRule("component")}`);
+        else if (slugOf(c.preferred.name) === APPLICATION_INSTANCE) errors.push(`${where}.preferred.name ${c.preferred.name} is not allowed: no component is named ${APPLICATION_INSTANCE}`);
         else preferred.name = c.preferred.name;
         if (!isPackageVersion(c.preferred.version)) errors.push(`${where}.preferred.version must be three integers`);
         else preferred.version = c.preferred.version;
@@ -1102,7 +1108,7 @@ export function validateRecipe(input: unknown, context: RecipeContext = {}): Res
         if (!Array.isArray(j.candidates) || j.candidates.length === 0 || j.candidates.length > 20) errors.push(`${where}.candidates must be a list of 1 to 20 candidates`);
         else
           j.candidates.forEach((c, n) => {
-            if (!isRecord(c) || !isCatalogueName(c.component) || typeof c.profile !== "string" || !IDENTIFIER.test(c.profile)) return void errors.push(`${where}.candidates[${n}] needs a component name and a profile id`);
+            if (!isRecord(c) || !isCatalogueName(c.component, "component") || typeof c.profile !== "string" || !IDENTIFIER.test(c.profile)) return void errors.push(`${where}.candidates[${n}] needs a component package name and a profile id`);
             const at = `${where}.candidates[${n}]`;
             unknownKeys(c, ["component", "version", "profile", "includedWhen"], at, errors);
             let version: string | undefined;
@@ -1289,7 +1295,7 @@ export function validateRecipe(input: unknown, context: RecipeContext = {}): Res
   return {
     ok: true,
     recipe: {
-      format: 2,
+      format: RECIPE_FORMAT,
       name: input.name as string,
       version: input.version as string,
       title: (input.title as string).trim(),
@@ -1351,7 +1357,7 @@ const COMMON_FIELDS = ["release", "images", "vulnerabilityWaivers", "quality"];
 
 export interface RecipeEntry extends EntryCommon {
   foundations: Foundations;
-  format: 2;
+  format: 3;
   recipe: Recipe;
   digest: string;
   source: ReleasePointer;
@@ -1394,7 +1400,7 @@ export function validateRecipeEntry(input: unknown, context: RecipeContext = {})
     }
   }
   if (errors.length > 0 || !recipe.ok) return { ok: false, errors };
-  return { ok: true, entry: { format: 2, foundations: input.foundations as Foundations, recipe: recipe.recipe, digest: input.digest as string, ...release, page, ...common } };
+  return { ok: true, entry: { format: ENTRY_FORMAT, foundations: input.foundations as Foundations, recipe: recipe.recipe, digest: input.digest as string, ...release, page, ...common } };
 }
 
 // ---------------------------------------------------------------- component catalogue entry
@@ -1448,7 +1454,7 @@ export interface EntryPort extends Port {
 
 export interface ComponentEntry extends EntryCommon {
   foundations: Foundations;
-  format: 3;
+  format: 4;
   name: string;
   version: string;
   digest: string;
@@ -1489,7 +1495,7 @@ function readPorts(value: unknown, where: string, errors: string[], allowOptiona
     if (!text(p.description, PORT_DESCRIPTION, 0)) errors.push(`${at}.description must be text of at most ${PORT_DESCRIPTION} characters: the interface document's description`);
     if (typeof p.id !== "string" || !IDENTIFIER.test(p.id)) errors.push(`${at}.id must be an identifier`);
     else if (out.some((o) => o.id === p.id)) errors.push(`${at}.id ${p.id} is used twice`);
-    if (typeof p.type !== "string" || !PORT_TYPE.test(p.type)) errors.push(`${at}.type must be an interface type such as ae/card-deck`);
+    if (!isInterfaceType(p.type)) errors.push(`${at}.type must be an interface type <namespace>/<name> such as com.clodhub/card-deck`);
     else if (typeof p.id === "string" && p.id !== portId(p.type)) errors.push(`${at}.id must be ${portId(p.type)}, the last segment of its type ${p.type}`);
     if (!isVersion(p.version)) errors.push(`${at}.version must be three integers`);
     if (allowOptional && p.optional !== undefined && typeof p.optional !== "boolean") errors.push(`${at}.optional must be true or false`);
@@ -1590,7 +1596,7 @@ function readDependencies(value: unknown, self: unknown, errors: string[]): Comp
     const at = `dependencies[${i}]`;
     if (!isRecord(d)) return void errors.push(`${at} must be an object`);
     unknownKeys(d, ["name", "version"], at, errors);
-    if (!isCatalogueName(d.name)) errors.push(`${at}.name must be <scope>/<name>`);
+    if (!isCatalogueName(d.name, "component")) errors.push(`${at}.name must be ${nameRule("component")}`);
     else if (d.name === self) errors.push(`${at}.name cannot be the component itself`);
     else if (out.some((o) => o.name === d.name)) errors.push(`${at}.name ${d.name} is used twice`);
     if (!isPackageVersion(d.version)) errors.push(`${at}.version must be three integers`);
@@ -1656,7 +1662,7 @@ function readMigrationSummary(input: unknown, where: string, errors: string[]): 
   else
     input.stores.forEach((s, i) => {
       const schema = isRecord(s) ? s.schema : null;
-      if (!isRecord(s) || typeof s.id !== "string" || !IDENTIFIER.test(s.id) || !isRecord(schema) || !text(schema.name, 80) || !isVersion(schema.version)) return void errors.push(`${where}.stores[${i}] needs an id and a schema name and version`);
+      if (!isRecord(s) || typeof s.id !== "string" || !IDENTIFIER.test(s.id) || !isRecord(schema) || !isInterfaceType(schema.name) || !isVersion(schema.version)) return void errors.push(`${where}.stores[${i}] needs an id and a schema name <namespace>/<name> and version`);
       stores.push({ id: s.id, schema: { name: String(schema.name), version: String(schema.version) } });
     });
   const formats = stringList(input.formats, `${where}.formats`, errors, { max: 10, item: (v) => typeof v === "string" && SLUG.test(v) && v.length <= 30, what: "format names" });
@@ -1693,7 +1699,7 @@ export function validateComponentEntry(input: unknown): Result<"entry", Componen
   unknownKeys(input, COMPONENT_FIELDS, "component", errors);
   errors.push(...validateFoundations(input.foundations, "component", Object.values(GRAMMAR_PATTERNS)));
   readEntryFormat(input.format, errors, COMPONENT_ENTRY_FORMAT, "component entry");
-  if (!isCatalogueName(input.name)) errors.push("name must be <scope>/<name>: lowercase letters, digits and single hyphens");
+  if (!isCatalogueName(input.name, "component")) errors.push(`name must be ${nameRule("component")}`);
   if (!isPackageVersion(input.version)) errors.push("version must be three integers, for example 0.1.0, with a pre-release such as -preview.1 for a preview");
   const common = readCommon(input, input.version, isRecord(input.foundations) && Array.isArray(input.foundations.platforms) ? (input.foundations.platforms as string[]) : [], errors);
   if (isRecord(input.foundations) && Array.isArray(input.foundations.implements) && input.foundations.implements.length !== 1) errors.push("foundations.implements must name exactly one class: the component's listing class");

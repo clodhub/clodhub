@@ -9,12 +9,12 @@ const changedRecipe = (patch: (e: Mutable) => void, components = true) => { cons
 
 describe("catalogue names and pointers", () => {
   it.each(["ab", "poker-night", "i18n", "web-host", "a1-b2"])("accepts slug %s", v => expect(isCatalogueSlug(v)).toBe(true));
-  it.each(["", "a", "Poker", "poker_night", "-poker", "poker-", "poker--night", "a".repeat(41), "search"])("refuses slug %s", v => expect(isCatalogueSlug(v)).toBe(false));
+  it.each(["", "a", "Poker", "poker_night", "-poker", "poker-", "poker--night", "a".repeat(65), "search"])("refuses slug %s", v => expect(isCatalogueSlug(v)).toBe(false));
   it.each(["0.0.0", "1.2.3", "10.20.30"])("accepts version %s", v => expect(isVersion(v)).toBe(true));
   it.each(["1", "1.2", "1.2.3.4", "01.2.3", "1.2.x", "v1.2.3", "1.2.3-rc1"])("refuses version %s", v => expect(isVersion(v)).toBe(false));
   it("orders numeric versions", () => { expect(compareVersions("1.10.0", "1.2.0")).toBe(1); expect(newestVersion(["1.2.0", "1.10.0"])).toBe("1.10.0"); expect(newestVersion([])).toBeNull(); });
   it("checks names, digests, repository and package paths", () => {
-    expect(isCatalogueName("acme/card-deck")).toBe(true); expect(isCatalogueName("Card-Deck")).toBe(false);
+    expect(isCatalogueName("pkg:clod/io.github.acme/card-deck")).toBe(true); expect(isCatalogueName("acme/card-deck")).toBe(false); expect(isCatalogueName("pkg:clod/io.github.acme/card-deck", "class")).toBe(false); expect(isCatalogueName("pkg:clod/com.clodhub/card-deck-class", "class")).toBe(true);
     expect(isDigest(`sha256:${"a".repeat(64)}`)).toBe(true); expect(isDigest("sha256:abc")).toBe(false);
     expect(isRepository("acme/deck")).toBe(true); expect(isRepository("https://github.com/acme/deck")).toBe(false);
     expect(isPackagePath("src/main.ts")).toBe(true); for (const p of ["../x", "/x", "x/../y", "x\\y", "x//y"]) expect(isPackagePath(p)).toBe(false);
@@ -103,22 +103,22 @@ describe("independent class fit", () => {
   const authority = () => exampleRecipeEntry().foundations;
   const reference = () => exampleRecipeEntry().recipe.components[1].class;
   it("fits independent implementation metadata with different provider documents", () => {
-    const e = exampleAlternativeEntry(); e.interfaceDigests["ae/seating@1.0.0"] = `sha256:${"f".repeat(64)}`;
+    const e = exampleAlternativeEntry(); e.interfaceDigests["com.clodhub/seating@1.0.0"] = `sha256:${"f".repeat(64)}`;
     expect(fit(reference(), componentFacts(e), authority())).toEqual([]);
   });
   it.each([
-    ["provides", (c: Mutable) => c.provides = [], "provides:ae/seating@1.0.0"],
-    ["version", (c: Mutable) => c.provides[0].version = "2.0.0", "provides:ae/seating@1.0.0"],
-    ["requirement", (c: Mutable) => c.requires.push({ id: "audit", type: "ae/audit", version: "1.0.0" }), "requires:ae/audit@1.0.0"],
+    ["provides", (c: Mutable) => c.provides = [], "provides:com.clodhub/seating@1.0.0"],
+    ["version", (c: Mutable) => c.provides[0].version = "2.0.0", "provides:com.clodhub/seating@1.0.0"],
+    ["requirement", (c: Mutable) => c.requires.push({ id: "audit", type: "com.clodhub/audit", version: "1.0.0" }), "requires:com.clodhub/audit@1.0.0"],
     ["setting", (c: Mutable) => c.settings = [], "setting:minimumPlayers"],
     ["setting type", (c: Mutable) => { c.settings[0].type = "string"; c.settings[0].grammar = "slug"; }, "setting-type:minimumPlayers"],
     ["required default", (c: Mutable) => c.settings.push({ id: "extra", type: "integer", grammar: "integer", required: true, secret: false, hasDefault: false }), "unset-setting:extra"],
-    ["implementation", (c: Mutable) => c.foundations.implements = [], "class-implementation:clodhub/seating-class"],
+    ["implementation", (c: Mutable) => c.foundations.implements = [], "class-implementation:pkg:clod/com.clodhub/seating-class"],
     ["platform", (c: Mutable) => c.foundations.platforms = ["server"], "platform:web"],
     ["module", (c: Mutable) => c.foundations.artefacts = [], "module:web:index.mjs"],
   ] as [string, (c: Mutable) => void, string][])("rejects candidate %s", (_, patch, reason) => { const c = candidate(); patch(c); expect(fit(reference(), c, authority())).toContain(reason); });
-  it("rejects altered descriptor under the same reference", () => { const c = candidate(); c.foundations.classes[0].descriptor.provides[0].modules.web = ["changed.mjs"]; expect(fit(reference(), c, authority())).toContain("class-digest:clodhub/seating-class"); });
-  it("reports absent independent authority", () => expect(fit(reference(), candidate(), null)).toEqual(["class-unavailable:clodhub/seating-class"]));
+  it("rejects altered descriptor under the same reference", () => { const c = candidate(); c.foundations.classes[0].descriptor.provides[0].modules.web = ["changed.mjs"]; expect(fit(reference(), c, authority())).toContain("class-digest:pkg:clod/com.clodhub/seating-class"); });
+  it("reports absent independent authority", () => expect(fit(reference(), candidate(), null)).toEqual(["class-unavailable:pkg:clod/com.clodhub/seating-class"]));
   it("checks selected target modules and retains server", () => {
     const c = candidate(); c.foundations.platforms = ["server"]; expect(fit(reference(), c, authority(), ["server"])).toEqual([]);
     expect(selectedTargets(authority(), { targets: ["web"] })).toEqual(["server", "web"]);
@@ -126,7 +126,7 @@ describe("independent class fit", () => {
     expect(selectedTargets(authority(), {})).toEqual(authority().platforms);
   });
   it("accepts optional additional requirements and required settings with defaults", () => {
-    const c = candidate(); c.requires.push({ id: "audit", type: "ae/audit", version: "1.0.0", optional: true }); c.settings.push({ id: "extra", type: "integer", grammar: "integer", required: true, secret: false, hasDefault: true }); expect(fit(reference(), c, authority())).toEqual([]);
+    const c = candidate(); c.requires.push({ id: "audit", type: "com.clodhub/audit", version: "1.0.0", optional: true }); c.settings.push({ id: "extra", type: "integer", grammar: "integer", required: true, secret: false, hasDefault: true }); expect(fit(reference(), c, authority())).toEqual([]);
   });
 });
 
@@ -187,7 +187,7 @@ describe("recipe structural validation", () => {
     ["unknown port", (r: Mutable) => r.connections[0].source.port = "ghost"],
     ["wrong type", (r: Mutable) => r.connections[0].source = { instance: "seats", port: "seating" }],
     ["unknown profile", (r: Mutable) => r.jobs[0].candidates[0].profile = "ghost"],
-    ["bad candidate", (r: Mutable) => r.jobs[0].candidates.push({ component: "acme/other", profile: "free" })],
+    ["bad candidate", (r: Mutable) => r.jobs[0].candidates.push({ component: "pkg:clod/io.github.acme/other", profile: "free" })],
     ["bad answer", (r: Mutable) => r.tests.answerSets[0].answers.targets = ["tvos"]],
     ["bad question", (r: Mutable) => r.questions[2].type = "float"],
   ] as [string, (r: Mutable) => void][])("rejects %s", (_, patch) => expect(changedRecipe(e => patch(e.recipe)).ok).toBe(false));
@@ -232,7 +232,7 @@ describe("the format round: channels, images, waivers, quality, classes, questio
     expect(errors(changedComponent((e) => (e.quality = { level: "excellent", certified: true })))).toContain("quality.level must be one of");
     expect(validateQuality({ level: "live-tested", certified: false, liveTested: { at: "2026-11-19", platform: "web" } }).ok).toBe(true);
     expect(errors(validateQuality({ level: "live-tested", certified: false }))).toContain("needs liveTested");
-    expect(errors(changedComponent((e) => (e.format = 1)))).toContain("format-refused");
+    expect(errors(changedComponent((e) => (e.format = 3)))).toContain("format-refused: the component entry format is 4; a format 3 component entry is refused");
   });
   it("requires the catalogue fields of every class descriptor", () => {
     for (const field of ["title", "summary", "category", "presentation"]) {
@@ -246,8 +246,8 @@ describe("the format round: channels, images, waivers, quality, classes, questio
     d.category = "games/cards";
     d.presentation = "sometimes";
     expect(validateDescriptor(d, patterns)).toContain("class-presentation");
-    expect(errors(validateClassEntry({ format: 2, class: exampleComponentEntry().foundations.classes[0]!.descriptor }))).toBe("");
-    expect(errors(validateClassEntry({ format: 2, class: exampleComponentEntry().foundations.classes[0]!.descriptor, digest: "x" }))).toContain("unknown field digest");
+    expect(errors(validateClassEntry({ format: 3, class: exampleComponentEntry().foundations.classes[0]!.descriptor }))).toBe("");
+    expect(errors(validateClassEntry({ format: 3, class: exampleComponentEntry().foundations.classes[0]!.descriptor, digest: "x" }))).toContain("unknown field digest");
   });
   it("checks categories.json", () => {
     expect(errors(validateCategories(exampleCategories()))).toBe("");
@@ -259,18 +259,20 @@ describe("the format round: channels, images, waivers, quality, classes, questio
     expect(errors(changedRecipe((e) => delete e.recipe.questions[0].question))).toContain("questions[0].question must be text");
     expect(errors(changedRecipe((e) => (e.recipe.questions[5].default = "free")))).toContain("a required question has no default");
     expect(errors(changedRecipe((e) => delete e.recipe.questions[2].default))).toContain("a question with ask default needs a default");
-    expect(errors(changedRecipe((e) => (e.recipe.format = 1)))).toContain("format-refused: recipe.json format is 2");
+    expect(errors(changedRecipe((e) => (e.recipe.format = 2)))).toContain("format-refused: recipe.json format is 3; a format 2 recipe.json is refused");
+    expect(errors(changedRecipe((e) => (e.format = 2)))).toContain("format-refused: the entry format is 3; a format 2 entry is refused");
     const groups = questionGroups(exampleRecipeEntry().recipe.questions);
     expect(groups.map((g) => [g.heading, g.questions.map((q) => q.id)])).toEqual([["Ask the person", ["server", "serverKey"]], ["Ask unless the request settles it", ["targets", "scale"]], ["Defaults", ["chips", "lessons", "tourStyle"]]]);
   });
 });
 
 describe("class descriptor format", () => {
-  it("refuses a format 1 descriptor", () => {
+  it("refuses a format 2 descriptor", () => {
     const d = structuredClone(exampleComponentEntry().foundations.classes[0]!.descriptor) as Mutable;
-    expect(d.format).toBe(2);
-    d.format = 1;
+    expect(d.format).toBe(3);
+    d.format = 2;
     expect(validateDescriptor(d, patterns)).toEqual(["class-format-refused"]);
+    expect(errors(validateClassEntry({ format: 3, class: d }))).toBe("class: class-format-refused: class.json format is 3; a format 2 class.json is refused, write it again in format 3 with package URL names");
   });
 });
 

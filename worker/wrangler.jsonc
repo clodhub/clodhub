@@ -26,6 +26,8 @@
     "GITHUB_OAUTH_BASE": "https://github.com",
     // Numeric GitHub user ids, comma-separated, who may set quality and publish the category tree (5442914: george-mcintyre).
     "CATALOGUE_CURATORS": "5442914",
+    // Namespaces assigned to GitHub owners (namespace=owner, comma-separated); io.github.<owner> needs no entry.
+    "NAMESPACE_OWNERS": "com.clodhub=clodhub",
     "OSV_API_BASE": "https://api.osv.dev"
   },
   // Hourly at 07: the vulnerability check of purls not checked for a day, the day's download refresh in chunks, and the

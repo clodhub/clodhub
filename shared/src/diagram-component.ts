@@ -3,7 +3,7 @@
 // interface; inside a band the neighbour cards are stacked and joined by a trunk to the interface card. Lines between
 // the interface cards and the component each take their own track in the channel beside the component, ordered so
 // that they do not cross.
-import type { Port, Targets } from "./catalogue.js";
+import { slugOf, type Port, type Targets } from "./catalogue.js";
 import { CH, Canvas, LINE_COLOURS, MUTED, PAD, measure, pillWidth, rowY, type CardBox } from "./diagram-kit.js";
 import { categoryStyle, zoneTitle } from "./diagram-recipe.js";
 
@@ -62,7 +62,7 @@ interface Band {
 
 function neighbourCard(n: Neighbour) {
   const style = categoryStyle(n.category);
-  const title = n.name.split("/")[1] ?? n.name;
+  const title = slugOf(n.name);
   const lines = [n.name, `version ${n.version}`];
   return { role: "component" as Band["neighbours"][number]["role"], title, lines, kind: style.kind, icon: style.icon, dashed: false, ...measure(title, lines) };
 }
@@ -98,7 +98,7 @@ export function componentConnectionsSvg(input: ComponentDiagramInput): string {
 
   // The component's own card.
   const style = categoryStyle(input.category);
-  const short = input.name.split("/")[1] ?? input.name;
+  const short = slugOf(input.name);
   const targets = [...input.targets.client, ...input.targets.server];
   const settings = new Set(input.profiles.flatMap((p) => Object.keys(p.settings ?? {})));
   const head = [

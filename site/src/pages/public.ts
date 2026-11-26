@@ -18,13 +18,14 @@ export function storeFrame(body: Raw, opts: { me?: Me | null; nav?: boolean; foo
   return html`<div class="store fade-in">${nav}${body}${footer}</div>`;
 }
 
-const AEPM_STEPS = `git clone https://github.com/clodhub/aepm
-python3 -m aepm fetch <recipe>@<version> --with-dependencies --store store
-python3 -m aepm questions <recipe>@<version> --store store
-python3 -m aepm design <recipe>@<version> --store store --answers answers.json --out definition.json
-python3 -m aepm resolve definition.json --catalogue store/catalogue.json --out lock.json
-python3 -m aepm install definition.json --lock lock.json --store store --policy policy.json --target app
-python3 -m aepm verify app --policy policy.json --trusted`;
+const CLOD_STEPS = `git clone https://github.com/clodhub/clod && CLOD="$PWD/clod"
+clod() { PYTHONPATH="$CLOD" python3 -B -m clod "$@"; }
+clod fetch ourpoker-recipe@<version> --with-dependencies --store store
+clod questions ourpoker-recipe@<version> --store store
+clod design ourpoker-recipe@<version> --store store --answers answers.json --out definition.json
+clod resolve definition.json --catalogue store/catalogue.json --out lock.json
+clod install definition.json --lock lock.json --store store --policy policy.json --target app
+clod verify app --policy policy.json --trusted`;
 
 export async function landing(root: HTMLElement): Promise<void> {
   setTheme("store", `ClodHub: ${TAGLINE}`, true);
@@ -37,7 +38,7 @@ export async function landing(root: HTMLElement): Promise<void> {
           <div>
             <span class="pill accent">${icon("bot", "icon-16")} Components and recipes for AI agents</span>
             <h1 style="margin-top:14px">${TAGLINE}</h1>
-            <p class="lead">ClodHub is a catalogue of reviewed components and recipes. A <b>component</b> is a reviewed part of an application, such as a card deck, a seating plan or a video call. A <b>recipe</b> lists the components an application needs, the questions that choose between them and how they connect. Your coding agent answers a recipe's questions with you, and aepm, the installer, puts the application together from those parts on your own accounts.</p>
+            <p class="lead">ClodHub is a catalogue of reviewed components and recipes. A <b>component</b> is a reviewed part of an application, such as a card deck, a seating plan or a video call. A <b>recipe</b> lists the components an application needs, the questions that choose between them and how they connect. Your coding agent answers a recipe's questions with you, and clod, the installer, puts the application together from those parts on your own accounts.</p>
             <div class="ctas">
               <a class="btn lg" href="/recipes">Browse recipes ${icon("arrow")}</a>
               <a class="btn lg secondary" href="/components">Browse components</a>
@@ -46,8 +47,8 @@ export async function landing(root: HTMLElement): Promise<void> {
           </div>
           <div class="card">
             <h3>What an agent runs</h3>
-            <p class="small muted">Each recipe's page gives these steps with its own name and version. aepm checks every archive's fingerprint and signatures, and installs without running any package's code.</p>
-            <pre class="small" style="white-space:pre-wrap">${AEPM_STEPS}</pre>
+            <p class="small muted">Each recipe's page gives these steps with its own name and version. clod checks every archive's fingerprint and signatures, and installs without running any package's code.</p>
+            <pre class="small" style="white-space:pre-wrap">${CLOD_STEPS}</pre>
           </div>
         </section>
 
@@ -71,7 +72,7 @@ export async function landing(root: HTMLElement): Promise<void> {
 
         <section class="how" id="how">
           <div class="section-title"><h2>How a recipe is cooked</h2></div>
-          <p class="muted">Your agent answers a recipe's questions with you. The answers decide which reviewed components go in and which providers they use. aepm downloads each one from its publisher, checks it and installs it without running its code. The application runs on your own accounts, <a href="https://ourapps.app">ourapps.app</a> can deliver it to your people through one link, and every update waits for your approval.</p>
+          <p class="muted">Your agent answers a recipe's questions with you. The answers decide which reviewed components go in and which providers they use. clod downloads each one from its publisher, checks it and installs it without running its code. The application runs on your own accounts, <a href="https://ourapps.app">ourapps.app</a> can deliver it to your people through one link, and every update waits for your approval.</p>
           ${cookingFigure()}
         </section>
 

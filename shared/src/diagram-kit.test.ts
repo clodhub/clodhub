@@ -4,9 +4,9 @@ import { Canvas, measure, wrap } from "./diagram-kit.js";
 describe("diagram kit", () => {
   it("sizes a card from its text and draws a valid document", () => {
     const c = new Canvas();
-    const a = c.card(40, 40, "theme", ["provides ae/theme"], "ui", "ui");
-    expect(a.w).toBe(measure("theme", ["provides ae/theme"]).w);
-    const b = c.card(300, 40, "web-host", ["uses ae/theme"], "host", "host");
+    const a = c.card(40, 40, "theme", ["provides com.clodhub/theme"], "ui", "ui");
+    expect(a.w).toBe(measure("theme", ["provides com.clodhub/theme"]).w);
+    const b = c.card(300, 40, "web-host", ["uses com.clodhub/theme"], "host", "host");
     c.hv([[a.right, a.cy], [b.left, b.cy]], "#1E88E5", 2, { arrow: true });
     const svg = c.svg(600, 200, "test -- comment");
     expect(svg).toContain('viewBox="0 0 600 200"');

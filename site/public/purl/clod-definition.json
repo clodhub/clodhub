@@ -1,0 +1,43 @@
+{
+  "$schema": "https://packageurl.org/schemas/purl-type-definition.schema-1.0.json",
+  "$id": "https://packageurl.org/types/clod-definition.json",
+  "type": "clod",
+  "type_name": "ClodHub",
+  "description": "Components, classes and recipes that agents assemble into applications with clod, published on ClodHub.",
+  "repository": {
+    "use_repository": true,
+    "default_repository_url": "https://clodhub.com",
+    "note": "Each version's archive is a release asset of the package's source repository; ClodHub records its sha256 and links to it."
+  },
+  "namespace_definition": {
+    "requirement": "required",
+    "permitted_characters": "^[a-z]([a-z0-9-]{0,61}[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)+$",
+    "case_sensitive": false,
+    "native_name": "namespace",
+    "note": "One segment: a lower-case reverse domain name the publisher controls, such as com.clodhub, or io.github.<owner> for a GitHub user or organisation. At most 100 characters."
+  },
+  "name_definition": {
+    "requirement": "required",
+    "permitted_characters": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+    "case_sensitive": false,
+    "native_name": "name",
+    "note": "2 to 64 characters. A class name ends in -class and a recipe name in -recipe; a component name ends in neither."
+  },
+  "version_definition": {
+    "requirement": "optional",
+    "permitted_characters": "^(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})(-preview\\.[1-9][0-9]{0,8})?$",
+    "case_sensitive": true,
+    "native_name": "version",
+    "note": "MAJOR.MINOR.PATCH, or MAJOR.MINOR.PATCH-preview.N for a preview. A class version has no preview."
+  },
+  "examples": [
+    "pkg:clod/com.clodhub/presence@0.11.0",
+    "pkg:clod/com.clodhub/presence-class@1.1.0",
+    "pkg:clod/com.clodhub/ourpoker-recipe@0.13.0",
+    "pkg:clod/io.github.someone/card-deck@1.0.0"
+  ],
+  "note": "No qualifiers or subpath are defined: package names and references in clod files carry neither.",
+  "reference_urls": [
+    "https://clodhub.com/contract.md"
+  ]
+}

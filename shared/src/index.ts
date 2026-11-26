@@ -9,3 +9,4 @@ export * from "./diagram-recipe.js";
 export * from "./diagram-component.js";
 export * from "./foundations.js";
 export * from "./build-reports.js";
+export * from "./names.js";

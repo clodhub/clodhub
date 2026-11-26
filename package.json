@@ -2,7 +2,7 @@
   "name": "clodhub",
   "private": true,
   "version": "0.1.0",
-  "description": "ClodHub: the catalogue of reviewed components and recipes that AI agents assemble into apps with aepm",
+  "description": "ClodHub: the catalogue of reviewed components and recipes that AI agents assemble into apps with clod",
   "workspaces": [
     "shared",
     "worker",

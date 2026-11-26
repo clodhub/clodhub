@@ -2,7 +2,7 @@
 // Usage: node scripts/validate-recipe-file.ts <recipe.json> [--components <directory>] [--no-components]
 // Each <directory>/<name>/component.json (provides, requires, collect, files, artefacts, and the provided interface
 // documents) and suitability.json (profiles) is the component source the slots are checked against: every preferred
-// component and job candidate must be there at its version and fit its slot's class by aepm's fit rule. The default directory is ../../components next to the recipe's folder when it exists. The
+// component and job candidate must be there at its version and fit its slot's class by clod's fit rule. The default directory is ../../components next to the recipe's folder when it exists. The
 // recipe's own component.json supplies the settings and ports of `application`.
 // Exit code 0: valid. 1: errors, printed one per line. 2: a file cannot be read.
 import { createHash } from "node:crypto";
@@ -86,7 +86,7 @@ const NATIVE = ["apple", "android"];
 // lands at components/<short name>/<path> (inside that folder for apple and android).
 function interfacesOf(manifest: any, folder: string) {
   const listed = new Set(list(manifest.files).map((f: any) => f?.path));
-  const short = `components/${String(manifest.identity.name).split("/")[1]}/`;
+  const short = `components/${String(manifest.identity.name).slice(String(manifest.identity.name).lastIndexOf("/") + 1)}/`;
   const destinations = list(manifest.artefacts).map((a: any) => a?.destination).filter((d: unknown): d is string => typeof d === "string");
   const interfaceDigests: Record<string, string> = {};
   const interfaceModules: Record<string, Record<string, { path: string | null; installed: boolean }>> = {};
